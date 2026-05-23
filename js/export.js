@@ -107,16 +107,20 @@
             }));
 
             try {
-                localStorage.setItem('pending_configurator_order', JSON.stringify(orderData));
+                // Generowanie bezpiecznego tokenu Base64 z danymi zamówienia (obsługuje polskie znaki)
+                const jsonStr = JSON.stringify(orderData);
+                const base64Str = btoa(unescape(encodeURIComponent(jsonStr)));
                 
-                // Zdarzenie dla Tampermonkey do obejścia Cross-Origin
-                const event = new CustomEvent('configurator_order_ready', { detail: orderData });
-                document.dispatchEvent(event);
+                // Konstruowanie adresu URL z parametrem mframe do automatycznego startu wtyczki
+                const intranetUrl = `https://int.adsystem.pl/index.php?MODULE=wbs&MODGO=orders&mframe=${base64Str}`;
+                
+                localStorage.setItem('pending_configurator_order', jsonStr);
 
-                alert("🤖 Dane zamówienia (BOM) zostały zapisane w pamięci lokalnej (localStorage) oraz przekazane do wtyczki Tampermonkey!\n\nPrzejdź teraz do Intranetu (https://int.adsystem.pl/), aby wtyczka automatycznie uzupełniła formularz.");
+                alert("🤖 Dane zamówienia (BOM) zostały przygotowane do wstrzyknięcia!\n\nZa chwilę otworzy się nowa karta z Intranetem, na której robot rozpocznie proces uzupełniania.");
+                window.open(intranetUrl, '_blank');
             } catch (err) {
-                console.error("Błąd zapisu do localStorage:", err);
-                alert("Wystąpił błąd podczas zapisywania danych zamówienia.");
+                console.error("Błąd przygotowania eksportu:", err);
+                alert("Wystąpił błąd podczas eksportowania danych do Intranetu.");
             }
         }
 
