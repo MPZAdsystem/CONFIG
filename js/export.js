@@ -116,8 +116,10 @@
                 
                 localStorage.setItem('pending_configurator_order', jsonStr);
 
-                alert("🤖 Dane zamówienia (BOM) zostały przygotowane do wstrzyknięcia!\n\nZa chwilę otworzy się nowa karta z Intranetem, na której robot rozpocznie proces uzupełniania.");
+                // Otwieramy nową kartę natychmiast, aby przeglądarka nie zablokowała wyskakującego okienka (Popup Blocker)
                 window.open(intranetUrl, '_blank');
+
+                alert("🤖 Dane zamówienia (BOM) zostały przygotowane do wstrzyknięcia!\n\nPrzejdź do nowo otwartej karty z Intranetem, na której robot rozpocznie proces uzupełniania.");
             } catch (err) {
                 console.error("Błąd przygotowania eksportu:", err);
                 alert("Wystąpił błąd podczas eksportowania danych do Intranetu.");
