@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="pl">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Konfigurator SEGO v61 - beta version</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+    <script>
+        var ARButton = {
+            createButton: function (renderer, sessionInit = {}) {
+                var button = document.createElement('button');
+                function showStartAR() {
+                    var currentSession = null;
+                    button.style.display = ''; button.style.cursor = 'pointer';
+                    button.style.left = 'calc(50% - 50px)'; button.style.width = '100px';
+                    button.textContent = 'ENTER AR';
+                    button.onmouseenter = function () { button.style.opacity = '1.0'; };
+                    button.onmouseleave = function () { button.style.opacity = '0.5'; };
+                    button.onclick = function () {
+                        if (currentSession === null) {
+                            // NOWE: Przechwytywanie błędów i wyświetlanie ich na ekranie telefonu!
+                            navigator.xr.requestSession('immersive-ar', sessionInit).then(function (session) {
+                                currentSession = session;
+                                renderer.xr.setReferenceSpaceType('local');
+                                renderer.xr.setSession(session);
+                                button.textContent = 'STOP AR';
+                                session.addEventListener('end', function () {
+                                    currentSession = null;
+                                    button.textContent = 'ENTER AR';
+                                });
+                            }).catch(function (error) {
+                                // Jeśli telefon coś blokuje, teraz nam o tym głośno powie:
+                                alert("Błąd uruchamiania AR: " + error.message);
+                            });
+                        } else {
+                            currentSession.end();
+                        }
+                    };
+                }
+                function disableButton() {
+                    button.style.display = ''; button.style.cursor = 'auto';
+                    button.style.left = 'calc(50% - 75px)'; button.style.width = '150px';
+                    button.onmouseenter = null; button.onmouseleave = null; button.onclick = null;
+                }
+                function showARNotSupported() {
+                    disableButton(); button.textContent = 'AR NOT SUPPORTED';
+                }
+                function stylizeElement(element) {
+                    element.style.position = 'absolute'; element.style.bottom = '20px';
+                    element.style.padding = '12px 6px'; element.style.border = '1px solid #fff';
+                    element.style.borderRadius = '4px'; element.style.background = 'rgba(0,0,0,0.8)';
+                    element.style.color = '#fff'; element.style.font = 'bold 13px sans-serif';
+                    element.style.textAlign = 'center'; element.style.opacity = '0.8';
+                    element.style.outline = 'none'; element.style.zIndex = '999';
+                }
+                if ('xr' in navigator) {
+                    button.id = 'ARButton'; button.style.display = 'none'; stylizeElement(button);
+                    navigator.xr.isSessionSupported('immersive-ar').then(function (supported) {
+                        supported ? showStartAR() : showARNotSupported();
+                    }).catch(showARNotSupported);
+                    return button;
+                } else {
+                    var message = document.createElement('a');
+                    if (window.isSecureContext === false) {
+                        message.href = document.location.href.replace(/^http:/, 'https:');
+                        message.innerHTML = 'WEBXR WYMAGA HTTPS';
+                    } else {
+                        message.href = 'https://immersiveweb.dev/'; message.innerHTML = 'WEBXR NIEDOSTĘPNE';
+                    }
+                    message.style.left = 'calc(50% - 90px)'; message.style.width = '180px';
+                    message.style.textDecoration = 'none'; stylizeElement(message);
+                    return message;
+                }
+            }
+        };
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/RGBELoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/EXRLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';</script>
+    <script src="https://unpkg.com/utif@3.0.1/UTIF.js"></script>
+
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+    <div id="crash-screen" style="display: none;">
+        <div class="crash-modal">
+            <h2 style="color: #ff4444; margin-top: 0;">⚠️ Zatrzymano renderowanie 3D</h2>
+            <p>Przeglądarce zabrakło pamięci wideo (VRAM) lub nastąpił błąd sterownika graficznego. Twój projekt jest
+                bezpieczny!</p>
+            <button onclick="recoverEngine()" class="crash-btn">Odśwież silnik 3D</button>
+        </div>
+    </div>
+    <div id="loginOverlay">
+        <video autoplay loop muted playsinline class="login-video-bg">
+            <source src="tlo.webm" type="video/webm">
+        </video>
+
+        <div class="login-box">
+            <h2>EXPO Builder</h2>
+            <div id="loginError" class="error-msg">Nieprawidłowy login lub hasło!</div>
+            <input type="text" id="loginUser" placeholder="Login użytkownika" onkeypress="handleLoginKey(event)">
+            <input type="password" id="loginPass" placeholder="Hasło" onkeypress="handleLoginKey(event)">
+
+            <div style="text-align: left; margin-bottom: 15px;">
+                <label
+                    style="color: #ccc; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="rememberMe" style="width: 16px; height: 16px; margin: 0;"> Zapamiętaj
+                    mnie
+                </label>
+            </div> <button onclick="attemptLogin()">Zaloguj się</button>
+            <div style="margin-top:15px; font-size:11px; color:#666;">Wersja PRO v63. Wymagana autoryzacja.</div>
+        </div>
+    </div>
+
+    <div id="loadingOverlay">
+        <div class="loading-logo">EXPO Builder</div>
+        <div class="loading-bar-container">
+            <div id="flavorProgressBar" class="loading-bar"></div>
+        </div>
+        <div id="flavorText" class="loading-text">Inicjalizacja...</div>
+    </div>
+
+    <div id="pdfModalOverlay"
+        style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:10000; align-items:center; justify-content:center; backdrop-filter: blur(5px);">
+        <div
+            style="background:#151515; padding:30px; border-radius:8px; border:2px solid var(--led-color); width:380px; color:#fff; box-shadow:0 0 30px rgba(255,0,128,0.3);">
+            <h3 style="color:var(--highlight); text-align:center; margin-top:0; font-size:18px;">📄 Parametry Oferty PDF
+            </h3>
+
+            <div class="form-group">
+                <label style="color:#aaa; font-size:12px;">Wybierz walutę:</label>
+                <select id="pdfCurrency">
+                    <option value="EUR">EUR (€) - Domyślna</option>
+                    <option value="PLN">PLN (zł)</option>
+                    <option value="USD">USD ($)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label style="color:#aaa; font-size:12px;">Wybierz język oferty:</label>
+                <select id="pdfLang">
+                    <option value="PL">Polski (PL)</option>
+                    <option value="ENG">English (ENG)</option>
+                    <option value="GER">Deutsch (GER)</option>
+                    <option value="FR">Français (FR)</option>
+                    <option value="IT">Italiano (IT)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label style="color:#aaa; font-size:12px;">Rodzaj klienta (Format tabeli cen):</label>
+                <select id="pdfClientType">
+                    <option value="agency">Agencyjny (Pokaż cenę przed i po rabacie)</option>
+                    <option value="end">Końcowy (Tylko finalna cena z uwzględnieniem rabatu)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label style="color:#aaa; font-size:12px;">Tryb zrzutów ekranu:</label>
+                <select id="pdfScreenshotMode">
+                    <option value="auto">Screenshot automatyczny (2 rzuty)</option>
+                    <option value="manual">Screenshot ręczny</option>
+                </select>
+            </div>
+
+            <div id="pdfLoadingStatus" style="display:none; margin-top:20px;">
+                <div style="color:var(--highlight); text-align:center; font-weight:bold; font-size:13px; margin-bottom:8px;"
+                    id="pdfProgressText">⏳ Przygotowywanie silnika...</div>
+                <div
+                    style="width:100%; background:#222; border:1px solid #444; border-radius:10px; height:12px; overflow:hidden; position:relative; box-shadow: inset 0 0 5px rgba(0,0,0,0.8);">
+                    <div id="pdfProgressBar"
+                        style="width:0%; height:100%; background:var(--led-color); box-shadow:0 0 10px var(--led-color); transition: width 0.3s ease-out, background 0.3s;">
+                    </div>
+                </div>
+                <div style="text-align:center; margin-top:10px; font-size:11px; color:#888;">Naciśnij <b
+                        style="color:#fff; background:#333; padding:2px 5px; border-radius:3px; border:1px solid #555;">ESC</b>
+                    aby anulować</div>
+            </div>
+
+            <div style="display:flex; gap:10px; margin-top:25px;" id="pdfModalButtons">
+                <button class="btn" style="flex:1; justify-content:center; background:#333;"
+                    onclick="document.getElementById('pdfModalOverlay').style.display='none'">Anuluj</button>
+                <button class="btn"
+                    style="flex:2; justify-content:center; background:var(--led-color); color:#fff; font-weight:bold; border-color:var(--led-color);"
+                    onclick="executePDFGeneration()">Generuj Ofertę</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="manualScreenshotUI"
+        style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:rgba(20,20,20,0.95); padding:15px 30px; border-radius:10px; border:2px solid var(--led-color); z-index:10001; text-align:center; color:#fff; box-shadow:0 0 20px rgba(255,0,128,0.5); backdrop-filter: blur(5px);">
+        <h4 style="margin:0 0 10px 0; color:var(--highlight); font-size:16px;">📸 Tryb ręcznych zrzutów</h4>
+        <p style="margin:0 0 15px 0; font-size:13px; color:#ccc;" id="manualScreenshotText">Ustaw kamerę w widoku 3D i
+            zrób pierwsze zdjęcie.</p>
+        <div style="display:flex; gap:10px; justify-content:center;">
+            <button id="btnTakeScreenshot" class="btn"
+                style="background:var(--led-color); border-color:var(--led-color); color:#fff; font-weight:bold;">Zrób
+                rzut 1</button>
+            <button id="btnCancelScreenshot" class="btn" style="background:#333;">Anuluj</button>
+        </div>
+    </div>
+
+    <div id="dbEditorOverlay">
+        <div class="db-editor-box">
+            <div class="db-header">
+                <h3>🛠️ Panel Admina: Edytor Bazy Cen (EUR)</h3>
+                <span class="db-close-btn" onclick="closeDbEditor()">✖</span>
+            </div>
+            <div id="dbEditorContent" class="db-content">
+            </div>
+            <div class="db-footer">
+                <button class="db-save-btn" onclick="saveDbEdits()">💾 Zapisz i zaktualizuj projekt</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="fab-container">
+
+        <div class="fab-buttons-row">
+            <button id="btnSpakuj" class="fab-main fab-spakuj" onclick="toggleSpakuj()" style="display:none;">
+                📦 Spakuj
+            </button>
+            <button class="fab-main" onclick="toggleFab()">
+                <span>ⓘ</span> Zmiany / Poprawki
+            </button>
+        </div>
+
+        <div id="fabSubs" class="fab-subs">
+
+            <button class="btn-sub btn-report" onclick="openBugModal()">❗ Zgłoś błąd</button>
+
+            <button class="btn-sub btn-check" onclick="fetchData('reports')">🔍 Sprawdź zgłoszenia</button>
+
+            <button class="btn-sub btn-changelog" onclick="fetchData('changelog')">📜 Zobacz changelog</button>
+
+        </div>
+
+    </div>
+
+
+    <div id="dataViewModal" class="ticketModal"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:10005; align-items:center; justify-content:center;">
+
+        <div class="ticket-content modal-wide">
+
+            <h3 id="dataModalTitle">Dane</h3>
+
+            <div id="dataContainer">Ładowanie danych...</div>
+
+            <div class="ticket-buttons">
+
+                <button class="btn-cancel" onclick="closeDataModal()">Zamknij</button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <div id="ticketModal">
+
+        <div class="ticket-content">
+
+            <h3>Nowe zgłoszenie</h3>
+
+            <div class="ticket-field">
+
+                <label>Rodzaj zgłoszenia</label>
+
+                <select id="ticketType">
+
+                    <option value="Błąd">⚠️ Zgłoś błąd</option>
+
+                    <option value="Ulepszenie">💡 Zaproponuj ulepszenie</option>
+
+                </select>
+
+            </div>
+
+            <div class="ticket-field">
+
+                <label>Priorytet</label>
+
+                <select id="ticketPriority">
+
+                    <option value="Niski">Niski</option>
+
+                    <option value="Średni" selected>Średni</option>
+
+                    <option value="Wysoki">Wysoki</option>
+
+                    <option value="Krytyczny">Krytyczny 🔥</option>
+
+                </select>
+
+            </div>
+
+            <div class="ticket-field">
+
+                <label>Opis</label>
+
+                <textarea id="ticketDescription" rows="4" placeholder="Opisz co nie działa lub co dodać..."></textarea>
+
+            </div>
+
+            <div class="ticket-field">
+
+                <label>Autor</label>
+
+                <input type="text" id="ticketAuthor" placeholder="Twoje imię">
+
+            </div>
+
+            <div class="ticket-buttons">
+
+                <button class="btn-cancel"
+                    onclick="document.getElementById('ticketModal').style.display='none'">Anuluj</button>
+
+                <button class="btn-send" onclick="sendTicket()">Wyślij zgłoszenie</button>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <div class="sidebar-toggle" id="sidebarToggleBtn" onclick="toggleSidebar()">
+        <span id="sidebarToggleIcon">◀</span>
+    </div>
+
+    <div id="sidebarGhost" class="sidebar-ghost"></div>
+
+    <div class="sidebar" id="sidebar">
+        <h2>EXPO Builder v68</h2>
+
+        <div class="form-group" style="margin-bottom: 20px;">
+            <label
+                style="color: var(--warp-color, #ff0080); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; transition: color 0.3s;">Aktywny
+                System Konstrukcyjny:</label>
+            <select id="systemSelector" onchange="switchSystem(this.value)"
+                style="border: 1px solid var(--warp-color, #ff0080); background: #000; color: #fff; font-weight: bold; cursor: pointer; box-shadow: 0 0 15px var(--warp-color, rgba(255, 0, 128, 0.3)); width: 100%; padding: 8px; border-radius: 4px; transition: all 0.3s;">
+                <option value="SEGO">SEGO (Modułowy LED)</option>
+                <option value="multiframe">Multiframe (Profilowy)</option>
+                <option value="foldable">Foldable (Zabudowa budżetowa)</option>
+                <option value="adframe">adFrame (Kasetony LED)</option>
+                <option value="wydruki">Konfigurator wydruków</option>
+                <option value="Flex_noLEd">Flex noLEd</option>
+                <option value="SEGO_2_0">SEGO 2.0 (Beta)</option>
+                <option value="multigenerator">🧬 Multi-Generator (AI/Hybrid)</option>
+                <option value="mframe_pallet">📦 Konfigurator palety mframe</option>
+                <option value="kasetony_niestandardowe">🔲 Kasetony niestandardowe</option>
+            </select>
+        </div>
+
+        <h3>Szczegóły Projektu</h3>
+        <div class="form-group">
+            <input type="text" id="projectName" placeholder="Nazwa projektu / wydarzenia">
+            <input type="text" id="customerName" placeholder="Klient (Firma / Imię i nazwisko)">
+            <input type="email" id="customerEmail" placeholder="Email kontaktowy klienta">
+        </div>
+
+        <h3>Zarządzanie Projektem</h3>
+        <div style="display: flex; gap: 5px; margin-bottom: 5px;">
+            <button class="btn" style="flex:1; justify-content: center; background: #2b5797;"
+                onclick="saveProjectLocal()">💾 Zapisz (Plik)</button>
+            <button class="btn" style="flex:1; justify-content: center; background: #00a4e4;"
+                onclick="loadProjectLocal()">📂 Otwórz</button>
+        </div>
+        <button class="btn"
+            style="justify-content: center; background: #4285F4; border-color: #4285F4; width: 100%; margin-bottom: 15px;"
+            onclick="saveToGoogleDrive()">🤖 Wyślij do Intranetu (BOM)</button>
+
+        <input type="file" id="loadFileInput" style="display: none;" accept=".json" onchange="handleFileLoad(event)">
+
+        <button id="btnAdminDB" class="btn btn-action"
+            style="display:none; background: #ff0080; border-color: #ff0080; width: 100%; margin-bottom: 15px;"
+            onclick="openDbEditor()">🛠️ Panel Admina (Edytuj Ceny)</button>
+
+        <!-- Przycisk wyczyść wydruki - widoczny tylko w trybie wydruków -->
+        <button id="btnClearWydruki" class="btn btn-action"
+            style="display:none; background: #d63031; border-color: #d63031; color:#fff; width: 100%; margin-bottom: 15px; font-weight:bold;"
+            onclick="clearWydruki()">🗑 Wyczyść wydruki</button>
+
+        <div id="sidebar-collapsible-content">
+            <button class="btn btn-action"
+                style="background: #aa0000; border-color: #aa0000; width: 100%; margin-bottom: 15px;"
+                onclick="logout()">🚪
+                Wyloguj się</button>
+
+
+
+
+            <h3>Podłoga</h3>
+            <div class="form-group">
+                <select id="floorType" onchange="updateFloor()">
+                    <option value="none">Brak</option>
+                    <option value="carpet">Wykładzina dywanowa</option>
+                    <option value="adfloor">Adfloor prosty</option>
+                    <option value="adfloor_led">Adfloor z najazdami LED</option>
+                    <option value="adfloor_viz">Adfloor z najazdami (tylko wizualizacja)</option>
+                </select>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                    <input type="number" id="floorWidth" placeholder="Szer. (cm)" oninput="updateFloor()">
+                    <input type="number" id="floorDepth" placeholder="Głęb. (cm)" oninput="updateFloor()">
+                </div>
+            </div>
+
+            <div id="ui-system-SEGO" class="system-ui-panel" style="display: block;">
+
+                <h3 class="category-header active" onclick="toggleCategory('cat-wys250', this)">
+                    Wysokość 250 cm <span class="cat-arrow">▼</span>
+                </h3>
+                <div id="cat-wys250" class="category-content">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                        <button class="btn" style="justify-content: center;" onclick="addModule('sego300x250')">300
+                            cm</button>
+                        <button class="btn" style="justify-content: center;" onclick="addModule('sego200x250')">200
+                            cm</button>
+                        <button class="btn" style="justify-content: center;" onclick="addModule('sego100x250')">100
+                            cm</button>
+                        <button class="btn" style="justify-content: center;" onclick="addModule('sego85x250')">85
+                            cm</button>
+                        <button class="btn"
+                            style="grid-column: span 2; justify-content: center; border-left: 3px solid var(--highlight);"
+                            onclick="addModule('door100')">Drzwi 100 cm</button>
+                        <button class="btn btn-wall" onclick="addKantorek1x1()"
+                            style="background: #2a75d3; color: white; border-color: #1e5ba8;">
+                            📦 Kantorek 1x1 (K)
+                        </button>
+                    </div>
+                </div>
+
+                <h3 class="category-header" onclick="toggleCategory('cat-wys300', this)">
+                    Wysokość 300 cm <span class="cat-arrow collapsed">▼</span>
+                </h3>
+                <div id="cat-wys300" class="category-content collapsed">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                        <button class="btn" style="justify-content: center; border-color: var(--tall-color);"
+                            onclick="addModule('sego300x300')">300 cm</button>
+                        <button class="btn" style="justify-content: center; border-color: var(--tall-color);"
+                            onclick="addModule('sego200x300')">200 cm</button>
+                        <button class="btn" style="justify-content: center; border-color: var(--tall-color);"
+                            onclick="addModule('sego100x300')">100 cm</button>
+                        <button class="btn" style="justify-content: center; border-color: var(--tall-color);"
+                            onclick="addModule('sego85x300')">85 cm</button>
+                    </div>
+                </div>
+
+                <h3 class="category-header" onclick="toggleCategory('cat-konstrukcja', this)">
+                    Konstrukcja <span class="cat-arrow collapsed">▼</span>
+                </h3>
+                <div id="cat-konstrukcja" class="category-content collapsed">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                        <button class="btn btn-rotate" onclick="addTurn('left')">↰ 90° L</button>
+                        <button class="btn btn-rotate" onclick="addTurn('right')">↱ 90° P</button>
+                    </div>
+                    <button class="btn btn-action" onclick="autoResolveCorners()"
+                        style="color:#00ff00; margin-top: 5px;">✨
+                        Auto-Naprawa Narożników</button>
+                    <button class="btn btn-action" onclick="undo()" style="margin-top: 5px;">⎌ Cofnij Krok</button>
+                </div>
+
+                <h3 class="category-header" onclick="toggleCategory('cat-akcesoria', this)">
+                    Akcesoria (Na moduł) <span class="cat-arrow collapsed">▼</span>
+                </h3>
+                <div id="cat-akcesoria" class="category-content collapsed">
+                    <button class="btn btn-acc" onclick="addAccessory('tvPanel')"><span>📺 Panel TV</span> <span>124
+                            €</span></button>
+                    <button class="btn btn-acc" onclick="addAccessory('shelfKit')"
+                        style="border-left-color: #ff9900;"><span>📚 Shelf Kit</span> <span>157 €</span></button>
+                    <button class="btn btn-acc" onclick="addAccessory('daszek')"
+                        style="border-left-color: #cc00ff;"><span>☂️ Daszek 100x250</span> <span>Zestaw</span></button>
+                </div>
+
+                <h3 class="category-header" onclick="toggleCategory('cat-wyp', this)">
+                    Wyposażenie Dodatkowe <span class="cat-arrow collapsed">▼</span>
+                </h3>
+                <div id="cat-wyp" class="category-content collapsed">
+                    <div style="display: flex; flex-direction: column; gap: 5px;">
+                        <button class="btn btn-acc" style="border-left-color: #ff0080;"
+                            onclick="addFreestanding('adTribuneExpo')">
+                            <span>🧍 AdTribune Expo 100x100 </span> <span>350 €</span>
+                        </button>
+                        <button class="btn btn-acc" style="border-left-color: #ff5500;"
+                            onclick="addFreestanding('adUpVarioS80')">
+                            <span>〰️ adWall Vario S-80 </span> <span>281 €</span>
+                        </button>
+                        <button class="btn btn-acc" style="border-left-color: #00d2ff;"
+                            onclick="addSuspended('adUpQuadfloat')">
+                            <span>🛸 adUp Vario Quadfloat </span> <span>1008 €</span>
+                        </button>
+                        <button class="btn btn-acc" style="border-left-color: #cc00ff;"
+                            onclick="addSuspended('adUpRingfloat')">
+                            <span>⭕ adUp Vario Ringfloat </span> <span>470 €</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="ui-system-SEGO_2_0" class="system-ui-panel" style="display: none;">
+                <p
+                    style="color:var(--highlight); font-size:12px; margin-top:20px; text-align:center; font-style:italic;">
+                    🚀
+                    Biblioteka SEGO 2.0 (Nowe Profile)</p>
+            </div>
+
+            <div id="ui-system-multiframe" class="system-ui-panel" style="display: none;">
+                <h3 class="category-header" onclick="toggleCategory('cat-mf-profile', this)">Profile MF <span
+                        class="cat-arrow">▼</span></h3>
+                <div id="cat-mf-profile" class="category-content">
+                    <p style="color:#666; font-size:11px; text-align:center;">Wybierz profile cięte na wymiar...</p>
+                </div>
+            </div>
+
+            <div id="ui-system-foldable" class="system-ui-panel" style="display: none;">
+                <p style="color:#ffcc00; font-size:12px; margin-top:10px; text-align:center;">📦 System Foldable (Rama
+                    45mm)
+                </p>
+
+                <h3 class="category-header active" onclick="toggleCategory('cat-foldable-moduly', this)">
+                    Moduły <span class="cat-arrow">▼</span>
+                </h3>
+                <div id="cat-foldable-moduly" class="category-content">
+                    <button class="btn" style="justify-content: center; border-color: #ffcc00; font-weight: bold;"
+                        onclick="addModule('foldable100x250')">
+                        Rama 100 x 250 cm
+                    </button>
+                </div>
+
+                <h3 class="category-header" onclick="toggleCategory('cat-foldable-konstrukcja', this)">
+                    Konstrukcja <span class="cat-arrow collapsed">▼</span>
+                </h3>
+                <div id="cat-foldable-konstrukcja" class="category-content collapsed">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                        <button class="btn btn-rotate" onclick="addTurn('left')">↰ 90° L</button>
+                        <button class="btn btn-rotate" onclick="addTurn('right')">↱ 90° P</button>
+                    </div>
+                    <button class="btn btn-action" onclick="autoResolveCorners()"
+                        style="color:#ffcc00; margin-top: 5px;">✨
+                        Auto-Naprawa Narożników</button>
+                    <button class="btn btn-action" onclick="undo()" style="margin-top: 5px;">⎌ Cofnij Krok</button>
+                </div>
+            </div>
+
+            <div id="ui-system-adframe" class="system-ui-panel" style="display: none;">
+                <p style="color:var(--highlight); font-size:12px; margin-top:20px; text-align:center;">✨ Kasetony
+                    adFrame
+                    (Wybierz format)</p>
+            </div>
+
+            <div id="ui-system-wydruki" class="system-ui-panel" style="display: none;">
+                <p style="color:#00ff88; font-size:12px; margin-top:20px; text-align:center;">🖼️ Konfigurator Wydruków
+                </p>
+            </div>
+
+            <div id="ui-system-Flex_noLEd" class="system-ui-panel" style="display: none;">
+                <p style="color:#888; font-size:12px; margin-top:20px; text-align:center;">Brak zasilania LED - System
+                    Flex
+                </p>
+            </div>
+
+            <div id="ui-system-kasetony_niestandardowe" class="system-ui-panel" style="display: none;">
+                <p style="color:var(--kaseton-neon, #00e5ff); font-size:12px; margin-top:20px; text-align:center;">🔲
+                    Kasetony niestandardowe (konfigurator na wymiar)</p>
+                <button class="btn btn-action"
+                    style="background: var(--kaseton-neon, #00e5ff); color: #000; font-weight: bold; margin-top:10px; width:100%; justify-content:center;"
+                    onclick="openKasetonModal()">⚙️ Otwórz konfigurator kasetonu</button>
+            </div>
+
+            <div id="ui-system-multigenerator" class="system-ui-panel" style="display: none;">
+                <h3 class="category-header active" onclick="toggleCategory('cat-gen-ai', this)">
+                    ⚡ Generowanie AI <span class="cat-arrow">▼</span>
+                </h3>
+                <div id="cat-gen-ai" class="category-content">
+                    <p style="color:#aaa; font-size:11px; margin-bottom:10px;">Wpisz polecenie lub wybierz szablon, aby
+                        system zbudował stoisko za Ciebie.</p>
+
+                    <button class="btn btn-action"
+                        onclick="document.getElementById('autoBuilderModal').style.display='flex'"
+                        style="background: var(--highlight); color: #000; font-weight: bold;">
+                        ✨ Otwórz okno AutoBuildera
+                    </button>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 10px;">
+                        <button class="btn" style="font-size: 11px;" onclick="executeQuickTemplate('U-shape')">Szablon
+                            U</button>
+                        <button class="btn" style="font-size: 11px;" onclick="executeQuickTemplate('L-shape')">Szablon
+                            L</button>
+                    </div>
+                </div>
+
+                <h3 class="category-header" onclick="toggleCategory('cat-gen-tools', this)">
+                    🛠️ Narzędzia masowe <span class="cat-arrow collapsed">▼</span>
+                </h3>
+                <div id="cat-gen-tools" class="category-content collapsed">
+                    <button class="btn btn-action" onclick="autoResolveCorners()" style="color:#00ff00;">✨ Napraw
+                        wszystkie
+                        narożniki</button>
+                    <button class="btn btn-action" onclick="changeAllHeights(300)" style="margin-top: 5px;">⬆️ Zmień
+                        wszystko na 300cm</button>
+                </div>
+            </div>
+
+            <div id="ui-system-mframe_pallet" class="system-ui-panel" style="display: none;">
+                <h3 style="margin-top:0;">📦 Konfigurator Palety mFrame</h3>
+                <p style="font-size: 11px; color: #aaa;">Baza: Paleta 270x120 cm (Waga: 60 kg)</p>
+                <div id="mframe-items"
+                    style="display: flex; flex-direction: column; gap: 10px; max-height: 400px; overflow-y: auto; padding-right: 5px;">
+                    <!-- Wygenerowane dynamicznie kontrolki -->
+                </div>
+                <div
+                    style="margin-top: 15px; padding: 10px; background: #222; border: 1px solid #444; border-radius: 5px;">
+                    <div style="font-size: 12px; color: #ddd;">Łączna waga: <strong id="mframe-total-weight"
+                            style="color: var(--led-color);">60 kg</strong></div>
+                    <div style="font-size: 12px; color: #ddd;">Liczba warstw: <strong id="mframe-total-layers"
+                            style="color: #fff;">0</strong></div>
+                    <div style="font-size: 12px; color: #ddd;">Wysokość całkowita: <strong id="mframe-total-height"
+                            style="color: #fff;">15.0 cm</strong></div>
+                </div>
+
+                <!-- PANEL DPD: Sprawdzanie usług -->
+                <div class="dpd-panel">
+                    <div class="dpd-panel-title">🚚 Sprawdź usługi DPD</div>
+                    <div class="dpd-input-row">
+                        <label>Nadawca:</label>
+                        <input type="text" id="dpd-sender-code" value="55-040" placeholder="XX-XXX" maxlength="6">
+                    </div>
+                    <div class="dpd-input-row">
+                        <label>Odbiorca:</label>
+                        <input type="text" id="dpd-receiver-code" placeholder="XX-XXX" maxlength="6">
+                    </div>
+                    <button class="dpd-check-btn" id="dpd-check-btn" onclick="checkDPDServices()">
+                        🔍 Sprawdź dostępność usług
+                    </button>
+                    <div class="dpd-results" id="dpd-results"></div>
+                    <div class="dpd-error" id="dpd-error"></div>
+                    <div class="dpd-all-services" id="dpd-all-services"></div>
+                    <div class="dpd-toggle-all" id="dpd-toggle-all" style="display:none;"
+                        onclick="toggleDpdAllServices()">▼ Pokaż wszystkie usługi</div>
+                </div>
+
+            </div> <button class="btn btn-action" onclick="openManualModal()"
+                style="background: #2a75d3; color: white; margin-bottom: 15px; border-color: #1e5ba8; font-weight: bold; box-shadow: 0 4px 10px rgba(42, 117, 211, 0.4);">
+                🛒 Dodaj elementy ręcznie (BOM)
+            </button>
+
+            <div style="margin-top: 10px;">
+                <button class="btn btn-3d" onclick="toggle3D()">👁️ Wygeneruj Podgląd 3D</button>
+                <button class="btn"
+                    style="background: #ff8c00; border-color: #ff8c00; width: 100%; margin-bottom: 5px; color: #fff;"
+                    onclick="toggleDimensions()">📏 Pokaż/Ukryj Wymiary</button>
+
+                <select id="graphicsQuality" onchange="if(is3DMode) update3DScene()"
+                    style="width: 100%; background: #222; color: #aaa; border: 1px solid #444; border-radius: 4px; padding: 5px; font-size: 11px; margin-bottom: 5px;">
+                    <option value="low">Jakość: Niska (Tylko grafika)</option>
+                    <option value="medium" selected>Jakość: Średnia (Wizualna symulacja)</option>
+                    <option value="high">Jakość: Ultra (Fizyczne światło powierzchniowe)</option>
+                </select>
+
+                <button class="btn btn-pdf" onclick="document.getElementById('pdfModalOverlay').style.display='flex'">📄
+                    Generuj Ofertę (PDF)</button>
+                <button class="btn btn-action" onclick="clearPlan()" style="color:#ff5555; margin-top: 5px;">🗑 Wyczyść
+                    Projekt</button>
+            </div>
+
+            <h3>Kosztorys (EUR)</h3>
+            <div class="finance-panel">
+                <div class="input-group" style="margin-bottom: 10px;">
+                    <label>Zniżka (%):</label>
+                    <input type="number" id="discountInput" value="0" min="0" max="100" oninput="render()">
+                </div>
+
+                <div class="currency-row"
+                    style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <label style="font-size: 11px; color: #aaa;">Kurs PLN:</label>
+                        <input type="number" id="rate-pln" value="4.20" step="0.01" oninput="render()"
+                            style="width: 55px; padding: 2px; font-size: 11px; background: #333; color: #fff; border: 1px solid #555; border-radius: 3px; text-align: center;">
+                    </div>
+                    <span id="valPLN"><b>0 PLN</b></span>
+                </div>
+                <div class="currency-row" style="display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <label style="font-size: 11px; color: #aaa;">Kurs USD:</label>
+                        <input type="number" id="rate-usd" value="1.15" step="0.01" oninput="render()"
+                            style="width: 55px; padding: 2px; font-size: 11px; background: #333; color: #fff; border: 1px solid #555; border-radius: 3px; text-align: center;">
+                    </div>
+                    <span id="valUSD"><b>0 $</b></span>
+                </div>
+            </div>
+
+            <div class="bom-container" id="bomList"></div>
+
+            <div
+                style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; margin-bottom: 20px;">
+                <div id="totalPower"
+                    style="font-size: 13px; font-weight: bold; color: #000; background: var(--highlight); padding: 4px 10px; border-radius: 4px; box-shadow: 0 0 10px rgba(0, 210, 255, 0.4);">
+                    ⚡ Moc: 0 W
+                </div>
+                <div class="total-price" id="totalPrice" style="margin-top: 0;">0 €</div>
+            </div>
+        </div>
+
+        <div id="ui-system-wydruki" class="system-ui-panel" style="display: none;">
+            <h3 style="margin-top:0; color:#00ff88;">🖼️ Import Grafik (Wydruki)</h3>
+            <div id="dropZone" onclick="document.getElementById('imageInput').click()"
+                style="border: 2px dashed #00ff88; padding: 20px; text-align: center; border-radius: 10px; cursor: pointer; background: rgba(0,255,136,0.05); margin-bottom: 10px;">
+                📁 Kliknij aby wybrać pliki lub przeciągnij je bezpośrednio na czarne pole edytora
+            </div>
+            <input type="file" id="imageInput" multiple accept="image/*,.pdf,.tif,.tiff" style="display: none;"
+                onchange="handleWydrukiFiles(this.files)">
+            <button class="btn btn-action" onclick="clearWydruki()" style="color:#ff5555; width: 100%;">🗑 Wyczyść
+                wszystko</button>
+            <div style="margin-top: 15px; display: flex; flex-direction: column; gap: 8px;">
+                <button class="btn btn-action" onclick="generateWydrukiReport()"
+                    style="width:100%; background: linear-gradient(135deg, #00b894, #00cec9); color:#000; font-weight:bold; border:none; border-radius:6px; padding:10px; cursor:pointer; box-shadow: 0 4px 15px rgba(0,206,201,0.4); transition: all 0.3s;">
+                    📊 Raport parametrów
+                </button>
+                <button class="btn btn-action" onclick="checkEdgeMatching()"
+                    style="width:100%; background: linear-gradient(135deg, #e17055, #d63031); color:#fff; font-weight:bold; border:none; border-radius:6px; padding:10px; cursor:pointer; box-shadow: 0 4px 15px rgba(214,48,49,0.4); transition: all 0.3s;">
+                    🔍 Sprawdź pasowania
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="stage" id="stage" onclick="deselectItem(event)">
+
+        <div class="fab-container-left">
+            <button class="fab-main" style="background: #9c27b0; box-shadow: 0 4px 15px rgba(156, 39, 176, 0.4);"
+                onclick="document.getElementById('instructionsModal').style.display='flex'">
+                💡 Instrukcje
+            </button>
+            <button id="btnToggleRadial" class="fab-main"
+                style="display: none; background: #ffaa00; color: #000; box-shadow: 0 4px 15px rgba(255, 170, 0, 0.4); border: 2px solid #ffcc00;"
+                onclick="toggleRadialMenus()">
+                ⚙️ Konfigurator wydruków
+            </button>
+
+            <!-- Przyciski konfiguratora wydruków (widoczne tylko w trybie wydruki) -->
+            <button id="btnWydrukiReport" class="fab-main"
+                style="display:none; background: linear-gradient(135deg, #00b894, #00cec9); color:#000; box-shadow: 0 4px 15px rgba(0,206,201,0.4); font-weight:bold; border:none;"
+                onclick="generateWydrukiReport()">
+                📊 Raport
+            </button>
+            <button id="btnWydrukiMatch" class="fab-main"
+                style="display:none; background: linear-gradient(135deg, #e17055, #d63031); color:#fff; box-shadow: 0 4px 15px rgba(214,48,49,0.4); font-weight:bold; border:none;"
+                onclick="checkEdgeMatching()">
+                🔍 Sprawdź pasowania
+            </button>
+            <button id="btnWydrukiClearStage" class="fab-main"
+                style="display:none; background: linear-gradient(135deg, #636e72, #2d3436); color:#ff5555; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-weight:bold; border:1px solid #ff5555;"
+                onclick="clearWydruki()">
+                🗑 Wyczyść
+            </button>
+        </div>
+
+        <div id="instructionsModal" class="ticketModal"
+            style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:10002; align-items:center; justify-content:center;">
+            <div class="ticket-content">
+                <h3 style="color:#9c27b0; margin-bottom: 20px;">💡 Instrukcje i Narzędzia</h3>
+                <div style="line-height: 1.8; font-size: 13px; color: #ddd; margin-bottom: 25px;">
+                    ⚠️ System automatycznie wyświetli ostrzeżenie przy fizycznej kolizji ścian lub wyjściu poza obrys
+                    głównej podłogi.<br><br>
+                    ✨ Naciśnij <b style="color:#00ff00;">Auto-Naprawa Narożników</b> w lewym menu, aby system sam
+                    obliczył poprawny obrys ram unikając zachodzenia na siebie płyt.<br><br>
+                    🔄 Naciskając znaczniki <b style="color:var(--highlight);">W-Z 1 / W-Z 2 / Z-Z</b> na rzucie 2D
+                    możesz ręcznie przełączać sposób łączenia się dwóch modułów (Wewnętrzny, Zewnętrzny).
+                </div>
+                <div class="ticket-buttons">
+                    <button class="btn-cancel" style="width: 100%;"
+                        onclick="document.getElementById('instructionsModal').style.display='none'">Rozumiem,
+                        zamknij</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="drawingLayer"></div>
+    </div>
+
+
+    <div id="stage3DContainer">
+        <div id="foldable-ui-layer"></div>
+
+        <div class="ui-3d-panel">
+            <button class="close-3d-btn" onclick="toggle3D()">❌ Wróć do 2D</button>
+            <button class="ctrl-3d-btn" onclick="toggleGraphicsPanel()"
+                style="background:#0055ff; border-color:#0055ff; color:#fff;">🖼️ Lista Grafik</button>
+
+            <div style="display:flex; gap: 5px; margin-top: 15px;">
+                <button class="ctrl-3d-btn" onclick="rotateCamera(45)">↪️ +45°</button>
+                <button class="ctrl-3d-btn" onclick="rotateCamera(-45)">↩️ -45°</button>
+            </div>
+            <button id="btnAutoRotate" class="ctrl-3d-btn active" style="margin-top:5px;"
+                onclick="toggleAutoRotate()">🔄 Auto-Obrót: WŁ</button>
+            <button id="btnSceneSettingsToggle" class="ctrl-3d-btn" style="margin-top:5px;"
+                onclick="toggleSceneSettings()">⚙️ Ustawienia sceny</button>
+        </div>
+
+        <div id="settingsPanel" class="settings-panel">
+            <span class="close-settings-btn" onclick="toggleSceneSettings()">❌</span>
+
+            <h3 style="margin-top: 5px;">Parametry LED (Podłoga)</h3>
+            <div class="settings-row">
+                <label>Moc światła</label>
+                <input type="range" id="ledIntensitySlider" min="0" max="5" step="0.1" value="1.5"
+                    oninput="updateLedSettings()">
+            </div>
+            <div class="settings-row">
+                <label>Tryb i Kolor</label>
+                <div class="bg-btn-group" style="margin-bottom: 5px;">
+                    <button class="bg-btn"
+                        style="background: linear-gradient(90deg, red, yellow, lime, cyan, blue, magenta); color: white; text-shadow: 1px 1px 2px #000;"
+                        onclick="setLedMode('auto')">Auto</button>
+                    <button class="bg-btn" style="background:#cc0000;"
+                        onclick="setLedMode('static', '#ff0000')">Czerw</button>
+                    <button class="bg-btn" style="background:#009900;"
+                        onclick="setLedMode('static', '#00ff00')">Ziel</button>
+                    <button class="bg-btn" style="background:#0000cc;"
+                        onclick="setLedMode('static', '#0000ff')">Nieb</button>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px;">
+                    <label style="margin:0;">Własny kolor:</label>
+                    <input type="color" id="ledColorPicker" value="#ff00ff" oninput="setLedMode('static', this.value)"
+                        style="cursor: pointer; border: 1px solid #444; border-radius: 4px; background: transparent; height: 26px; padding: 1px;">
+                </div>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid #444; margin: 15px 0 10px 0;">
+
+            <h3>Ustawienia Sceny</h3>
+            <div class="settings-row">
+                <label>Jasność globalna (Ambient)</label>
+                <input type="range" id="ambLightSlider" min="0" max="2" step="0.05" value="0.45"
+                    oninput="updateLighting()">
+            </div>
+            <div class="settings-row">
+                <label>Słońce kierunkowe (Directional)</label>
+                <input type="range" id="dirLightSlider" min="0" max="1.5" step="0.05" value="0.25"
+                    oninput="updateLighting()">
+            </div>
+
+            <div class="settings-row">
+                <label>Presety Widoku</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 5px;">
+                    <button class="btn-preset" onclick="setSceneBg('blue')"
+                        style="background:#003366; color:white; font-size:10px; padding:5px; border:1px solid #444; border-radius:3px; cursor:pointer;">🟦
+                        Blueprint</button>
+                    <button class="btn-preset" onclick="setSceneBg('white')"
+                        style="background:#eeeeee; color:#333; font-size:10px; padding:5px; border:1px solid #444; border-radius:3px; cursor:pointer;">☀️
+                        Light</button>
+                    <button class="btn-preset" onclick="setSceneBg('black')"
+                        style="background:#111111; color:white; font-size:10px; padding:5px; border:1px solid #444; border-radius:3px; cursor:pointer;">🌑
+                        Dark</button>
+                    <button class="btn-preset" onclick="setSceneBg('expo', this)"
+                        style="background:linear-gradient(45deg, #ffcc00, #ff8800); color:black; font-size:10px; padding:5px; border:1px solid #444; border-radius:3px; cursor:pointer; font-weight:bold;">🖼️
+                        Hlpa Expo</button>
+                    <button onclick="setSceneBg('quad_test')">Test Quad 20m</button>
+                    <button onclick="setSceneBg('dark_hall')">Dark Hall</button>
+                    <button onclick="setSceneBg('dark_sketch', this)"
+                        style="grid-column: span 2; background: #333; color: #fff; font-weight: bold; border: 1px solid #ff0080; border-radius: 3px; cursor: pointer;">✏️
+                        Dark Sketch</button>
+                </div>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid #444; margin: 15px 0 10px 0;">
+
+            <button id="btnNightMode"
+                style="width: 100%; background:#2c3e50; color:white; border:none; padding:10px; border-radius:4px; cursor:pointer; font-weight:bold; transition: 0.3s;"
+                onclick="toggleNightMode()">
+                🌙 Tryb Nocny (Realistyczny)
+            </button>
+        </div>
+
+        <div id="graphicsPanel" class="graphics-panel">
+            <h3>Zarządzanie Grafikami</h3>
+            <div id="graphicsListContent">Nanieś tekstury na ściany (Drag & Drop), aby zobaczyć listę.</div>
+            <a href="LINK_DO_PDF" target="_blank" class="btn-guidelines">📥 Ściągnij wytyczne DTP (PDF)</a>
+        </div>
+    </div>
+
+    <div id="manualModalOverlay"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
+        <div
+            style="background: #1e1e1e; border: 2px solid #2a75d3; border-radius: 12px; width: 550px; max-width: 90%; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 0 40px rgba(42, 117, 211, 0.3); font-family: sans-serif;">
+
+            <div
+                style="display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid #333; background: #151515; border-radius: 10px 10px 0 0;">
+                <h2 style="margin: 0; font-size: 18px; color: white;">🛒 Zarządzaj listą elementów</h2>
+                <button onclick="closeManualModal()"
+                    style="background: none; border: none; color: #ff5555; font-size: 24px; cursor: pointer; line-height: 1;">✖</button>
+            </div>
+
+            <div style="padding: 20px; overflow-y: auto;">
+                <div style="font-size: 13px; color: #aaa; margin-bottom: 15px;">Kliknij element poniżej, aby dodać go do
+                    całkowitej listy części (BOM). System automatycznie zsumuje je z elementami na rzucie 2D.</div>
+
+                <div id="manualAddAvailable"
+                    style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom: 20px; min-height: 40px;"></div>
+
+                <div
+                    style="font-size: 14px; color: #2a75d3; margin-bottom: 10px; font-weight: bold; border-bottom: 1px solid #333; padding-bottom: 5px;">
+                    📦 W koszyku ręcznym:</div>
+
+                <div id="manualAddSelected" style="display:flex; flex-direction:column; gap:8px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Raport Wydruków -->
+    <div id="wydrukiReportModal"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:10000; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
+        <div
+            style="background:#1a1a2e; border:2px solid #00cec9; border-radius:12px; width:1050px; max-width:96%; max-height:85vh; display:flex; flex-direction:column; box-shadow:0 0 40px rgba(0,206,201,0.3);">
+            <div
+                style="display:flex; justify-content:space-between; align-items:center; padding:15px 20px; border-bottom:1px solid #333; background:#16213e; border-radius:10px 10px 0 0;">
+                <div style="display:flex; align-items:center; gap: 20px;">
+                    <h2 style="margin:0; font-size:18px; color:#00cec9;">📊 Raport parametrów grafik</h2>
+                    <select id="wydrukiSystemSelect" onchange="generateWydrukiReport()"
+                        style="background:#1e1e2e; color:#fff; border:1px solid #333; border-radius:4px; padding:5px 10px; font-size:14px; outline:none; cursor:pointer;">
+                        <option value="none">-- Wybierz system do weryfikacji wymiarów --</option>
+                        <option value="mFrame">mFrame</option>
+                        <option value="SEGO">SEGO / SEGO 2.0</option>
+                        <option value="Foldable">Foldable</option>
+                        <option value="multiframe">multiframe</option>
+                        <option value="Flex">Flex</option>
+                        <option value="Flex noLED">Flex noLED</option>
+                        <option value="Custom Blockout">Custom Blockout</option>
+                        <option value="Custom Backlit">Custom Backlit</option>
+                    </select>
+                </div>
+                <button onclick="document.getElementById('wydrukiReportModal').style.display='none'"
+                    style="background:none; border:none; color:#ff5555; font-size:24px; cursor:pointer;">✖</button>
+            </div>
+            <div id="wydrukiReportContent" style="padding:20px; overflow-y:auto;"></div>
+        </div>
+    </div>
+
+    <!-- MODAL: Raport Pasowań -->
+    <div id="wydrukiMatchModal"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:10000; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
+        <div
+            style="background:#1a1a2e; border:2px solid #e17055; border-radius:12px; width:850px; max-width:92%; max-height:85vh; display:flex; flex-direction:column; box-shadow:0 0 40px rgba(225,112,85,0.3);">
+            <div
+                style="display:flex; justify-content:space-between; align-items:center; padding:15px 20px; border-bottom:1px solid #333; background:#2d1f1f; border-radius:10px 10px 0 0;">
+                <h2 style="margin:0; font-size:18px; color:#e17055;">🔍 Raport pasowań krawędzi</h2>
+                <button onclick="document.getElementById('wydrukiMatchModal').style.display='none'"
+                    style="background:none; border:none; color:#ff5555; font-size:24px; cursor:pointer;">✖</button>
+            </div>
+            <div id="wydrukiMatchContent" style="padding:20px; overflow-y:auto;"></div>
+        </div>
+    </div>
+
+    <!-- MODAL: Skaner 1:1 -->
+    <div id="wydrukiScannerModal"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:10001; justify-content:center; align-items:center;">
+        <!-- Header -->
+        <div
+            style="position:absolute; top:0; left:0; width:100%; display:flex; justify-content:space-between; align-items:center; padding:15px 25px; background:linear-gradient(to bottom, rgba(0,0,0,0.8), transparent); z-index:10002; pointer-events:none;">
+            <div>
+                <h2 style="margin:0; font-size:22px; color:#00cec9; text-shadow:0 2px 4px rgba(0,0,0,0.8);"><span
+                        id="scanFilename">Skala 1:1 (Lupa w natywnej rozdzielczości)</span></h2>
+                <div style="color:#aaa; font-size:13px; margin-top:5px; text-shadow:0 1px 2px rgba(0,0,0,0.8);">
+                    Przeciągnij obraz myszką jak mapę. Wymiary rozciągnięto w CSS do fizycznego rozmiaru druku (~1:1).
+                </div>
+            </div>
+            <button onclick="document.getElementById('wydrukiScannerModal').style.display='none'"
+                style="pointer-events:auto; background:none; border:none; color:#ff5555; font-size:36px; cursor:pointer; text-shadow:0 2px 4px rgba(0,0,0,0.8);">✖</button>
+        </div>
+
+        <button id="wydrukiScannerAnalyzeBtn"
+            onclick="analyzeGraphicQuality(wydrukiImages[currentScannerIndex], document.getElementById('wydrukiScannerCanvas'))"
+            style="position:absolute; top:20px; right:80px; z-index:10003; padding:10px 20px; background:linear-gradient(135deg, #00b894, #00cec9); color:white; border:none; border-radius:8px; cursor:pointer; font-weight:bold; box-shadow:0 4px 15px rgba(0,206,201,0.5); font-size:14px;">📋
+            Weryfikacja DTP</button>
+        <div id="wydrukiScannerAiResult"
+            style="position:absolute; top:75px; right:80px; z-index:10003; padding:15px 20px; background:rgba(20,20,30,0.95); border:1px solid #00cec9; border-radius:8px; color:white; display:none; max-width:420px; box-shadow:0 10px 25px rgba(0,0,0,0.8); font-size:13px; line-height:1.6; backdrop-filter:blur(10px);">
+        </div>
+
+        <!-- Viewer Container -->
+        <div id="wydrukiScannerContainer"
+            style="width:100%; height:100%; overflow:auto; cursor:grab; position:relative; display:flex; justify-content:center; align-items:center;">
+            <div id="wydrukiScannerLoading"
+                style="position:absolute; color:#fff; font-size:24px; pointer-events:none; z-index:10;">⏳ Dekodowanie i
+                renderowanie w wysokiej rozdzielczości...</div>
+            <canvas id="wydrukiScannerCanvas" style="display:none; box-shadow:0 0 50px rgba(0,0,0,0.8);"></canvas>
+        </div>
+    </div>
+
+    <!-- MODAL: Loading Wydruków -->
+    <div id="wydrukiLoadingModal"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:10001; justify-content:center; align-items:center; backdrop-filter:blur(6px);">
+        <div
+            style="background:#1a1a2e; border:2px solid #6c5ce7; border-radius:16px; width:440px; max-width:90%; padding:30px; box-shadow:0 0 60px rgba(108,92,231,0.4); text-align:center;">
+            <div style="font-size:40px; margin-bottom:12px;">⏳</div>
+            <h3 style="margin:0 0 5px; color:#6c5ce7; font-size:16px;">Przetwarzanie plików</h3>
+            <div id="wydrukiLoadingFile"
+                style="color:#aaa; font-size:12px; margin-bottom:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                Przygotowywanie...</div>
+            <!-- Bar 1: Overall files -->
+            <div style="font-size:10px; color:#888; text-align:left; margin-bottom:3px;">Pliki:</div>
+            <div style="background:#2d2d44; border-radius:10px; height:10px; overflow:hidden; margin-bottom:6px;">
+                <div id="wydrukiLoadingBar"
+                    style="height:100%; width:0%; background:linear-gradient(90deg,#6c5ce7,#a29bfe); border-radius:10px; transition:width 0.3s ease;">
+                </div>
+            </div>
+            <div id="wydrukiLoadingCount" style="color:#888; font-size:11px; margin-bottom:14px;">0 / 0</div>
+            <!-- Bar 2: Current file stage -->
+            <div style="font-size:10px; color:#888; text-align:left; margin-bottom:3px;">Bieżący plik:</div>
+            <div
+                style="background:#2d2d44; border-radius:10px; height:14px; overflow:hidden; margin-bottom:4px; position:relative;">
+                <div id="wydrukiFileBar"
+                    style="height:100%; width:0%; background:linear-gradient(90deg,#00cec9,#55efc4); border-radius:10px; transition:width 0.15s ease;">
+                </div>
+                <div id="wydrukiFilePercent"
+                    style="position:absolute; top:0; left:0; right:0; text-align:center; font-size:10px; color:#fff; line-height:14px; font-weight:bold; text-shadow:0 1px 2px rgba(0,0,0,0.5);">
+                    0%</div>
+            </div>
+            <div id="wydrukiFileStage" style="color:#666; font-size:10px; margin-top:2px;">—</div>
+        </div>
+    </div>
+
+    <!-- Wymieniono na tag w <head> lub przed     <script src="js/chunk1.js"></script>
+    <script src="js/chunk2.js"></script>
+
+
+</body> -->
+    <div id="kasetonModal">
+        <div class="kaseton-modal-inner">
+            <div class="kaseton-close" onclick="closeKasetonModal()">✖</div>
+            <div class="kaseton-title">Kaseton na wymiar</div>
+
+            <div class="kaseton-section">
+                <label class="kaseton-label"><span class="kaseton-badge">1</span> System Kasetonu</label>
+                <select id="kasetonSystem" class="kaseton-select" onchange="onKasetonSystemChange(this)">
+                    <option value="" disabled selected>-- Wybierz system --</option>
+                    <option value="LMD">adFrame LMD (140mm LED)</option>
+                    <option value="LMS">adFrame LMS (100mm LED)</option>
+                    <option value="DTF">adFrame DTF (Dwustronny bez LED)</option>
+                    <option value="STF">adFrame STF</option>
+                    <option value="STFL">adFrame STFL</option>
+                    <option value="CTF">adFrame CTF</option>
+                    <option value="CTF_LED">adFrame CTF LED</option>
+                    <option value="LCD_LMD">adFrame LCD LMD</option>
+                </select>
+            </div>
+
+            <div class="kaseton-section">
+                <label class="kaseton-label"><span class="kaseton-badge">2</span> Wymiary (Szer. x Wys.)</label>
+                <div class="kaseton-dim-row">
+                    <div>
+                        <input type="number" id="kasetonWidth" class="kaseton-input" placeholder="Szerokość (cm)"
+                            min="40" max="1000" value="100">
+                        <div class="kaseton-unit">cm</div>
+                    </div>
+                    <div>
+                        <input type="number" id="kasetonDepth" class="kaseton-input" placeholder="Wysokość (cm)"
+                            min="40" max="1000" value="200">
+                        <div class="kaseton-unit">cm</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="kaseton-section">
+                <label class="kaseton-label"><span class="kaseton-badge">3</span> Cięcie profili</label>
+                <select id="kasetonCut" class="kaseton-select">
+                    <option value="none">Brak cięcia (w całości)</option>
+                    <option value="auto_dedicated">podział automatyczny - dedyk</option>
+                    <option value="auto_courier_200">podział automatyczny - kurier (max 200cm)</option>
+                    <option value="auto_courier_150" selected>podział automatyczny - kurier (standard)</option>
+                    <option value="half_w">Cięcie na 2 części (szerokość)</option>
+                    <option value="3w">Cięcie na 3 części (szerokość)</option>
+                    <option value="4w">Cięcie na 4 części (szerokość)</option>
+                    <option value="half_h">Cięcie na 2 części (wysokość)</option>
+                    <option value="3h">Cięcie na 3 części (wysokość)</option>
+                    <option value="4h">Cięcie na 4 części (wysokość)</option>
+                    <option value="half_w_half_h">Cięcie na 2 (szer.) i 2 (wys.)</option>
+                    <option value="half_w_3h">Cięcie na 2 (szer.) i 3 (wys.)</option>
+                    <option value="half_w_4h">Cięcie na 2 (szer.) i 4 (wys.)</option>
+                    <option value="3w_half_h">Cięcie na 3 (szer.) i 2 (wys.)</option>
+                    <option value="3w_3h">Cięcie na 3 (szer.) i 3 (wys.)</option>
+                    <option value="3w_4h">Cięcie na 3 (szer.) i 4 (wys.)</option>
+                    <option value="4w_half_h">Cięcie na 4 (szer.) i 2 (wys.)</option>
+                    <option value="4w_3h">Cięcie na 4 (szer.) i 3 (wys.)</option>
+                    <option value="4w_4h">Cięcie na 4 (szer.) i 4 (wys.)</option>
+                </select>
+            </div>
+
+            <div class="kaseton-section">
+                <label class="kaseton-label"><span class="kaseton-badge">4</span> Wydruk</label>
+                <select id="kasetonPrint" class="kaseton-select">
+                    <option value="single">Jednostronny + Blockout tył</option>
+                    <option value="double">Dwustronny (2x wydruk)</option>
+                    <option value="front_blockout">Przód Wydruk, Tył Blockout biały</option>
+                    <option value="back_blockout">Tylko Blockout tył</option>
+                    <option value="no_print">Bez wydruku (sama rama)</option>
+                </select>
+            </div>
+
+            <div class="kaseton-section">
+                <label class="kaseton-label"><span class="kaseton-badge">5</span> Zastosowanie</label>
+                <select id="kasetonUsage" class="kaseton-select">
+                    <option value="freestanding">Wolnostojący (Stopy)</option>
+                    <option value="suspended">Podwieszany (Linki)</option>
+                    <option value="wall">Naścienny</option>
+                </select>
+            </div>
+
+            <div id="kasetonPowerSection" class="kaseton-section kaseton-conditional">
+                <label class="kaseton-label"><span class="kaseton-badge">⚡</span> Zasilacz</label>
+                <select id="kasetonPower" class="kaseton-select">
+                    <option value="internal">Wewnętrzny (w ramie)</option>
+                    <option value="external">Zewnętrzny</option>
+                    <option value="none">Bez zasilacza</option>
+                </select>
+            </div>
+
+            <div id="kasetonLightSection" class="kaseton-section kaseton-conditional">
+                <label class="kaseton-label"><span class="kaseton-badge">💡</span> Układ oświetlenia LED</label>
+                <select id="kasetonLight" class="kaseton-select">
+                    <option value="power_long">Krawędziowo - Długie boki (Góra/Dół)</option>
+                    <option value="power_short">Krawędziowo - Krótkie boki (Lewo/Prawo)</option>
+                    <option value="power_around">Po obwodzie (Wszystkie 4 boki)</option>
+                </select>
+            </div>
+
+            <div class="kaseton-separator"></div>
+
+            <button class="kaseton-submit" onclick="submitKasetonConfig()">✅ Generuj Kaseton 3D</button>
+        </div>
+    </div>
+
+    <script src="js/data.js"></script>
+    <script src="js/export.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/3d-builder.js"></script>
+    <script src="js/3d-engine.js"></script>
+    <script src="js/bom.js"></script>
+    <script src="js/main.js"></script>
+</body>
+
+</html>
