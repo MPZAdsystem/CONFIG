@@ -119,7 +119,13 @@
                 // Otwieramy nową kartę natychmiast, aby przeglądarka nie zablokowała wyskakującego okienka (Popup Blocker)
                 window.open(intranetUrl, '_blank');
 
-                alert("🤖 Dane zamówienia (BOM) zostały przygotowane do wstrzyknięcia!\n\nPrzejdź do nowo otwartej karty z Intranetem, na której robot rozpocznie proces uzupełniania.");
+                let alertMsg = "🤖 Dane zamówienia (BOM) zostały przygotowane do wstrzyknięcia!\n\nPrzejdź do nowo otwartej karty z Intranetem, na której robot rozpocznie proces uzupełniania.";
+                const missingIds = bomItems.filter(item => !item.intranetId);
+                if (missingIds.length > 0) {
+                    alertMsg += "\n\n⚠️ Następujące produkty nie mają przypisanego Intranet ID (wyeksportowano jako nazwę):\n" + 
+                                missingIds.map(item => `• ${item.name} (${item.qty} ${item.unit || 'szt'})`).join("\n");
+                }
+                alert(alertMsg);
             } catch (err) {
                 console.error("Błąd przygotowania eksportu:", err);
                 alert("Wystąpił błąd podczas eksportowania danych do Intranetu.");

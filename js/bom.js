@@ -257,16 +257,16 @@
  "profil support light": { plnPrice: 25.212, plnMargin: 11.46 },
  "adFrame support zamek": { plnPrice: 5.126, plnMargin: 2.33, intranetId: 10949 },
  "adFrame support 180° łącznik": { plnPrice: 10.604, plnMargin: 4.82 },
- "adFrame LMD łącznik 180° długi": { plnPrice: 26.554, plnMargin: 12.07 },
+ "adFrame LMD łącznik 180° długi": { plnPrice: 26.554, plnMargin: 12.07, intranetId: 10952 },
  "adFrame stopa LMD/LMS": { plnPrice: 116.006, plnMargin: 52.73 },
  // 6. Tools, Cartons & Foam (New Items)
- "adFrame imbus 2,5mm": { plnPrice: 0.44, plnMargin: 0.20 },
- "adFrame imbus 4mm": { plnPrice: 0.198, plnMargin: 0.09 },
- "Karton LMD/LMS - 110x16x33cm": { plnPrice: 47.30, plnMargin: 21.50 },
- "Karton LMD/LMS - 135x16x33cm": { plnPrice: 47.30, plnMargin: 21.50 },
- "Karton LMD/LMS - 160x16x33cm": { plnPrice: 47.30, plnMargin: 21.50 },
- "Karton LMD/LMS/DTF - 210x16x33cm": { plnPrice: 47.30, plnMargin: 21.50 },
- "adFrame LMD pianka ochronna": { plnPrice: 0.242, plnMargin: 0.11 }
+ "adFrame imbus 2,5mm": { plnPrice: 0.44, plnMargin: 0.20, intranetId: 11315 },
+ "adFrame imbus 4mm": { plnPrice: 0.198, plnMargin: 0.09, intranetId: 11316 },
+ "Karton LMD/LMS - 110x16x33cm": { plnPrice: 47.30, plnMargin: 21.50, intranetId: 14841 },
+ "Karton LMD/LMS - 135x16x33cm": { plnPrice: 47.30, plnMargin: 21.50, intranetId: 14842 },
+ "Karton LMD/LMS - 160x16x33cm": { plnPrice: 47.30, plnMargin: 21.50, intranetId: 14843 },
+ "Karton LMD/LMS/DTF - 210x16x33cm": { plnPrice: 47.30, plnMargin: 21.50, intranetId: 14844 },
+ "adFrame LMD pianka ochronna": { plnPrice: 0.242, plnMargin: 0.11, intranetId: 11736 }
  };
 
  const ratePLN = window.KURS_PLN_DYNAMIC || 4.20;
@@ -287,6 +287,12 @@
  const areaM2 = (W * H) / 10000;
  plnPrice = areaM2 * 66.902;
  plnMargin = areaM2 * 30.41;
+ const PRINT_INTRANET_IDS = {
+ "Wydruk adFrame LMD/LMS/LMSM 100x200": 14442
+ };
+ if (PRINT_INTRANET_IDS[item.name]) {
+ item.intranetId = PRINT_INTRANET_IDS[item.name];
+ }
  }
 
  item.plnPrice = plnPrice;
