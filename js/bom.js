@@ -230,12 +230,12 @@
  const KASETON_PRICES = {
  // 1. Profile
  "Profil LMD odchudzony": { plnPrice: 85.382, plnMargin: 38.81, intranetId: 18517 },
- "Profil LMS": { plnPrice: 0, plnMargin: 0 },
+ "Profil LMS": { plnPrice: 0, plnMargin: 0, intranetId: 10935 },
  // 2. Narożniki
  "adFrame LMD narożnik wzmacniany": { plnPrice: 13.64, plnMargin: 6.20, intranetId: 11900 },
  "adFrame LMS narożnik wzmacniany": { plnPrice: 0, plnMargin: 0 },
  // 3. LED Strips
- "Oświetlenie AdframeLED POWER LED 20cm 9W ver2": { plnPrice: 27.544, plnMargin: 12.52 },
+ "Oświetlenie AdframeLED POWER LED 20cm 9W ver2": { plnPrice: 27.544, plnMargin: 12.52, intranetId: 18625 },
  "Oświetlenie AdframeLED POWER LED 24cm 11W ver2": { plnPrice: 31.262, plnMargin: 14.21 },
  "Oświetlenie AdframeLED POWER LED 30cm 13W ver2": { plnPrice: 36.124, plnMargin: 16.42 },
  "Oświetlenie AdframeLED POWER LED 50cm 22W ver2": { plnPrice: 52.184, plnMargin: 23.72, intranetId: 18628 },
@@ -254,11 +254,11 @@
  "Zasilacz zewnętrzny 300W 24V": { plnPrice: 1332.716, plnMargin: 605.78 },
  "Zasilacz zewnętrzny 360W 24V": { plnPrice: 859.166, plnMargin: 390.53 },
  // 5. Support & Connectors
- "profil support light": { plnPrice: 25.212, plnMargin: 11.46 },
+ "profil support light": { plnPrice: 25.212, plnMargin: 11.46, intranetId: 11951 },
  "adFrame support zamek": { plnPrice: 5.126, plnMargin: 2.33, intranetId: 10949 },
  "adFrame support 180° łącznik": { plnPrice: 10.604, plnMargin: 4.82 },
  "adFrame LMD łącznik 180° długi": { plnPrice: 26.554, plnMargin: 12.07, intranetId: 10952 },
- "adFrame stopa LMD/LMS": { plnPrice: 116.006, plnMargin: 52.73 },
+ "adFrame stopa LMD/LMS": { plnPrice: 116.006, plnMargin: 52.73, intranetId: 10950 },
  // 6. Tools, Cartons & Foam (New Items)
  "adFrame imbus 2,5mm": { plnPrice: 0.44, plnMargin: 0.20, intranetId: 11315 },
  "adFrame imbus 4mm": { plnPrice: 0.198, plnMargin: 0.09, intranetId: 11316 },
