@@ -288,7 +288,9 @@
  plnPrice = areaM2 * 66.902;
  plnMargin = areaM2 * 30.41;
  const PRINT_INTRANET_IDS = {
- "Wydruk adFrame LMD/LMS/LMSM 100x200": 14442
+ "Wydruk adFrame LMD/LMS/LMSM 100x200": 14442,
+ "Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU 100x200": 14722,
+ "Wydruk adFrame Blockout 100x200 plecy nie do druku": 14722
  };
  if (PRINT_INTRANET_IDS[item.name]) {
  item.intranetId = PRINT_INTRANET_IDS[item.name];
