@@ -232,20 +232,20 @@
  "Profil LMD odchudzony": { plnPrice: 85.382, plnMargin: 38.81, intranetId: 18517 },
  "Profil LMS": { plnPrice: 0, plnMargin: 0 },
  // 2. Narożniki
- "adFrame LMD narożnik wzmacniany": { plnPrice: 13.64, plnMargin: 6.20 },
+ "adFrame LMD narożnik wzmacniany": { plnPrice: 13.64, plnMargin: 6.20, intranetId: 11900 },
  "adFrame LMS narożnik wzmacniany": { plnPrice: 0, plnMargin: 0 },
  // 3. LED Strips
  "Oświetlenie AdframeLED POWER LED 20cm 9W ver2": { plnPrice: 27.544, plnMargin: 12.52 },
  "Oświetlenie AdframeLED POWER LED 24cm 11W ver2": { plnPrice: 31.262, plnMargin: 14.21 },
  "Oświetlenie AdframeLED POWER LED 30cm 13W ver2": { plnPrice: 36.124, plnMargin: 16.42 },
- "Oświetlenie AdframeLED POWER LED 50cm 22W ver2": { plnPrice: 52.184, plnMargin: 23.72 },
+ "Oświetlenie AdframeLED POWER LED 50cm 22W ver2": { plnPrice: 52.184, plnMargin: 23.72, intranetId: 18628 },
  "Oświetlenie AdframeLED NORMAL LED 20cm 6,5W ver2": { plnPrice: 39.27, plnMargin: 17.85 },
  "Oświetlenie AdframeLED NORMAL LED 50cm 16W ver2": { plnPrice: 79.068, plnMargin: 35.94 },
  // 4. Power Supplies (Internal)
  "Zasilacz wewnętrzny 75W 24V": { plnPrice: 110.424, plnMargin: 50.19 },
  "Zasilacz wewnętrzny 100W 24V": { plnPrice: 180.444, plnMargin: 82.02 },
  "Zasilacz wewnętrzny 150W 24V": { plnPrice: 145.156, plnMargin: 65.98 },
- "Zasilacz wewnętrzny 200W 24V": { plnPrice: 209.506, plnMargin: 95.23 },
+ "Zasilacz wewnętrzny 200W 24V": { plnPrice: 209.506, plnMargin: 95.23, intranetId: 11501 },
  "Zasilacz wewnętrzny 240W 24V": { plnPrice: 357.236, plnMargin: 162.38 },
  // Power Supplies (External)
  "Zasilacz zewnętrzny 120W 24V": { plnPrice: 435.072, plnMargin: 197.76 },
@@ -255,7 +255,7 @@
  "Zasilacz zewnętrzny 360W 24V": { plnPrice: 859.166, plnMargin: 390.53 },
  // 5. Support & Connectors
  "profil support light": { plnPrice: 25.212, plnMargin: 11.46 },
- "adFrame support zamek": { plnPrice: 5.126, plnMargin: 2.33 },
+ "adFrame support zamek": { plnPrice: 5.126, plnMargin: 2.33, intranetId: 10949 },
  "adFrame support 180° łącznik": { plnPrice: 10.604, plnMargin: 4.82 },
  "adFrame LMD łącznik 180° długi": { plnPrice: 26.554, plnMargin: 12.07 },
  "adFrame stopa LMD/LMS": { plnPrice: 116.006, plnMargin: 52.73 },
