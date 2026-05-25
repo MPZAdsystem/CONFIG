@@ -1956,25 +1956,38 @@ function render() {
  }
  });
  }
- /// 💎 DODAWANIE RĘCZNE DO KOSZTORYSU (TERAZ IDEALNIE ZSUMOWANE Z RYSUNKIEM)
- if (typeof refreshManualPanel === 'function') refreshManualPanel();
- for (let key in manualItems) {
- let qty = manualItems[key];
- if (qty > 0 && DB[key]) {
- // Podajemy czystą nazwę z bazy DB - system zsumuje to z elementami 2D/3D
- addItemToBom(DB[key].name, qty, DB[key].price, counts);
- baseCost += (DB[key].price * qty);
- }
- }
-
- const discount = parseFloat(document.getElementById('discountInput').value) || 0;
- const finalEUR = baseCost * (1 - discount / 100);
 
  // 💎 DYNAMICZNE KURSY: Pobieranie z UI (zabezpieczone domyślnymi wartościami)
  const plnInput = document.getElementById('rate-pln');
  const usdInput = document.getElementById('rate-usd');
  const currentRatePLN = plnInput ? parseFloat(plnInput.value) : 4.20;
  const currentRateUSD = usdInput ? parseFloat(usdInput.value) : 1.15;
+
+ // Zapisujemy kursy globalnie, by generator PDF wiedział przez co mnożyć
+ window.KURS_PLN_DYNAMIC = currentRatePLN;
+ window.KURS_USD_DYNAMIC = currentRateUSD;
+
+ /// 💎 DODAWANIE RĘCZNE DO KOSZTORYSU (TERAZ IDEALNIE ZSUMOWANE Z RYSUNKIEM)
+ if (typeof refreshManualPanel === 'function') refreshManualPanel();
+ for (let key in manualItems) {
+ let item = manualItems[key];
+ let qty = (item && typeof item === 'object') ? item.qty : item;
+ if (qty > 0) {
+ if (item && typeof item === 'object') {
+ let mult = item.multiplier || 2.8;
+ let plnSalesPrice = item.plnMargin * mult;
+ let eurPrice = plnSalesPrice / currentRatePLN;
+ addItemToBom(item.name, qty, eurPrice, counts);
+ baseCost += (eurPrice * qty);
+ } else if (DB[key]) {
+ addItemToBom(DB[key].name, qty, DB[key].price, counts);
+ baseCost += (DB[key].price * qty);
+ }
+ }
+ }
+
+ const discount = parseFloat(document.getElementById('discountInput').value) || 0;
+ const finalEUR = baseCost * (1 - discount / 100);
 
  const finalPLN = finalEUR * currentRatePLN;
  const finalUSD = finalEUR * currentRateUSD;
@@ -1987,7 +2000,7 @@ function render() {
  globalDepth = Math.ceil((placedWalls.length > 0 ? (maxY - minY) + 12 : 0) / 50) * 50;
  globalCounts = counts; globalTotalEUR = finalEUR; globalTotalPLN = finalPLN;
 
- document.getElementById('valPLN').innerHTML = `<b>${Math.round(finalPLN).toLocaleString()} PLN</b>`;
+document.getElementById('valPLN').innerHTML = `<b>${Math.round(finalPLN).toLocaleString()} PLN</b>`;
  document.getElementById('valUSD').innerHTML = `<b>${Math.round(finalUSD).toLocaleString()} $</b>`;
 
  let bomHTML = '';
@@ -2000,6 +2013,45 @@ function render() {
  if (typeof currentSystem === 'undefined' || currentSystem !== 'kasetony_niestandardowe') {
  document.getElementById('bomList').innerHTML = bomHTML || '<center style="color:#444">Projekt pusty</center>';
  document.getElementById('totalPrice').innerText = Math.round(finalEUR).toLocaleString() + ' €';
+
+ // Populate window.lastGeneratedBOM for export to Intranet in standard walls mode
+ let bomItems = [];
+ for (let name in counts) {
+   if (counts[name].qty > 0) {
+     let intranetId = null;
+
+     // 1. Check in manualItems
+     for (let key in manualItems) {
+       let mItem = manualItems[key];
+       if (mItem && typeof mItem === 'object' && mItem.name === name) {
+         intranetId = mItem.intranetId || null;
+         break;
+       }
+     }
+
+     // 2. Check in DB
+     if (!intranetId && typeof DB !== 'undefined') {
+       for (let key in DB) {
+         if (DB[key].name === name) {
+           intranetId = DB[key].catNo || DB[key].intranetId || null;
+           break;
+         }
+       }
+     }
+
+     // 3. Check in KASETON_PRICES
+     if (!intranetId && window.KASETON_PRICES && window.KASETON_PRICES[name]) {
+       intranetId = window.KASETON_PRICES[name].intranetId || null;
+     }
+
+     bomItems.push({
+       name: name,
+       qty: counts[name].qty,
+       intranetId: intranetId
+     });
+   }
+ }
+ window.lastGeneratedBOM = bomItems;
 
  // --- NOWOŚĆ: KALKULACJA ZUŻYCIA MOCY (68W / 1 metr) ---
  let totalPowerW = 0;

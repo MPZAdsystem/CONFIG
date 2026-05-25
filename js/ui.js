@@ -137,61 +137,296 @@ function saveDbEdits() {
     alert("Baza cen (DB) została zaktualizowana!");
 }
 
-function refreshManualPanel() {
-    const availableContainer = document.getElementById('manualAddAvailable');
-    const selectedContainer = document.getElementById('manualAddSelected');
-    if (!availableContainer || !selectedContainer) return;
+window.manualCartDraft = {};
 
-    // 1. Odbuduj listę dostępnych elementów TYLKO gdy zmienił się system
-    if (lastSystemForManual !== currentSystem) {
-        availableContainer.innerHTML = '';
-        let keys = Object.keys(DB);
+function removePolishAccents(str) {
+    const map = { 'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z', 'Ą': 'A', 'Ć': 'C', 'Ę': 'E', 'Ł': 'L', 'Ń': 'N', 'Ó': 'O', 'Ś': 'S', 'Ź': 'Z', 'Ż': 'Z' };
+    return str.replace(/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g, match => map[match]);
+}
 
-        keys.forEach(key => {
-            let item = DB[key];
-            if (!item.price) return; // Ukrywamy elementy z ceną 0 lub bez ceny
-
-            let isFoldable = key.toLowerCase().includes('foldable');
-
-            // Magiczne filtrowanie: SEGO nie widzi Foldable, Foldable widzi tylko swoje ramy + uniwersalne akcesoria TV/Półki
-            if (currentSystem === 'foldable' && !isFoldable && !['tvPanel', 'shelfKit'].includes(key)) return;
-            if (currentSystem === 'SEGO' && isFoldable) return;
-
-            let btn = document.createElement('button');
-            btn.className = 'btn';
-            btn.style.cssText = 'padding: 4px 6px; font-size: 10px; background: #222; border: 1px solid #444; color: #fff; cursor: pointer; border-radius: 3px;';
-            btn.innerText = `+ ${item.short || item.name}`;
-
-            // Funkcja dodająca do koszyka
-            btn.onclick = () => {
-                if (!manualItems[key]) manualItems[key] = 0;
-                manualItems[key]++;
-                refreshManualPanel();
-                render(); // Odświeżamy tabelę BOM
-            };
-            availableContainer.appendChild(btn);
-        });
-        lastSystemForManual = currentSystem;
-    }
-
-    // 2. Odbuduj listę "W koszyku" z przyciskami +/-
-    selectedContainer.innerHTML = '';
-    for (let key in manualItems) {
-        let qty = manualItems[key];
-        if (qty > 0 && DB[key]) {
-            let div = document.createElement('div');
-            div.style.cssText = 'display: flex; justify-content: space-between; align-items: center; background: #333; padding: 4px 8px; border-radius: 4px; font-size: 11px; color: #fff;';
-            div.innerHTML = `
-                        <span style="flex:1;">${DB[key].short || DB[key].name}</span>
-                        <div style="display:flex; gap: 8px; align-items:center;">
-                            <button onclick="changeManualQty('${key}', -1)" style="background:#555; border:none; color:white; width:20px; height:20px; border-radius:3px; cursor:pointer;">-</button>
-                            <span style="min-width: 12px; text-align: center; font-weight: bold;">${qty}</span>
-                            <button onclick="changeManualQty('${key}', 1)" style="background:#555; border:none; color:white; width:20px; height:20px; border-radius:3px; cursor:pointer;">+</button>
-                        </div>
-                    `;
-            selectedContainer.appendChild(div);
+function scoreResult(name, intranetId, queryWords) {
+    let nameNorm = removePolishAccents(name.toLowerCase());
+    let idNorm = String(intranetId || '').toLowerCase();
+    
+    let matchedAll = true;
+    let score = 0;
+    
+    for (let word of queryWords) {
+        let indexInName = nameNorm.indexOf(word);
+        let indexInId = idNorm.indexOf(word);
+        
+        if (indexInName !== -1) {
+            if (indexInName === 0 || nameNorm.charAt(indexInName - 1) === ' ') {
+                score += 15;
+            } else {
+                score += 5;
+            }
+            score -= (indexInName * 0.05);
+        } else if (indexInId !== -1) {
+            score += 20;
+        } else {
+            matchedAll = false;
+            break;
         }
     }
+    
+    if (!matchedAll) return -1;
+    score -= (name.length * 0.01);
+    return score;
+}
+
+window.changeDraftQty = function(key, delta, itemData) {
+    if (!window.manualCartDraft[key]) {
+        if (delta <= 0) return;
+        window.manualCartDraft[key] = {
+            qty: 0,
+            name: itemData.name,
+            plnMargin: itemData.plnMargin,
+            intranetId: itemData.intranetId,
+            isKaseton: itemData.isKaseton
+        };
+    }
+    
+    window.manualCartDraft[key].qty += delta;
+    if (window.manualCartDraft[key].qty <= 0) {
+        delete window.manualCartDraft[key];
+    }
+    refreshManualPanel();
+};
+
+window.setDraftQty = function(key, val, itemData) {
+    let qty = parseInt(val) || 0;
+    if (qty <= 0) {
+        delete window.manualCartDraft[key];
+    } else {
+        if (!window.manualCartDraft[key]) {
+            window.manualCartDraft[key] = {
+                qty: 0,
+                name: itemData.name,
+                plnMargin: itemData.plnMargin,
+                intranetId: itemData.intranetId,
+                isKaseton: itemData.isKaseton
+            };
+        }
+        window.manualCartDraft[key].qty = qty;
+    }
+    refreshManualPanel();
+};
+
+window.removeFromDraft = function(key) {
+    delete window.manualCartDraft[key];
+    refreshManualPanel();
+};
+
+window.submitManualCart = function() {
+    for (let k in manualItems) {
+        delete manualItems[k];
+    }
+    
+    const multInput = document.getElementById('manualMultiplierInput');
+    const currentMultiplier = multInput ? parseFloat(multInput.value) : 2.8;
+    
+    for (let k in window.manualCartDraft) {
+        let draftItem = window.manualCartDraft[k];
+        if (draftItem.qty > 0) {
+            manualItems[k] = {
+                qty: draftItem.qty,
+                name: draftItem.name,
+                plnMargin: draftItem.plnMargin,
+                intranetId: draftItem.intranetId,
+                isManual: true,
+                isKaseton: draftItem.isKaseton,
+                multiplier: currentMultiplier
+            };
+        }
+    }
+    
+    closeManualModal();
+    if (typeof render === 'function') render();
+};
+
+window.clearManualCart = function() {
+    window.manualCartDraft = {};
+    refreshManualPanel();
+};
+
+function refreshManualPanel() {
+    const tableBody = document.getElementById('manualAddAvailableTable');
+    const selectedContainer = document.getElementById('manualAddSelected');
+    if (!tableBody || !selectedContainer) return;
+
+    const searchInput = document.getElementById('manualSearchInput');
+    const multInput = document.getElementById('manualMultiplierInput');
+    
+    const query = searchInput ? searchInput.value.trim() : '';
+    const multiplier = multInput ? parseFloat(multInput.value) || 2.8 : 2.8;
+    const ratePLN = window.KURS_PLN_DYNAMIC || 4.20;
+
+    const allProducts = {};
+    
+    if (typeof DB !== 'undefined') {
+        for (let key in DB) {
+            let dbItem = DB[key];
+            if (dbItem.price !== undefined && dbItem.price > 0) {
+                let eurPrice = dbItem.price;
+                let plnPrice = eurPrice * ratePLN;
+                let plnMargin = plnPrice / 2.8;
+                allProducts[dbItem.name] = {
+                    key: key,
+                    name: dbItem.name,
+                    intranetId: dbItem.catNo || '',
+                    plnMargin: plnMargin,
+                    category: dbItem.type || '',
+                    isKaseton: false
+                };
+            }
+        }
+    }
+    
+    if (window.KASETON_PRICES) {
+        for (let name in window.KASETON_PRICES) {
+            let kItem = window.KASETON_PRICES[name];
+            allProducts[name] = {
+                key: name,
+                name: name,
+                intranetId: kItem.intranetId || '',
+                plnMargin: kItem.plnMargin || 0,
+                category: kItem.category || '',
+                isKaseton: true
+            };
+        }
+    }
+
+    let results = [];
+    if (query.length > 0) {
+        let queryWords = removePolishAccents(query.toLowerCase()).split(/\s+/).filter(w => w.length > 0);
+        for (let name in allProducts) {
+            let p = allProducts[name];
+            let score = scoreResult(p.name, p.intranetId, queryWords);
+            if (score >= 0) {
+                results.push({ product: p, score: score });
+            }
+        }
+        results.sort((a, b) => b.score - a.score);
+    } else {
+        for (let name in allProducts) {
+            results.push({ product: allProducts[name], score: 0 });
+        }
+        results.sort((a, b) => a.product.name.localeCompare(b.product.name));
+    }
+
+    results = results.slice(0, 50);
+
+    let tableHtml = '';
+    if (results.length === 0) {
+        tableHtml = `<tr><td colspan="5" style="text-align:center; padding: 20px; color:#8f95b2;">Brak wyników wyszukiwania...</td></tr>`;
+    } else {
+        results.forEach(res => {
+            let p = res.product;
+            let draftItem = window.manualCartDraft[p.key];
+            let qty = draftItem ? draftItem.qty : 0;
+            
+            let clientPrice = p.plnMargin * multiplier;
+            
+            let actionHtml = '';
+            let itemDataJson = JSON.stringify({
+                name: p.name,
+                plnMargin: p.plnMargin,
+                intranetId: p.intranetId,
+                isKaseton: p.isKaseton
+            }).replace(/"/g, '&quot;');
+
+            if (qty === 0) {
+                actionHtml = `<button class="btn-row-add" onclick="changeDraftQty('${p.key}', 1, ${itemDataJson})">➕ Dodaj</button>`;
+            } else {
+                actionHtml = `
+                    <div class="qty-control" style="justify-content: center;">
+                        <button class="btn-qty btn-minus" onclick="changeDraftQty('${p.key}', -1, ${itemDataJson})">-</button>
+                        <input class="qty-input" type="number" value="${qty}" onchange="setDraftQty('${p.key}', this.value, ${itemDataJson})">
+                        <button class="btn-qty btn-plus" onclick="changeDraftQty('${p.key}', 1, ${itemDataJson})">+</button>
+                    </div>
+                `;
+            }
+            
+            let categoryLabelHtml = p.category ? `<br><span style="font-size:10px; color:#8f95b2; font-style:italic;">${p.category}</span>` : '';
+            
+            tableHtml += `
+                <tr>
+                    <td style="font-weight:600; color:#fff; text-align: left; vertical-align: middle;">
+                        <span>${p.name}</span>${categoryLabelHtml}
+                    </td>
+                    <td style="color:#a0a5c1; text-align: left;">${p.intranetId || '<span style="color:#555;">Brak</span>'}</td>
+                    <td style="color:#00b894; font-weight:600; text-align: left;">${p.plnMargin.toFixed(2)} zł</td>
+                    <td style="color:#2a75d3; font-weight:bold; text-align: left;">${clientPrice.toFixed(2)} zł</td>
+                    <td style="text-align: center;">${actionHtml}</td>
+                </tr>
+            `;
+        });
+    }
+    tableBody.innerHTML = tableHtml;
+
+    let cartHtml = '';
+    let totalMarginSum = 0;
+    let totalClientPriceSum = 0;
+    let totalQty = 0;
+    
+    let draftKeys = Object.keys(window.manualCartDraft);
+    if (draftKeys.length === 0) {
+        cartHtml = `
+            <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; color:#555; font-size:13px; text-align:center; padding: 20px;">
+                <span style="font-size:32px; margin-bottom:10px;">🛒</span>
+                Twój koszyk roboczy jest pusty.<br>Dodaj produkty z bazy po lewej stronie.
+            </div>
+        `;
+    } else {
+        draftKeys.forEach(key => {
+            let item = window.manualCartDraft[key];
+            let lineMargin = item.plnMargin * item.qty;
+            let lineClientPrice = item.plnMargin * multiplier * item.qty;
+            
+            totalMarginSum += lineMargin;
+            totalClientPriceSum += lineClientPrice;
+            totalQty += item.qty;
+            
+            let itemDataJson = JSON.stringify({
+                name: item.name,
+                plnMargin: item.plnMargin,
+                intranetId: item.intranetId,
+                isKaseton: item.isKaseton
+            }).replace(/"/g, '&quot;');
+            
+            cartHtml += `
+                <div class="cart-item-row">
+                    <div class="cart-item-main">
+                        <span class="cart-item-name" style="text-align: left;">${item.name}</span>
+                        <button class="cart-item-remove" onclick="removeFromDraft('${key}')" title="Usuń z koszyka">🗑️</button>
+                    </div>
+                    <div class="cart-item-qty-price">
+                        <div class="qty-control">
+                            <button class="btn-qty btn-minus" style="width:20px; height:20px; font-size:11px;" onclick="changeDraftQty('${key}', -1, ${itemDataJson})">-</button>
+                            <input class="qty-input" style="width:28px; padding:1px 0; font-size:11px;" type="number" value="${item.qty}" onchange="setDraftQty('${key}', this.value, ${itemDataJson})">
+                            <button class="btn-qty btn-plus" style="width:20px; height:20px; font-size:11px;" onclick="changeDraftQty('${key}', 1, ${itemDataJson})">+</button>
+                        </div>
+                        <div style="text-align: right;">
+                            <span style="color:#00b894; font-weight:600;">${lineMargin.toFixed(2)} zł</span> <br>
+                            <span style="color:#2a75d3; font-weight:bold; font-size:12px;">${lineClientPrice.toFixed(2)} zł</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+    }
+    
+    selectedContainer.innerHTML = cartHtml;
+    
+    const badge = document.getElementById('cartCountBadge');
+    if (badge) badge.innerText = `${totalQty} szt`;
+    
+    const marginSpan = document.getElementById('summaryMarginTotal');
+    if (marginSpan) marginSpan.innerText = `${totalMarginSum.toFixed(2)} PLN`;
+    
+    const priceSpan = document.getElementById('summaryPriceTotal');
+    if (priceSpan) priceSpan.innerText = `${totalClientPriceSum.toFixed(2)} PLN`;
 }
 
 function toggleDimensions() {
@@ -300,6 +535,51 @@ function toggleAutoRotate() {
 }
 
 function openManualModal() {
+    window.manualCartDraft = {};
+    const ratePLN = window.KURS_PLN_DYNAMIC || 4.20;
+    
+    if (typeof manualItems !== 'undefined') {
+        for (let key in manualItems) {
+            let item = manualItems[key];
+            if (item && typeof item === 'object') {
+                window.manualCartDraft[key] = {
+                    qty: item.qty,
+                    name: item.name,
+                    plnMargin: item.plnMargin,
+                    intranetId: item.intranetId,
+                    isKaseton: item.isKaseton
+                };
+            } else if (item && typeof item === 'number' && item > 0) {
+                let dbItem = DB[key];
+                let name = dbItem ? dbItem.name : key;
+                let iid = dbItem ? (dbItem.intranetId || dbItem.catNo) : '';
+                let eurPrice = dbItem ? dbItem.price : 0;
+                let plnPrice = eurPrice * ratePLN;
+                let plnMargin = plnPrice / 2.8;
+                window.manualCartDraft[key] = {
+                    qty: item,
+                    name: name,
+                    plnMargin: plnMargin,
+                    intranetId: iid,
+                    isKaseton: false
+                };
+            }
+        }
+    }
+    
+    const searchInput = document.getElementById('manualSearchInput');
+    if (searchInput) searchInput.value = '';
+    
+    const multInput = document.getElementById('manualMultiplierInput');
+    if (multInput) {
+        let firstKey = Object.keys(window.manualCartDraft)[0];
+        if (firstKey && manualItems[firstKey] && manualItems[firstKey].multiplier) {
+            multInput.value = manualItems[firstKey].multiplier;
+        } else {
+            multInput.value = '2.8';
+        }
+    }
+    
     const modal = document.getElementById('manualModalOverlay');
     if (modal) modal.style.display = 'flex';
     if (typeof refreshManualPanel === 'function') refreshManualPanel();
@@ -308,7 +588,6 @@ function openManualModal() {
 function closeManualModal() {
     const modal = document.getElementById('manualModalOverlay');
     if (modal) modal.style.display = 'none';
-    if (typeof render === 'function') render();
 }
 
 function toggle3D() {

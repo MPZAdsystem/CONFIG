@@ -101,10 +101,29 @@
                 return;
             }
 
-            const orderData = bomItems.map(item => ({
-                id: item.intranetId || item.name,
-                qty: item.qty
-            }));
+            const orderData = bomItems.map(item => {
+                let idVal = item.intranetId;
+                
+                // Fallback lookup if no intranetId is set on the item
+                if (!idVal) {
+                    if (window.KASETON_PRICES && window.KASETON_PRICES[item.name]) {
+                        idVal = window.KASETON_PRICES[item.name].intranetId;
+                    }
+                    if (!idVal && typeof DB !== 'undefined') {
+                        for (let key in DB) {
+                            if (DB[key].name === item.name) {
+                                idVal = DB[key].catNo || DB[key].intranetId;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                return {
+                    id: idVal || item.name,
+                    qty: item.qty
+                };
+            });
 
             try {
                 // Generowanie bezpiecznego tokenu Base64 z danymi zamówienia (obsługuje polskie znaki)
@@ -120,7 +139,25 @@
                 window.open(intranetUrl, '_blank');
 
                 let alertMsg = "🤖 Dane zamówienia (BOM) zostały przygotowane do wstrzyknięcia!\n\nPrzejdź do nowo otwartej karty z Intranetem, na której robot rozpocznie proces uzupełniania.";
-                const missingIds = bomItems.filter(item => !item.intranetId);
+                
+                const missingIds = bomItems.filter(item => {
+                    let idVal = item.intranetId;
+                    if (!idVal) {
+                        if (window.KASETON_PRICES && window.KASETON_PRICES[item.name]) {
+                            idVal = window.KASETON_PRICES[item.name].intranetId;
+                        }
+                        if (!idVal && typeof DB !== 'undefined') {
+                            for (let key in DB) {
+                                if (DB[key].name === item.name) {
+                                    idVal = DB[key].catNo || DB[key].intranetId;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    return !idVal;
+                });
+
                 if (missingIds.length > 0) {
                     alertMsg += "\n\n⚠️ Następujące produkty nie mają przypisanego Intranet ID (wyeksportowano jako nazwę):\n" + 
                                 missingIds.map(item => `• ${item.name} (${item.qty} ${item.unit || 'szt'})`).join("\n");
