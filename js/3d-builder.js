@@ -1798,12 +1798,12 @@
  // Tył
  const hasBackMesh = (sys === 'LMS')
  ? ['backlit_white', 'backlit_blockout', 'back_white'].includes(printOption)
- : ['double', 'front_blockout', 'front_blockout_2', 'back_blockout'].includes(printOption);
+ : ['single', 'double', 'front_blockout', 'front_blockout_2', 'back_blockout'].includes(printOption);
 
  if (hasBackMesh) {
  const isBackBlockout = (sys === 'LMS')
  ? ['backlit_blockout'].includes(printOption)
- : ['front_blockout', 'front_blockout_2', 'back_blockout'].includes(printOption);
+ : ['single', 'front_blockout', 'front_blockout_2', 'back_blockout'].includes(printOption);
 
  const backMat = getPrintMaterial(config.textureBack, isBackBlockout);
  const backPrint = new THREE.Mesh(planeGeom, backMat);
@@ -2070,156 +2070,121 @@
  titleSprite.position.set(0, elevY + H + 25, 0);
  kGroup.add(titleSprite);
  } else {
- // TRYB TECHNICZNY (BLUEPRINT MODE) - STRZAŁKI, OPISY I MIARKI W 3D
- 
- // Funkcja pomocnicza generująca strzałkę oraz etykietę o wysokości dokładnie 30cm (30 jednostek 3D)
- function addTechnicalLabel3D(targetPt, text, labelOffset, labelColor) {
- const color = labelColor || '#ffffff';
- const colorHex = parseInt(color.replace('#', ''), 16);
- const arrowPt = targetPt.clone().add(labelOffset.clone().multiplyScalar(1.5));
- 
- // Linia łącząca element z tekstem
- const lineGeo = new THREE.BufferGeometry().setFromPoints([targetPt, arrowPt]);
- const lineMat = new THREE.LineBasicMaterial({ color: colorHex, depthTest: false, transparent: true, opacity: 0.9 });
- const line = new THREE.Line(lineGeo, lineMat);
- line.renderOrder = 999;
- kGroup.add(line);
+  // ═══════════════════════════════════════════════════════════
+  // TRYB TECHNICZNY – PONUMEROWANE KÓŁKA + PANEL LEGENDY
+  // ═══════════════════════════════════════════════════════════
+  const BADGE_COLORS = ['#00e5ff','#00ff99','#ffcc00','#ff8c00','#ff4466','#aa66ff','#66ccff','#ccff66'];
+  const labelRegistry = new Map();
+  const legendItems = [];
 
- // Główka strzałki (stożek) na targetPt
- const dir = targetPt.clone().sub(arrowPt).normalize();
- const coneGeom = new THREE.ConeGeometry(1.5, 4.0, 8);
- const coneMat = new THREE.MeshBasicMaterial({ color: colorHex, depthTest: false });
- const cone = new THREE.Mesh(coneGeom, coneMat);
- cone.position.copy(targetPt);
- cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
- cone.renderOrder = 999;
- kGroup.add(cone);
+  function addNumberedMarker(key, targetPt, name, desc) {
+    if (labelRegistry.has(key)) return;
+    const idx = legendItems.length;
+    labelRegistry.set(key, idx);
+    const color = BADGE_COLORS[idx % BADGE_COLORS.length];
+    legendItems.push({ num: idx + 1, name, desc: desc || '', color });
 
- // Płótno 2D do narysowania tekstu
- const canvas = document.createElement('canvas');
- const ctx = canvas.getContext('2d');
- canvas.width = 1024;
- canvas.height = 512;
- 
- ctx.fillStyle = 'rgba(0,0,0,0)';
- ctx.fillRect(0, 0, canvas.width, canvas.height);
- 
- ctx.font = 'bold 54px Arial';
- ctx.fillStyle = color;
- ctx.textAlign = 'left';
- ctx.textBaseline = 'top';
- 
- const words = text.toUpperCase().split(' ');
- let lineStr = '';
- let lines = [];
- const maxWidth = 980;
- 
- for(let n = 0; n < words.length; n++) {
- const testLine = lineStr + words[n] + ' ';
- const metrics = ctx.measureText(testLine);
- if (metrics.width > maxWidth && n > 0) {
- lines.push(lineStr);
- lineStr = words[n] + ' ';
- } else {
- lineStr = testLine;
- }
- }
- lines.push(lineStr);
- 
- const lineHeight = 64;
- const totalHeight = lines.length * lineHeight;
- let startY = (canvas.height - totalHeight) / 2;
- 
- lines.forEach(l => {
- ctx.fillText(l.trim(), 20, startY);
- startY += lineHeight;
- });
- 
- const texture = new THREE.CanvasTexture(canvas);
- const spriteMat = new THREE.SpriteMaterial({
- map: texture,
- transparent: true,
- depthTest: false
- });
- const sprite = new THREE.Sprite(spriteMat);
- 
- const aspect = canvas.width / canvas.height;
- sprite.scale.set(40 * aspect, 40, 1);
- sprite.position.copy(arrowPt.clone().add(new THREE.Vector3(2, 0, 5)));
- sprite.renderOrder = 1000;
- kGroup.add(sprite);
- }
+    // Numbered circle sprite
+    const cvs = document.createElement('canvas');
+    cvs.width = 128; cvs.height = 128;
+    const cx = cvs.getContext('2d');
+    // Glow
+    const grad = cx.createRadialGradient(64,64,20,64,64,60);
+    grad.addColorStop(0, color + 'cc'); grad.addColorStop(1, color + '00');
+    cx.fillStyle = grad;
+    cx.beginPath(); cx.arc(64,64,60,0,Math.PI*2); cx.fill();
+    // Solid circle
+    cx.fillStyle = color;
+    cx.beginPath(); cx.arc(64,64,36,0,Math.PI*2); cx.fill();
+    // Number
+    cx.fillStyle = '#000'; cx.font = 'bold 42px Arial';
+    cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.fillText(String(idx+1), 64, 65);
 
- // Globalna etykieta i registry
- const labeledItems = new Set();
- const tryLabel = (key, targetPt, text, offset, labelColor) => {
- if (!labeledItems.has(key)) {
- labeledItems.add(key);
- addTechnicalLabel3D(targetPt, text, offset, labelColor);
- }
- };
+    const tex = new THREE.CanvasTexture(cvs);
+    const spMat = new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, transparent: true });
+    const sprite = new THREE.Sprite(spMat);
+    sprite.scale.set(14, 14, 1);
+    const spritePos = targetPt.clone().add(new THREE.Vector3(0, 4, 4));
+    sprite.position.copy(spritePos);
+    sprite.renderOrder = 1001;
+    kGroup.add(sprite);
 
- // Definiujemy globalny handler dla LEDów, aby addLedStripesToProfileGroup mógł narysować strzałki
- window.addTechnicalLabelBlueprint = (key, absolutePos, text, offsetVec) => {
- addTechnicalLabel3D(absolutePos, text, offsetVec);
- };
+    // Thin leader line
+    const lMat = new THREE.LineBasicMaterial({ color: parseInt(color.replace('#',''), 16), depthTest: false, transparent: true, opacity: 0.6 });
+    const lGeo = new THREE.BufferGeometry().setFromPoints([targetPt, spritePos.clone().add(new THREE.Vector3(0,-7,-4))]);
+    kGroup.add(new THREE.Line(lGeo, lMat));
+  }
 
- // Ponowne narysowanie LEDów (żeby wywołać etykietowanie), ponieważ diody LED są już dodane,
- // ale etykiety LED generowane są tylko wtedy, gdy addTechnicalLabelBlueprint jest zdefiniowany.
- // Ponieważ jednak LEDy są generowane bezpośrednio w drawKasetonScene powyżej, przed zdefiniowaniem
- // addTechnicalLabelBlueprint, po prostu wywołujemy tryLabel na diodach LED z zarejestrowanych pozycji,
- // lub po prostu pozwalamy, żeby system narysował je automatycznie przy odświeżeniu sceny!
- // W rzeczywistości, ponieważ update3DScene() kasuje całą scenę i rysuje kaseton OD NOWA przy zmianie
- // trybu wymiarów, to przy wejściu w tryb Blueprint cała funkcja drawKasetonScene() uruchamia się od nowa,
- // a window.addTechnicalLabelBlueprint byłby undefined podczas generowania LEDów!
- // ROZWIĄZANIE: Przenosimy rejestrację window.addTechnicalLabelBlueprint na sam początek drawKasetonScene()
- // w celu perfekcyjnej synchronizacji! Poniżej go jedynie usuwamy po zakończeniu rysowania.
+  // ── A) Profil główny ──
+  addNumberedMarker('MAIN_PROFILE',
+    new THREE.Vector3(-W/3, elevY, 0),
+    sys === 'LMS' ? 'Profil LMS' : 'Profil LMD odchudzony',
+    'Profil obwodowy kasetonu');
 
- // A) Profil główny (np. dolny bok)
- tryLabel('MAIN_PROFILE', new THREE.Vector3(-W / 3, elevY, 0), 'PROFIL LMD ODCHUDZONY', new THREE.Vector3(-25, -45, 20));
+  // ── B) Narożnik ──
+  addNumberedMarker('CORNER',
+    new THREE.Vector3(-W/2, elevY, 0),
+    'ADFRAME LMD Narożnik wzmacniany',
+    '4 szt. – po jednym na każdy narożnik');
 
- // B) Narożniki kasetonu
- tryLabel('CORNER', new THREE.Vector3(-W / 2, elevY, 0), 'ADFRAME LMD NAROŻNIK WZMACNIANY', new THREE.Vector3(-45, -20, 25));
+  // ── C) Supporty + zamki ──
+  if (numCutsW > 0 || numCutsH > 0) {
+    if (cutX.length > 0) {
+      addNumberedMarker('SUPPORT',
+        new THREE.Vector3(cutX[0], elevY + H/2, 0),
+        'Profil Support Light',
+        cutX.length + ' szt. – poprzeczki poziome');
+      addNumberedMarker('LOCK',
+        new THREE.Vector3(cutX[0], elevY + 5, 0),
+        'ADFRAME Support Zamek',
+        'Mocowanie supportu do profilu');
+      addNumberedMarker('LONG_CONNECTOR',
+        new THREE.Vector3(cutX[0], elevY, 5.4),
+        'ADFRAME LMD Łącznik 180° Długi',
+        'Łączy dwa segmenty profilu w linii');
+    } else if (cutY.length > 0) {
+      addNumberedMarker('SUPPORT_V',
+        new THREE.Vector3(-W/2, cutY[0], 0),
+        'Profil Support Light (pionowy)',
+        cutY.length + ' szt. – poprzeczki pionowe');
+      addNumberedMarker('LONG_CONNECTOR',
+        new THREE.Vector3(-W/2, cutY[0], 5.4),
+        'ADFRAME LMD Łącznik 180° Długi',
+        'Łączy dwa segmenty profilu w linii');
+    }
+  }
 
- // C) Supporty i ich zamki (jeśli istnieją)
- if (numCutsW > 0 || numCutsH > 0) {
- if (cutX.length > 0) {
- tryLabel('SUPPORT', new THREE.Vector3(cutX[0], elevY + H / 2, 0), 'PROFIL SUPPORT LIGHT', new THREE.Vector3(35, 35, 20));
- tryLabel('LOCK', new THREE.Vector3(cutX[0], elevY + 5, 0), 'ADFRAME SUPPORT ZAMEK', new THREE.Vector3(35, -15, 20));
- }
- }
+  // ── D) Zasilacz ──
+  if (config.power !== 'none' && isLedSys) {
+    const psuType = (config.light || '').includes('around') ? 'zewnętrzny' : 'wewnętrzny';
+    addNumberedMarker('PSU',
+      new THREE.Vector3(0, elevY + 15, 0),
+      'Zasilacz LED ' + psuType,
+      'Moc: ~' + Math.ceil(totalPowerW * 1.1) + ' W');
+  }
 
- // C2) łączniki długie (pomarańczowe)
- if (numCutsW > 0 || numCutsH > 0) {
- if (cutX.length > 0) {
- tryLabel('LONG_CONNECTOR', new THREE.Vector3(cutX[0], elevY, 5.4), 'ADFRAME LMD ŁĄCZNIK 180° DŁUGI', new THREE.Vector3(40, -40, 25), '#ff8c00');
- } else if (cutY.length > 0) {
- tryLabel('LONG_CONNECTOR', new THREE.Vector3(-W / 2, cutY[0], 5.4), 'ADFRAME LMD ŁĄCZNIK 180° DŁUGI', new THREE.Vector3(-50, 20, 25), '#ff8c00');
- }
- }
+  // ── E) Taśma LED ──
+  if (isLedSys && config.light && config.light !== 'none') {
+    addNumberedMarker('LED_STRIP',
+      new THREE.Vector3(0, elevY + H * 0.75, -pD/2 + 2),
+      'Taśma LED',
+      (config.light || '').replace(/_/g, ' '));
+  }
 
- // C3) Narożniki wzmacniane (fioletowe)
- tryLabel('CORNER_REINFORCED', new THREE.Vector3(-W / 2 + 5, elevY + 5, 5.4), 'ADFRAME LMD NAROŻNIK WZMACNIANY', new THREE.Vector3(-50, -35, 25), '#aa00ff');
+  // Publikuj dane do panelu HTML
+  window.blueprintLegendItems = legendItems;
+  window.blueprintDimensions = { W, H, sys };
 
- // D) Zasilacz (wewnętrzny / zewnętrzny)
- if (config.power !== 'none' && isLedSys) {
- const reqPower = totalPowerW * 1.1;
- let psuLabel = 'ZASILACZ WEWNĘTRZNY';
- if ((config.light || '').includes('around')) psuLabel = 'ZASILACZ ZEWNĘTRZNY';
- tryLabel('PSU', new THREE.Vector3(0, elevY + 15, 0), psuLabel, new THREE.Vector3(-40, 25, 25));
- }
+  // ── F) Miarki wymiarowe (ruler tapes) ──
+  const pW1 = new THREE.Vector3(-W/2, elevY, 0);
+  const pW2 = new THREE.Vector3(W/2, elevY, 0);
+  kGroup.add(addDimension3D(pW1, pW2, W + ' cm', new THREE.Vector3(0, -25, 0), 1.3));
 
- // E) Dodatkowe profesjonalne miarki wymiarowe (ruler tapes) dla Szerokości i Wysokości
- const pW1 = new THREE.Vector3(-W/2, elevY, 0);
- const pW2 = new THREE.Vector3(W/2, elevY, 0);
- const dimWGroup = addDimension3D(pW1, pW2, `${W} cm`, new THREE.Vector3(0, -25, 0), 1.3);
- kGroup.add(dimWGroup);
-
- const pH1 = new THREE.Vector3(W/2, elevY, 0);
- const pH2 = new THREE.Vector3(W/2, elevY + H, 0);
- const dimHGroup = addDimension3D(pH1, pH2, `${H} cm`, new THREE.Vector3(25, 0, 0), 1.3);
- kGroup.add(dimHGroup);
- }
+  const pH1 = new THREE.Vector3(W/2, elevY, 0);
+  const pH2 = new THREE.Vector3(W/2, elevY + H, 0);
+  kGroup.add(addDimension3D(pH1, pH2, H + ' cm', new THREE.Vector3(25, 0, 0), 1.3));
+  }
 
  scene.add(kGroup);
  sceneObjects.push(kGroup);

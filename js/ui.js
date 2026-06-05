@@ -250,6 +250,22 @@ window.clearManualCart = function() {
     refreshManualPanel();
 };
 
+function calculateWydrukArea(name) {
+  if (!name || typeof name !== 'string') return null;
+  if (!/wydruk/i.test(name)) return null;
+  const normalized = name.replace(/,/g, '.');
+  const match = normalized.match(/(\d+(?:\.\d+)?)\s*[xX]\s*(\d+(?:\.\d+)?)/);
+  if (!match) return null;
+  const val1 = parseFloat(match[1]);
+  const val2 = parseFloat(match[2]);
+  if (isNaN(val1) || isNaN(val2)) return null;
+  if (val1 <= 15 && val2 <= 15) {
+    return val1 * val2;
+  } else {
+    return (val1 / 100) * (val2 / 100);
+  }
+}
+
 function refreshManualPanel() {
     const tableBody = document.getElementById('manualAddAvailableTable');
     const selectedContainer = document.getElementById('manualAddSelected');
@@ -277,7 +293,8 @@ function refreshManualPanel() {
                     intranetId: dbItem.catNo || '',
                     plnMargin: plnMargin,
                     category: dbItem.type || '',
-                    isKaseton: false
+                    isKaseton: false,
+                    noPrice: false
                 };
             }
         }
@@ -292,7 +309,8 @@ function refreshManualPanel() {
                 intranetId: kItem.intranetId || '',
                 plnMargin: kItem.plnMargin || 0,
                 category: kItem.category || '',
-                isKaseton: true
+                isKaseton: true,
+                noPrice: kItem.noPrice || false
             };
         }
     }
@@ -326,12 +344,39 @@ function refreshManualPanel() {
             let draftItem = window.manualCartDraft[p.key];
             let qty = draftItem ? draftItem.qty : 0;
             
-            let clientPrice = p.plnMargin * multiplier;
+            // Check if it's a print and extract area
+            let isWydrukWithArea = false;
+            let wydrukArea = 0;
+            const area = calculateWydrukArea(p.name);
+            if (area !== null) {
+                isWydrukWithArea = true;
+                wydrukArea = area;
+            }
+
+            let hasNoPrice = p.noPrice;
+            if (hasNoPrice && isWydrukWithArea) {
+                hasNoPrice = false;
+            }
+
+            let plnMargin = p.plnMargin;
+            let clientPrice = plnMargin * multiplier;
+
+            if (isWydrukWithArea) {
+                clientPrice = wydrukArea * 100; // 100 PLN per m2
+                plnMargin = clientPrice / multiplier;
+            }
+
+            // Check override
+            if (window.customPriceOverrides && window.customPriceOverrides[p.name] !== undefined) {
+                clientPrice = window.customPriceOverrides[p.name] * ratePLN;
+                plnMargin = clientPrice / multiplier;
+                hasNoPrice = false;
+            }
             
             let actionHtml = '';
             let itemDataJson = JSON.stringify({
                 name: p.name,
-                plnMargin: p.plnMargin,
+                plnMargin: plnMargin,
                 intranetId: p.intranetId,
                 isKaseton: p.isKaseton
             }).replace(/"/g, '&quot;');
@@ -350,14 +395,27 @@ function refreshManualPanel() {
             
             let categoryLabelHtml = p.category ? `<br><span style="font-size:10px; color:#8f95b2; font-style:italic;">${p.category}</span>` : '';
             
+            let priceLabelHtml = '';
+            let marginLabelHtml = '';
+            let rowStyle = '';
+
+            if (hasNoPrice) {
+                rowStyle = 'background: rgba(255, 0, 0, 0.07);';
+                marginLabelHtml = `<span style="color:#ff3333; font-weight:bold;">Brak</span>`;
+                priceLabelHtml = `<span style="color:#ff3333; font-weight:bold;">Brak ceny w DB!</span>`;
+            } else {
+                marginLabelHtml = `${plnMargin.toFixed(2)} zł`;
+                priceLabelHtml = `${clientPrice.toFixed(2)} zł`;
+            }
+
             tableHtml += `
-                <tr>
+                <tr style="${rowStyle}">
                     <td style="font-weight:600; color:#fff; text-align: left; vertical-align: middle;">
                         <span>${p.name}</span>${categoryLabelHtml}
                     </td>
                     <td style="color:#a0a5c1; text-align: left;">${p.intranetId || '<span style="color:#555;">Brak</span>'}</td>
-                    <td style="color:#00b894; font-weight:600; text-align: left;">${p.plnMargin.toFixed(2)} zł</td>
-                    <td style="color:#2a75d3; font-weight:bold; text-align: left;">${clientPrice.toFixed(2)} zł</td>
+                    <td style="color:#00b894; font-weight:600; text-align: left;">${marginLabelHtml}</td>
+                    <td style="color:#2a75d3; font-weight:bold; text-align: left;">${priceLabelHtml}</td>
                     <td style="text-align: center;">${actionHtml}</td>
                 </tr>
             `;
@@ -369,6 +427,7 @@ function refreshManualPanel() {
     let totalMarginSum = 0;
     let totalClientPriceSum = 0;
     let totalQty = 0;
+    let hasMissingPriceInCart = false;
     
     let draftKeys = Object.keys(window.manualCartDraft);
     if (draftKeys.length === 0) {
@@ -381,24 +440,77 @@ function refreshManualPanel() {
     } else {
         draftKeys.forEach(key => {
             let item = window.manualCartDraft[key];
-            let lineMargin = item.plnMargin * item.qty;
-            let lineClientPrice = item.plnMargin * multiplier * item.qty;
             
-            totalMarginSum += lineMargin;
-            totalClientPriceSum += lineClientPrice;
+            // Check if it's a print and extract area
+            let isWydrukWithArea = false;
+            let wydrukArea = 0;
+            const area = calculateWydrukArea(item.name);
+            if (area !== null) {
+                isWydrukWithArea = true;
+                wydrukArea = area;
+            }
+
+            // Determine if it has no price in database
+            let itemHasNoPrice = false;
+            if (window.KASETON_PRICES && window.KASETON_PRICES[item.name] && window.KASETON_PRICES[item.name].noPrice) {
+                if (!isWydrukWithArea) {
+                    itemHasNoPrice = true;
+                }
+            }
+
+            let plnMargin = item.plnMargin;
+            let lineClientPrice = plnMargin * multiplier * item.qty;
+
+            if (isWydrukWithArea) {
+                lineClientPrice = (wydrukArea * 100) * item.qty;
+                plnMargin = (wydrukArea * 100) / multiplier;
+            }
+
+            if (window.customPriceOverrides && window.customPriceOverrides[item.name] !== undefined) {
+                lineClientPrice = (window.customPriceOverrides[item.name] * ratePLN) * item.qty;
+                plnMargin = (window.customPriceOverrides[item.name] * ratePLN) / multiplier;
+                itemHasNoPrice = false;
+            }
+
+            let lineMargin = plnMargin * item.qty;
+            
+            if (itemHasNoPrice) {
+                hasMissingPriceInCart = true;
+            } else {
+                totalMarginSum += lineMargin;
+                totalClientPriceSum += lineClientPrice;
+            }
             totalQty += item.qty;
             
             let itemDataJson = JSON.stringify({
                 name: item.name,
-                plnMargin: item.plnMargin,
+                plnMargin: plnMargin,
                 intranetId: item.intranetId,
                 isKaseton: item.isKaseton
             }).replace(/"/g, '&quot;');
             
+            let cartRowStyle = '';
+            let cartPriceHtml = '';
+            if (itemHasNoPrice) {
+                cartRowStyle = 'background: rgba(255, 0, 0, 0.15); border: 1px solid #ff3333; border-radius: 4px; padding: 4px; margin-bottom: 5px;';
+                cartPriceHtml = `
+                    <div style="text-align: right;">
+                        <span style="color:#ff3333; font-weight:bold; font-size:11px;">Brak ceny!</span>
+                    </div>
+                `;
+            } else {
+                cartPriceHtml = `
+                    <div style="text-align: right;">
+                        <span style="color:#00b894; font-weight:600;">${lineMargin.toFixed(2)} zł</span> <br>
+                        <span style="color:#2a75d3; font-weight:bold; font-size:12px;">${lineClientPrice.toFixed(2)} zł</span>
+                    </div>
+                `;
+            }
+
             cartHtml += `
-                <div class="cart-item-row">
+                <div class="cart-item-row" style="${cartRowStyle}">
                     <div class="cart-item-main">
-                        <span class="cart-item-name" style="text-align: left;">${item.name}</span>
+                        <span class="cart-item-name" style="text-align: left;">${item.name} ${itemHasNoPrice ? '<span style="color:#ff3333; font-size:10px;">[!]</span>' : ''}</span>
                         <button class="cart-item-remove" onclick="removeFromDraft('${key}')" title="Usuń z koszyka">🗑️</button>
                     </div>
                     <div class="cart-item-qty-price">
@@ -407,10 +519,7 @@ function refreshManualPanel() {
                             <input class="qty-input" style="width:28px; padding:1px 0; font-size:11px;" type="number" value="${item.qty}" onchange="setDraftQty('${key}', this.value, ${itemDataJson})">
                             <button class="btn-qty btn-plus" style="width:20px; height:20px; font-size:11px;" onclick="changeDraftQty('${key}', 1, ${itemDataJson})">+</button>
                         </div>
-                        <div style="text-align: right;">
-                            <span style="color:#00b894; font-weight:600;">${lineMargin.toFixed(2)} zł</span> <br>
-                            <span style="color:#2a75d3; font-weight:bold; font-size:12px;">${lineClientPrice.toFixed(2)} zł</span>
-                        </div>
+                        ${cartPriceHtml}
                     </div>
                 </div>
             `;
@@ -423,16 +532,28 @@ function refreshManualPanel() {
     if (badge) badge.innerText = `${totalQty} szt`;
     
     const marginSpan = document.getElementById('summaryMarginTotal');
-    if (marginSpan) marginSpan.innerText = `${totalMarginSum.toFixed(2)} PLN`;
+    if (marginSpan) {
+        marginSpan.innerText = `${totalMarginSum.toFixed(2)} PLN`;
+        if (hasMissingPriceInCart) {
+            marginSpan.innerHTML += ` <span style="color:#ff3333; font-size:10px;">(+brak)</span>`;
+        }
+    }
     
     const priceSpan = document.getElementById('summaryPriceTotal');
-    if (priceSpan) priceSpan.innerText = `${totalClientPriceSum.toFixed(2)} PLN`;
+    if (priceSpan) {
+        priceSpan.innerText = `${totalClientPriceSum.toFixed(2)} PLN`;
+        if (hasMissingPriceInCart) {
+            priceSpan.innerHTML += ` <span style="color:#ff3333; font-size:10px;">(+brak)</span>`;
+        }
+    }
 }
 
 function toggleDimensions() {
     showDimensions = !showDimensions;
     isBlueprintMode = showDimensions; // Tryb techniczny włącza się razem z wymiarami
     if (is3DMode) update3DScene();
+    // Populate/hide the legend panel (blueprintLegendItems set by drawKasetonScene)
+    if (typeof window.refreshBlueprintLegend === 'function') window.refreshBlueprintLegend();
 }
 
 function toggleSceneSettings() {
@@ -626,12 +747,49 @@ function toggle3D() {
         } else {
             if (container) container.style.display = 'none';
             isAnimating = false;
+            // Reset blueprint state when leaving 3D
+            showDimensions = false;
+            isBlueprintMode = false;
+            window.blueprintLegendItems = null;
+            window.blueprintDimensions = null;
+            const blPanel = document.getElementById('blueprintLegend');
+            if (blPanel) blPanel.style.display = 'none';
         }
     } catch (error) {
         alert("Wystąpił błąd silnika 3D: " + error.message);
         console.error("Szczegóły błędu 3D:", error);
     }
 }
+
+// Global helper: re-populates legend panel after programmatic update3DScene() calls
+window.refreshBlueprintLegend = function() {
+    const panel = document.getElementById('blueprintLegend');
+    if (!panel) return;
+    if (!showDimensions || !window.blueprintLegendItems || !window.blueprintDimensions) {
+        panel.style.display = 'none';
+        return;
+    }
+    const dim = window.blueprintDimensions;
+    const dimsEl = document.getElementById('blDims');
+    if (dimsEl) {
+        dimsEl.innerHTML =
+            '<div class="bl-dim-row"><span class="bl-dim-label">Szerokość</span><span class="bl-dim-value">' + dim.W + ' cm</span></div>' +
+            '<div class="bl-dim-row"><span class="bl-dim-label">Wysokość</span><span class="bl-dim-value">' + dim.H + ' cm</span></div>' +
+            '<div class="bl-dim-row"><span class="bl-dim-label">System</span><span class="bl-dim-value" style="font-size:12px;">' + dim.sys + '</span></div>';
+    }
+    const listEl = document.getElementById('blList');
+    if (listEl) {
+        listEl.innerHTML = window.blueprintLegendItems.map(function(item) {
+            return '<div class="bl-item">' +
+                '<div class="bl-badge" style="background:' + item.color + ';">' + item.num + '</div>' +
+                '<div class="bl-item-text">' +
+                    '<div class="bl-item-name">' + item.name + '</div>' +
+                    (item.desc ? '<div class="bl-item-desc">' + item.desc + '</div>' : '') +
+                '</div></div>';
+        }).join('');
+    }
+    panel.style.display = 'flex';
+};
 
 function toggleFab() {
     const subs = document.getElementById('fabSubs');
