@@ -955,32 +955,40 @@
  scene.add(bgGroup);
  }
 
- function drawKasetonScene() {
- if (!scene) return;
+function drawKasetonScene() {
+  if (!scene) return;
 
- const config = window.currentKasetonConfig || {
- system: 'LMD',
- width: 120,
- depth: 200, // Depth input is used as Height (Wysokość)
- cut: 'none',
- print: 'single',
- usage: 'freestanding'
- };
+  if (!window.currentKasetonConfig) {
+    window.currentKasetonConfig = {
+      system: 'LMD',
+      width: 120,
+      depth: 200, 
+      cut: 'none',
+      print: 'single',
+      usage: 'freestanding'
+    };
+  }
+  const config = window.currentKasetonConfig;
 
- const W = parseFloat(config.width) || 120;
- const H = parseFloat(config.depth) || 200;
- const sys = config.system || 'LMD';
- 
- console.log('📐 Drawing custom Kaseton frame in 3D:', W, 'x', H, 'cm, System:', sys);
+  const W = parseFloat(config.width) || 120;
+  const H = parseFloat(config.depth) || 200;
+  const sys = config.system || 'LMD';
+  const pD = (sys === 'LMS') ? 12.0 : 14.0;
 
- // 1. MOTYW I MATERIAŁY (Premium Anodized Aluminum)
- // Zmniejszona połyskliwość (roughness: 0.45, metalness: 0.55) zgodnie z zaleceniem
- const aluMat = new THREE.MeshStandardMaterial({
- color: 0xd0d4d9,
- metalness: 0.55,
- roughness: 0.45,
- name: 'anodized_aluminum'
- });
+  // 🟢 TUTAJ: Resetujemy licznik LED przy każdym nowym renderowaniu sceny
+  window.kasetonLedSummary = {};
+
+  console.log('📐 Drawing custom Kaseton frame in 3D:', W, 'x', H, 'cm, System:', sys);
+  // ... dalsza część kodu
+
+// 1. MOTYW I MATERIAŁY (Premium Anodized Aluminum)
+// Zmniejszona połyskliwość (roughness: 0.45, metalness: 0.55) zgodnie z zaleceniem
+const aluMat = new THREE.MeshStandardMaterial({
+  color: 0xd0d4d9,
+  metalness: 0.55,
+  roughness: 0.45,
+  name: 'anodized_aluminum'
+});
 
  const supportMat = isBlueprintMode ? new THREE.MeshStandardMaterial({
  color: 0x22c55e,
@@ -1301,66 +1309,56 @@
  return stripeGroup;
  }
 
- // Poprawne nanoszenie pasków LED oraz złączek w kanale profilu
- function addLedStripesToProfileGroup(targetGroup, L, isHorizontal) {
- const segments = getWorkingSegments(L, isHorizontal);
- const ledY = (sys === 'LMS') ? 3.93 : 2.0;
- const ledZ = (sys === 'LMS') ? -3.5 : 0;
- 
- segments.forEach(seg => {
- const combo = getBestLedCombination(seg.length);
- const totalStripesLength = combo.reduce((sum, val) => sum + val, 0);
- const startOffset = seg.start + (seg.length - totalStripesLength) / 2;
+// Poprawne nanoszenie pasków LED oraz złączek w kanale profilu
+function addLedStripesToProfileGroup(targetGroup, L, isHorizontal) {
+  const segments = getWorkingSegments(L, isHorizontal);
+  const ledY = (sys === 'LMS') ? 3.93 : 2.0;
+  const ledZ = (sys === 'LMS') ? -3.5 : 0;
+  
+  segments.forEach(seg => {
+    const combo = getBestLedCombination(seg.length);
+    const totalStripesLength = combo.reduce((sum, val) => sum + val, 0);
+    const startOffset = seg.start + (seg.length - totalStripesLength) / 2;
 
- let currentOffset = startOffset;
- combo.forEach((size, idx) => {
- const stripe = createLedStripeMesh(size);
- stripe.position.set(currentOffset + size / 2, ledY, ledZ);
- stripe.rotation.y = Math.PI / 2;
- targetGroup.add(stripe);
+    let currentOffset = startOffset;
+    combo.forEach((size, idx) => {
+      const stripe = createLedStripeMesh(size);
+      stripe.position.set(currentOffset + size / 2, ledY, ledZ);
+      stripe.rotation.y = Math.PI / 2;
+      targetGroup.add(stripe);
 
- // Techniczne etykietowanie w trybie blueprint
- if (isBlueprintMode && typeof window.tryLabelBlueprint === 'function') {
- const ledKey = `LED_${size}`;
- const isPower = (config.light || 'power_long').startsWith('power');
- const nameMap = isPower ? {
- 20: 'Oświetlenie AdframeLED POWER LED 20cm 9W ver2',
- 24: 'Oświetlenie AdframeLED POWER LED 24cm 11W ver2',
- 30: 'Oświetlenie AdframeLED POWER LED 30cm 13W ver2',
- 50: 'Oświetlenie AdframeLED POWER LED 50cm 22W ver2'
- } : {
- 20: 'Oświetlenie AdframeLED NORMAL LED 20cm 6,5W ver2',
- 24: 'Oświetlenie AdframeLED NORMAL LED 24cm 8W ver2',
- 30: 'Oświetlenie AdframeLED NORMAL LED 30cm 10W ver2',
- 50: 'Oświetlenie AdframeLED NORMAL LED 50cm 16W ver2'
- };
+      // Zliczanie modułów LED bezpośrednio do statystyk bocznego panelu
+      if (isBlueprintMode) {
+        const isPower = (config.light || 'power_long').startsWith('power');
+        const nameMap = isPower ? {
+          20: 'AdframeLED POWER LED 20cm 9W v2',
+          24: 'AdframeLED POWER LED 24cm 11W v2',
+          30: 'AdframeLED POWER LED 30cm 13W v2',
+          50: 'AdframeLED POWER LED 50cm 22W v2'
+        } : {
+          20: 'AdframeLED NORMAL LED 20cm 6,5W v2',
+          24: 'AdframeLED NORMAL LED 24cm 8W v2',
+          30: 'AdframeLED NORMAL LED 30cm 10W v2',
+          50: 'AdframeLED NORMAL LED 50cm 16W v2'
+        };
 
- const absolutePos = new THREE.Vector3(currentOffset + size / 2, ledY, ledZ);
- absolutePos.applyEuler(targetGroup.rotation);
- absolutePos.add(targetGroup.position);
+        const ledFullName = nameMap[size] || `Moduł LED ${size}cm`;
+        window.kasetonLedSummary[ledFullName] = (window.kasetonLedSummary[ledFullName] || 0) + 1;
+      }
 
- // dynamiczny offset strzałki w zależności od orientacji
- let offsetVec = new THREE.Vector3(25, 20, 20);
- if (Math.abs(targetGroup.rotation.z) > 0.1) {
- offsetVec.set(targetGroup.position.x > 0 ? 30 : -45, 20, 20);
- }
- window.tryLabelBlueprint(ledKey, absolutePos, nameMap[size] || `MODUŁ LED ${size}CM`, offsetVec);
- }
+      // Czerwona złączka na końcu paska (oprócz ostatniego)
+      if (idx < combo.length - 1) {
+        const connGeom = new THREE.BoxGeometry(0.3, 0.4, 1.2);
+        const connMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.5, metalness: 0.2 });
+        const conn = new THREE.Mesh(connGeom, connMat);
+        conn.position.set(currentOffset + size, ledY + 0.1, ledZ);
+        targetGroup.add(conn);
+      }
 
- // Czerwona złączka na końcu paska (oprócz ostatniego)
- if (idx < combo.length - 1) {
- const connGeom = new THREE.BoxGeometry(0.3, 0.4, 1.2);
- const connMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.5, metalness: 0.2 });
- const conn = new THREE.Mesh(connGeom, connMat);
- conn.position.set(currentOffset + size, ledY + 0.1, ledZ);
- targetGroup.add(conn);
- }
-
- currentOffset += size;
- });
- });
- }
-
+      currentOffset += size;
+    });
+  });
+}
  // Globalna wysokość/pozycja na podłodze (suspended = +100cm)
  const elevY = config.usage === 'suspended' ? 100 : 0;
 
@@ -1497,16 +1495,7 @@
  const drawLeft = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
  const drawRight = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
 
- // Rejestr i funkcja pomocnicza do etykietowania LED w trybie technicznym
- const ledLabeled = new Set();
- window.tryLabelBlueprint = (key, absolutePos, text, offsetVec) => {
- if (!ledLabeled.has(key)) {
- ledLabeled.add(key);
- if (typeof window.addTechnicalLabelBlueprint === 'function') {
- window.addTechnicalLabelBlueprint(key, absolutePos, text, offsetVec);
- }
- }
- };
+
 
  if (drawBottom) addLedStripesToProfileGroup(bottomP.group, W, true);
  if (drawTop) addLedStripesToProfileGroup(topP.group, W, true);
@@ -1779,6 +1768,7 @@
  const printH = H - 0.4;
  const planeGeom = new THREE.PlaneGeometry(printW, printH);
  const pD = (sys === 'LMS') ? 12.0 : 14.0;
+
 
  // Przód
  const hasFrontMesh = (sys === 'LMS')
@@ -2164,13 +2154,26 @@
       'Moc: ~' + Math.ceil(totalPowerW * 1.1) + ' W');
   }
 
-  // ── E) Taśma LED ──
-  if (isLedSys && config.light && config.light !== 'none') {
-    addNumberedMarker('LED_STRIP',
-      new THREE.Vector3(0, elevY + H * 0.75, -pD/2 + 2),
-      'Taśma LED',
-      (config.light || '').replace(/_/g, ' '));
+// ── E) Taśma LED ──
+if (isLedSys && config.light && config.light !== 'none') {
+  let ledDesc = '';
+  
+  // Jeśli mamy zebrane dane o konkretnych modułach, budujemy ładny string
+  if (window.kasetonLedSummary && Object.keys(window.kasetonLedSummary).length > 0) {
+    ledDesc = Object.entries(window.kasetonLedSummary)
+      .map(([name, count]) => `${name} (${count} szt.)`)
+      .join(', ');
+  } else {
+    ledDesc = (config.light || '').replace(/_/g, ' ');
   }
+
+  // Przekazujemy ładne podsumowanie do okienka po lewej stronie!
+  addNumberedMarker('LED_STRIP',
+    new THREE.Vector3(0, elevY + H * 0.75, -pD/2 + 2),
+    'Taśma LED',
+    ledDesc
+  );
+}
 
   // Publikuj dane do panelu HTML
   window.blueprintLegendItems = legendItems;

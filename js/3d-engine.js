@@ -672,6 +672,12 @@ function update3DScene() {
  }
 
  if (currentSystem === 'kasetony_niestandardowe') {
+ if (isBlueprintMode) {
+ scene.background = new THREE.Color(0x0a1a35);
+ scene.fog = null;
+ } else {
+ scene.background = new THREE.Color(0x333333);
+ }
  if (window.isKasetonPackedMode && typeof drawCartonScene === 'function') {
  drawCartonScene();
  } else if (typeof drawKasetonScene === 'function') {
