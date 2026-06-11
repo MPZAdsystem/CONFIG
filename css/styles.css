@@ -2229,9 +2229,9 @@
    BLUEPRINT LEGEND PANEL
    ═══════════════════════════════════════ */
 #blueprintLegend {
-    position: fixed;
+    position: absolute;
     top: 80px;
-    right: 20px;
+    left: 20px;
     width: 310px;
     max-height: calc(100vh - 120px);
     background: rgba(4, 14, 32, 0.92);

@@ -217,6 +217,9 @@ let isPdfGenerating = false;
 let cancelPdfGeneration = false;
 
 let mixer; // Mikser animacji Three.js
+let humanPos = { x: 0, z: 350 }; // Pozycja człowieka w układzie 3D (x, z)
+let human3DModel = null; // Referencja do obiektu 3D człowieka
+
 
 const clock = new THREE.Clock(); // Zegar odmierzający czas między klatkami
 

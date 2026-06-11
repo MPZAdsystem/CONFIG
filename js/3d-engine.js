@@ -507,7 +507,66 @@ function init3D() {
  }
  }
  });
- loadWalkingMan();
+  loadWalkingMan();
+
+  // --- NOWOŚĆ: DRAG & DROP W 3D DLA LUDZIKA CZŁOWIEKA ---
+  let isDraggingHuman3D = false;
+  const plane3D = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // Płaszczyzna podłogi do rzutowania promienia
+  const intersection3D = new THREE.Vector3();
+
+  container.addEventListener('mousedown', (e) => {
+      if (!is3DMode || !human3DModel) return;
+      const rect = container.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObject(human3DModel, true);
+
+      if (intersects.length > 0) {
+          isDraggingHuman3D = true;
+          controls.enabled = false; // Wyłączamy obracanie kamery na czas dragowania
+          e.preventDefault();
+          e.stopPropagation();
+      }
+  });
+
+  container.addEventListener('mousemove', (e) => {
+      if (!is3DMode || !isDraggingHuman3D || !human3DModel) return;
+      const rect = container.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      if (raycaster.ray.intersectPlane(plane3D, intersection3D)) {
+          // Ograniczamy ruch tylko w płaszczyźnie X i Z (podłoga)
+          humanPos.x = intersection3D.x;
+          humanPos.z = intersection3D.z;
+
+          human3DModel.position.x = humanPos.x;
+          human3DModel.position.z = humanPos.z;
+
+          // Aktualizujemy 2D
+          const man2D = document.getElementById('man2DElement');
+          const stg = document.getElementById('stage');
+          if (man2D && stg) {
+              const stageCenterStartX = stg.clientWidth / 2 - 100;
+              const stageCenterStartY = stg.clientHeight / 2 + 100;
+              let px = stageCenterStartX + humanPos.x;
+              let py = stageCenterStartY + humanPos.z;
+              man2D.style.left = (px - 15) + 'px';
+              man2D.style.top = (py - 15) + 'px';
+          }
+      }
+  });
+
+  window.addEventListener('mouseup', () => {
+      if (isDraggingHuman3D) {
+          isDraggingHuman3D = false;
+          controls.enabled = true; // Przywracamy sterowanie kamerą
+          render(); // Odświeżamy 2D rzut
+      }
+  });
 }
 
 function animate3D() {
@@ -2106,7 +2165,81 @@ document.getElementById('valPLN').innerHTML = `<b>${Math.round(finalPLN).toLocal
  }
  } else { if (collWarningEl) collWarningEl.remove(); }
 
- if (is3DMode) update3DScene();
+  // --- NOWOŚĆ: REPREZENTACJA CZŁOWIEKA 2D NA MODELU 2D ---
+  (function() {
+      const stage = document.getElementById('stage');
+      if (!stage) return;
+      // Usuwamy stary element 2D człowieka jeśli istnieje
+      const oldMan2D = document.getElementById('man2DElement');
+      if (oldMan2D) oldMan2D.remove();
+
+      // Człowiek 2D jest umieszczany wewnątrz drawingLayer dla zachowania skali/panowania
+      const man2D = document.createElement('div');
+      man2D.id = 'man2DElement';
+      man2D.style.position = 'absolute';
+      man2D.style.width = '30px';
+      man2D.style.height = '30px';
+      man2D.style.borderRadius = '50%';
+      man2D.style.backgroundColor = '#00ff88';
+      man2D.style.border = '2px solid #000';
+      man2D.style.boxShadow = '0 0 10px #00ff88';
+      man2D.style.cursor = 'move';
+      man2D.style.zIndex = '99';
+      man2D.style.display = 'flex';
+      man2D.style.alignItems = 'center';
+      man2D.style.justifyContent = 'center';
+      man2D.style.fontSize = '16px';
+      man2D.innerHTML = '🧍';
+
+      // Przeliczanie pozycji z układu 3D (gdzie środek to stageCenterStartX, stageCenterStartY)
+      // W 3D x odpowiada x, a z w 3D odpowiada y w 2D (rzut z góry)
+      // humanPos.x i humanPos.z są w cm
+      let px = stageCenterStartX + humanPos.x;
+      let py = stageCenterStartY + humanPos.z;
+
+      man2D.style.left = (px - 15) + 'px';
+      man2D.style.top = (py - 15) + 'px';
+
+      // Obsługa drag & drop na 2D
+      man2D.onmousedown = function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          let startX = e.clientX;
+          let startY = e.clientY;
+          let initX = humanPos.x;
+          let initZ = humanPos.z;
+          let vs = typeof viewScale !== 'undefined' ? viewScale : 1;
+
+          function onMouseMove(event) {
+              humanPos.x = initX + (event.clientX - startX) / vs;
+              humanPos.z = initZ + (event.clientY - startY) / vs;
+              
+              let newPx = stageCenterStartX + humanPos.x;
+              let newPy = stageCenterStartY + humanPos.z;
+              man2D.style.left = (newPx - 15) + 'px';
+              man2D.style.top = (newPy - 15) + 'px';
+
+              // Aktualizacja pozycji modelu 3D w locie
+              if (human3DModel) {
+                  human3DModel.position.x = humanPos.x;
+                  human3DModel.position.z = humanPos.z;
+              }
+          }
+
+          function onMouseUp() {
+              document.removeEventListener('mousemove', onMouseMove);
+              document.removeEventListener('mouseup', onMouseUp);
+              render();
+          }
+
+          document.addEventListener('mousemove', onMouseMove);
+          document.addEventListener('mouseup', onMouseUp);
+      };
+
+      layer.appendChild(man2D);
+  })();
+
+  if (is3DMode) update3DScene();
 }
 
 function recoverEngine() {
