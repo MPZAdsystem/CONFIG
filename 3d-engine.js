@@ -1304,7 +1304,7 @@ function update3DScene() {
       }
       else if (fSet.div === 'single') {
         let currX = -totalLen / 2;
-        box.walls.forEach(w => {
+        plane.walls.forEach(w => {
           let wOff = currX + w.length / 2;
           if (fSet.side === 'double' || fSet.side === 'front') buildCanvas(w.length, wOff, zF, w);
           if (fSet.side === 'double' || fSet.side === 'back') buildCanvas(w.length, wOff, zB, w);
@@ -1960,7 +1960,7 @@ function render() {
           let len2 = totalLen - len1;
           addPrintToBom(len1); addPrintToBom(len2);
         } else if (fSet.div === 'single') {
-          box.walls.forEach(w => addPrintToBom(w.length));
+          plane.walls.forEach(w => addPrintToBom(w.length));
         }
       }
     });
