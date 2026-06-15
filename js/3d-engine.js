@@ -875,7 +875,16 @@ function update3DScene() {
       else {
         const geom = new THREE.BoxGeometry(item.length, item.height, 12);
         let hexColor = item.isDoor ? 0x004466 : 0x999999;
-        const frameMat = new THREE.MeshStandardMaterial({ color: hexColor, metalness: 0.7, roughness: 0.2 });
+
+        // POPRAWKA: frameMat reaguje teraz na tryb Blueprint (staje się półprzezroczysty, by odsłonić supporty)
+        const frameMat = new THREE.MeshStandardMaterial({
+          color: isBlueprintMode ? 0x4488ff : hexColor,
+          metalness: 0.7,
+          roughness: 0.2,
+          transparent: isBlueprintMode,
+          opacity: isBlueprintMode ? 0.2 : 1.0
+        });
+
         const texLoader = new THREE.TextureLoader();
         const getWallMat = (texUrl) => {
           if (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) return new THREE.MeshStandardMaterial({ color: 0x4488ff, transparent: true, opacity: 0.1 });
@@ -965,6 +974,33 @@ function update3DScene() {
           const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geom), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 }));
           edges.position.y = item.height / 2;
           group.add(edges);
+
+          // POPRAWKA: Dynamiczne generowanie wewnętrznych rur i krzyżaków MP w trybie inżynieryjnym
+          if (isBlueprintMode) {
+            const mpSupportMat = new THREE.MeshStandardMaterial({ color: 0x00e5ff, metalness: 0.8, roughness: 0.2, transparent: true, opacity: 0.7 });
+            const mpCrossMat = new THREE.MeshStandardMaterial({ color: 0xff0080, metalness: 0.8, roughness: 0.2, transparent: true, opacity: 0.8 });
+
+            // Automatyczne dzielenie długich ścian na sekcje modularne ~100cm
+            const numModules = Math.ceil(item.length / 100);
+            const segmentWidth = item.length / numModules;
+
+            for (let m = 0; m < numModules; m++) {
+              const modLeftX = -item.length / 2 + m * segmentWidth;
+              const modCenterX = modLeftX + segmentWidth / 2;
+
+              // Profil pionowy: SEGO MP support
+              const vSupGeom = new THREE.BoxGeometry(3, item.height - 12, 2);
+              const vSupMesh = new THREE.Mesh(vSupGeom, mpSupportMat);
+              vSupMesh.position.set(modCenterX, item.height / 2, 0);
+              group.add(vSupMesh);
+
+              // Profil poziomy krzyżaka: SEGO MP cross
+              const hCrossGeom = new THREE.BoxGeometry(segmentWidth - 12, 3, 2);
+              const hCrossMesh = new THREE.Mesh(hCrossGeom, mpCrossMat);
+              hCrossMesh.position.set(modCenterX, item.height / 2, 0);
+              group.add(hCrossMesh);
+            }
+          }
         }
       }
 

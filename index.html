@@ -175,6 +175,14 @@
                 </select>
             </div>
 
+            <div class="form-group">
+                <label style="color:#aaa; font-size:12px;">Szata graficzna:</label>
+                <select id="pdfTheme">
+                    <option value="white" selected>Biała (Domyślna)</option>
+                    <option value="black_magenta">Czarna+magenta</option>
+                </select>
+            </div>
+
             <div id="pdfLoadingStatus" style="display:none; margin-top:20px;">
                 <div style="color:var(--highlight); text-align:center; font-weight:bold; font-size:13px; margin-bottom:8px;"
                     id="pdfProgressText">⏳ Przygotowywanie silnika...</div>
@@ -768,7 +776,9 @@
                 onclick="clearWydruki()">
                 🗑 Wyczyść
             </button>
-<button id="btnRandomizeGraphics" class="fab-main" onclick="randomizeProjectGraphics(this)" style="display: none; background: linear-gradient(135deg, #10ac84, #1dd1a1); color: #000; border: none; font-weight: bold; box-shadow: 0 4px 15px rgba(29, 209, 161, 0.4);">🎲 Losuj grafiki</button>
+            <button id="btnRandomizeGraphics" class="fab-main" onclick="randomizeProjectGraphics(this)"
+                style="display: none; background: linear-gradient(135deg, #10ac84, #1dd1a1); color: #000; border: none; font-weight: bold; box-shadow: 0 4px 15px rgba(29, 209, 161, 0.4);">🎲
+                Losuj grafiki</button>
         </div>
 
         <div id="instructionsModal" class="ticketModal"
@@ -887,11 +897,11 @@
                 🌙 Tryb Nocny (Realistyczny)
             </button>
         </div>
-<div id="graphicsPanel" class="graphics-panel">
-    <h3>Zarządzanie Grafikami</h3>
-    <div id="graphicsListContent">Nanieś tekstury na ściany (Drag & Drop), aby zobaczyć listę.</div>
-        <a href="LINK_DO_PDF" target="_blank" class="btn-guidelines">📥 Ściągnij wytyczne DTP (PDF)</a>
-</div>
+        <div id="graphicsPanel" class="graphics-panel">
+            <h3>Zarządzanie Grafikami</h3>
+            <div id="graphicsListContent">Nanieś tekstury na ściany (Drag & Drop), aby zobaczyć listę.</div>
+            <a href="LINK_DO_PDF" target="_blank" class="btn-guidelines">📥 Ściągnij wytyczne DTP (PDF)</a>
+        </div>
 
         <!-- BLUEPRINT LEGEND PANEL (outside graphicsPanel) -->
         <div id="blueprintLegend" style="display:none;">
@@ -907,322 +917,372 @@
 
     <div id="manualModalOverlay"
         style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
-        
+
         <!-- Premium Embedded Styles -->
         <style>
-        #manualModalOverlay {
-            font-family: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            color: #f5f6fa;
-        }
-        .manual-modal-container {
-            background: #18191f;
-            border: 1px solid #2a75d3;
-            border-radius: 16px;
-            width: 1150px;
-            max-width: 95%;
-            height: 85vh;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(42, 117, 211, 0.25);
-            overflow: hidden;
-            animation: modalAppear 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        @keyframes modalAppear {
-            from { opacity: 0; transform: scale(0.96); }
-            to { opacity: 1; transform: scale(1); }
-        }
-        .manual-modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px 24px;
-            background: #111216;
-            border-bottom: 1px solid #282a36;
-        }
-        .manual-modal-body {
-            display: flex;
-            flex: 1;
-            overflow: hidden;
-            height: calc(100% - 60px);
-        }
-        .manual-modal-left {
-            flex: 3;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            border-right: 1px solid #282a36;
-            overflow: hidden;
-        }
-        .manual-modal-right {
-            flex: 2;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            background: #131419;
-            overflow: hidden;
-        }
-        .search-controls {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 16px;
-        }
-        .search-input-wrapper {
-            flex: 1;
-            position: relative;
-        }
-        .search-input-wrapper input {
-            width: 100%;
-            background: #20222a;
-            border: 1px solid #3c4052;
-            border-radius: 8px;
-            color: #fff;
-            padding: 10px 14px;
-            font-size: 14px;
-            outline: none;
-            transition: all 0.2s ease;
-            box-sizing: border-box;
-        }
-        .search-input-wrapper input:focus {
-            border-color: #2a75d3;
-            box-shadow: 0 0 0 3px rgba(42, 117, 211, 0.25);
-            background: #242731;
-        }
-        .multiplier-wrapper {
-            width: 180px;
-            display: flex;
-            align-items: center;
-            background: #20222a;
-            border: 1px solid #3c4052;
-            border-radius: 8px;
-            padding: 2px 10px;
-            box-sizing: border-box;
-        }
-        .multiplier-wrapper label {
-            font-size: 11px;
-            color: #8f95b2;
-            margin-right: 8px;
-            white-space: nowrap;
-        }
-        .multiplier-wrapper input {
-            width: 100%;
-            background: transparent;
-            border: none;
-            color: #00b894;
-            font-weight: bold;
-            font-size: 15px;
-            outline: none;
-            text-align: right;
-        }
-        .db-table-container {
-            flex: 1;
-            overflow-y: auto;
-            border: 1px solid #282a36;
-            border-radius: 8px;
-            background: #111216;
-        }
-        .db-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12px;
-        }
-        .db-table th {
-            position: sticky;
-            top: 0;
-            background: #1e2029;
-            color: #8f95b2;
-            font-weight: 600;
-            text-align: left;
-            padding: 10px 12px;
-            border-bottom: 2px solid #282a36;
-            z-index: 10;
-        }
-        .db-table td {
-            padding: 10px 12px;
-            border-bottom: 1px solid #20222a;
-            color: #e2e4f0;
-            vertical-align: middle;
-        }
-        .db-table tr:hover {
-            background: #1a1b24;
-        }
-        .qty-control {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        .btn-qty {
-            width: 24px;
-            height: 24px;
-            border-radius: 4px;
-            border: none;
-            font-weight: bold;
-            font-size: 14px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: opacity 0.15s ease, transform 0.1s ease;
-        }
-        .btn-qty:active {
-            transform: scale(0.9);
-        }
-        .btn-minus {
-            background: #e17055;
-            color: white;
-        }
-        .btn-plus {
-            background: #20bf6b;
-            color: white;
-        }
-        .qty-input {
-            width: 36px;
-            background: #20222a;
-            border: 1px solid #3c4052;
-            border-radius: 4px;
-            color: white;
-            text-align: center;
-            font-weight: bold;
-            padding: 3px 0;
-            font-size: 12px;
-            outline: none;
-        }
-        .btn-row-add {
-            background: #2a75d3;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 5px 10px;
-            font-size: 11px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        .btn-row-add:hover {
-            background: #3a8df3;
-        }
-        .cart-header {
-            font-size: 15px;
-            font-weight: bold;
-            color: #2a75d3;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #282a36;
-            padding-bottom: 10px;
-            margin-bottom: 12px;
-        }
-        .cart-items-container {
-            flex: 1;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin-bottom: 16px;
-            padding-right: 4px;
-        }
-        .cart-item-row {
-            background: #1c1e24;
-            border: 1px solid #282a36;
-            border-radius: 8px;
-            padding: 10px 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            transition: border-color 0.2s ease;
-        }
-        .cart-item-row:hover {
-            border-color: #3b3f54;
-        }
-        .cart-item-main {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-        }
-        .cart-item-name {
-            font-size: 12px;
-            font-weight: 600;
-            color: #fff;
-            flex: 1;
-            padding-right: 8px;
-        }
-        .cart-item-qty-price {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 11px;
-            color: #a0a5c1;
-            border-top: 1px dashed #282a36;
-            padding-top: 6px;
-            margin-top: 2px;
-        }
-        .cart-item-remove {
-            background: none;
-            border: none;
-            color: #ff5555;
-            cursor: pointer;
-            font-size: 14px;
-            padding: 0 4px;
-        }
-        .cart-summary {
-            background: #111216;
-            border: 1px solid #282a36;
-            border-radius: 8px;
-            padding: 14px;
-            margin-bottom: 16px;
-        }
-        .summary-row {
-            display: flex;
-            justify-content: space-between;
-            font-size: 12px;
-            margin-bottom: 6px;
-            color: #8f95b2;
-        }
-        .summary-row.total {
-            border-top: 1px solid #282a36;
-            padding-top: 8px;
-            margin-top: 8px;
-            font-size: 14px;
-            font-weight: bold;
-            color: #00b894;
-        }
-        .cart-actions {
-            display: flex;
-            gap: 12px;
-        }
-        .btn-cart-submit {
-            flex: 2;
-            background: #20bf6b;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            padding: 12px;
-            font-weight: bold;
-            font-size: 14px;
-            cursor: pointer;
-            transition: background 0.2s ease, transform 0.1s ease;
-            box-shadow: 0 4px 12px rgba(32, 191, 107, 0.2);
-        }
-        .btn-cart-submit:hover {
-            background: #26de81;
-        }
-        .btn-cart-submit:active {
-            transform: translateY(1px);
-        }
-        .btn-cart-clear {
-            flex: 1;
-            background: #eb3b5a;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            padding: 12px;
-            font-weight: bold;
-            font-size: 14px;
-            cursor: pointer;
-            transition: background 0.2s ease;
-        }
-        .btn-cart-clear:hover {
-            background: #fc5c65;
-        }
+            #manualModalOverlay {
+                font-family: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                color: #f5f6fa;
+            }
+
+            .manual-modal-container {
+                background: #18191f;
+                border: 1px solid #2a75d3;
+                border-radius: 16px;
+                width: 1150px;
+                max-width: 95%;
+                height: 85vh;
+                display: flex;
+                flex-direction: column;
+                box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(42, 117, 211, 0.25);
+                overflow: hidden;
+                animation: modalAppear 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+
+            @keyframes modalAppear {
+                from {
+                    opacity: 0;
+                    transform: scale(0.96);
+                }
+
+                to {
+                    opacity: 1;
+                    transform: scale(1);
+                }
+            }
+
+            .manual-modal-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 16px 24px;
+                background: #111216;
+                border-bottom: 1px solid #282a36;
+            }
+
+            .manual-modal-body {
+                display: flex;
+                flex: 1;
+                overflow: hidden;
+                height: calc(100% - 60px);
+            }
+
+            .manual-modal-left {
+                flex: 3;
+                padding: 20px;
+                display: flex;
+                flex-direction: column;
+                border-right: 1px solid #282a36;
+                overflow: hidden;
+            }
+
+            .manual-modal-right {
+                flex: 2;
+                padding: 20px;
+                display: flex;
+                flex-direction: column;
+                background: #131419;
+                overflow: hidden;
+            }
+
+            .search-controls {
+                display: flex;
+                gap: 12px;
+                margin-bottom: 16px;
+            }
+
+            .search-input-wrapper {
+                flex: 1;
+                position: relative;
+            }
+
+            .search-input-wrapper input {
+                width: 100%;
+                background: #20222a;
+                border: 1px solid #3c4052;
+                border-radius: 8px;
+                color: #fff;
+                padding: 10px 14px;
+                font-size: 14px;
+                outline: none;
+                transition: all 0.2s ease;
+                box-sizing: border-box;
+            }
+
+            .search-input-wrapper input:focus {
+                border-color: #2a75d3;
+                box-shadow: 0 0 0 3px rgba(42, 117, 211, 0.25);
+                background: #242731;
+            }
+
+            .multiplier-wrapper {
+                width: 180px;
+                display: flex;
+                align-items: center;
+                background: #20222a;
+                border: 1px solid #3c4052;
+                border-radius: 8px;
+                padding: 2px 10px;
+                box-sizing: border-box;
+            }
+
+            .multiplier-wrapper label {
+                font-size: 11px;
+                color: #8f95b2;
+                margin-right: 8px;
+                white-space: nowrap;
+            }
+
+            .multiplier-wrapper input {
+                width: 100%;
+                background: transparent;
+                border: none;
+                color: #00b894;
+                font-weight: bold;
+                font-size: 15px;
+                outline: none;
+                text-align: right;
+            }
+
+            .db-table-container {
+                flex: 1;
+                overflow-y: auto;
+                border: 1px solid #282a36;
+                border-radius: 8px;
+                background: #111216;
+            }
+
+            .db-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 12px;
+            }
+
+            .db-table th {
+                position: sticky;
+                top: 0;
+                background: #1e2029;
+                color: #8f95b2;
+                font-weight: 600;
+                text-align: left;
+                padding: 10px 12px;
+                border-bottom: 2px solid #282a36;
+                z-index: 10;
+            }
+
+            .db-table td {
+                padding: 10px 12px;
+                border-bottom: 1px solid #20222a;
+                color: #e2e4f0;
+                vertical-align: middle;
+            }
+
+            .db-table tr:hover {
+                background: #1a1b24;
+            }
+
+            .qty-control {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+
+            .btn-qty {
+                width: 24px;
+                height: 24px;
+                border-radius: 4px;
+                border: none;
+                font-weight: bold;
+                font-size: 14px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: opacity 0.15s ease, transform 0.1s ease;
+            }
+
+            .btn-qty:active {
+                transform: scale(0.9);
+            }
+
+            .btn-minus {
+                background: #e17055;
+                color: white;
+            }
+
+            .btn-plus {
+                background: #20bf6b;
+                color: white;
+            }
+
+            .qty-input {
+                width: 36px;
+                background: #20222a;
+                border: 1px solid #3c4052;
+                border-radius: 4px;
+                color: white;
+                text-align: center;
+                font-weight: bold;
+                padding: 3px 0;
+                font-size: 12px;
+                outline: none;
+            }
+
+            .btn-row-add {
+                background: #2a75d3;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 5px 10px;
+                font-size: 11px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.2s ease;
+            }
+
+            .btn-row-add:hover {
+                background: #3a8df3;
+            }
+
+            .cart-header {
+                font-size: 15px;
+                font-weight: bold;
+                color: #2a75d3;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 1px solid #282a36;
+                padding-bottom: 10px;
+                margin-bottom: 12px;
+            }
+
+            .cart-items-container {
+                flex: 1;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                margin-bottom: 16px;
+                padding-right: 4px;
+            }
+
+            .cart-item-row {
+                background: #1c1e24;
+                border: 1px solid #282a36;
+                border-radius: 8px;
+                padding: 10px 12px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                transition: border-color 0.2s ease;
+            }
+
+            .cart-item-row:hover {
+                border-color: #3b3f54;
+            }
+
+            .cart-item-main {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+            }
+
+            .cart-item-name {
+                font-size: 12px;
+                font-weight: 600;
+                color: #fff;
+                flex: 1;
+                padding-right: 8px;
+            }
+
+            .cart-item-qty-price {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 11px;
+                color: #a0a5c1;
+                border-top: 1px dashed #282a36;
+                padding-top: 6px;
+                margin-top: 2px;
+            }
+
+            .cart-item-remove {
+                background: none;
+                border: none;
+                color: #ff5555;
+                cursor: pointer;
+                font-size: 14px;
+                padding: 0 4px;
+            }
+
+            .cart-summary {
+                background: #111216;
+                border: 1px solid #282a36;
+                border-radius: 8px;
+                padding: 14px;
+                margin-bottom: 16px;
+            }
+
+            .summary-row {
+                display: flex;
+                justify-content: space-between;
+                font-size: 12px;
+                margin-bottom: 6px;
+                color: #8f95b2;
+            }
+
+            .summary-row.total {
+                border-top: 1px solid #282a36;
+                padding-top: 8px;
+                margin-top: 8px;
+                font-size: 14px;
+                font-weight: bold;
+                color: #00b894;
+            }
+
+            .cart-actions {
+                display: flex;
+                gap: 12px;
+            }
+
+            .btn-cart-submit {
+                flex: 2;
+                background: #20bf6b;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 12px;
+                font-weight: bold;
+                font-size: 14px;
+                cursor: pointer;
+                transition: background 0.2s ease, transform 0.1s ease;
+                box-shadow: 0 4px 12px rgba(32, 191, 107, 0.2);
+            }
+
+            .btn-cart-submit:hover {
+                background: #26de81;
+            }
+
+            .btn-cart-submit:active {
+                transform: translateY(1px);
+            }
+
+            .btn-cart-clear {
+                flex: 1;
+                background: #eb3b5a;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 12px;
+                font-weight: bold;
+                font-size: 14px;
+                cursor: pointer;
+                transition: background 0.2s ease;
+            }
+
+            .btn-cart-clear:hover {
+                background: #fc5c65;
+            }
         </style>
 
         <div class="manual-modal-container">
@@ -1242,11 +1302,14 @@
                 <div class="manual-modal-left">
                     <div class="search-controls">
                         <div class="search-input-wrapper">
-                            <input type="text" id="manualSearchInput" placeholder="Wyszukaj po nazwie systemowej lub Intranet ID... (np. pompka bravo)" oninput="refreshManualPanel()">
+                            <input type="text" id="manualSearchInput"
+                                placeholder="Wyszukaj po nazwie systemowej lub Intranet ID... (np. pompka bravo)"
+                                oninput="refreshManualPanel()">
                         </div>
                         <div class="multiplier-wrapper">
                             <label for="manualMultiplierInput">MNOŻNIK:</label>
-                            <input type="number" id="manualMultiplierInput" value="2.8" min="0.1" step="0.1" oninput="refreshManualPanel()">
+                            <input type="number" id="manualMultiplierInput" value="2.8" min="0.1" step="0.1"
+                                oninput="refreshManualPanel()">
                         </div>
                     </div>
 
@@ -1272,7 +1335,9 @@
                 <div class="manual-modal-right">
                     <div class="cart-header">
                         <span>📦 Koszyk zamówienia (draft)</span>
-                        <span id="cartCountBadge" style="background:#2a75d3; color:white; font-size:11px; padding:2px 6px; border-radius:10px; font-weight:bold;">0 szt</span>
+                        <span id="cartCountBadge"
+                            style="background:#2a75d3; color:white; font-size:11px; padding:2px 6px; border-radius:10px; font-weight:bold;">0
+                            szt</span>
                     </div>
 
                     <div class="cart-items-container" id="manualAddSelected">

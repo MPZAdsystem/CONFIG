@@ -12,6 +12,8 @@ function removeLegAccessory(pIdx, aIdx, legAccIdx, e) {
     e.stopPropagation(); plan[pIdx].accessories[aIdx].accessories.splice(legAccIdx, 1); render();
 }
 
+// Kod do wklejenia wewnątrz funkcji executePDFGeneration()
+
 async function executePDFGeneration() {
     isPdfGenerating = true; cancelPdfGeneration = false;
     document.getElementById('pdfModalButtons').style.display = 'none';
@@ -28,14 +30,12 @@ async function executePDFGeneration() {
     const isAgency = document.getElementById('pdfClientType').value === 'agency';
 
     let rate = 1; let sym = '€';
-    // Pobieramy nowe kursy lub wracamy do domyślnych w razie błędu
     const dynamicPln = window.KURS_PLN_DYNAMIC || 4.20;
     const dynamicUsd = window.KURS_USD_DYNAMIC || 1.15;
 
     if (curCode === 'PLN') { rate = dynamicPln; sym = 'PLN'; }
     else if (curCode === 'USD') { rate = dynamicUsd; sym = '$'; }
 
-    // Poprawiona nazwa kolumny: Wymiary / Wytyczne
     const i18n = {
         PL: { title: "OFERTA I SPECYFIKACJA", proj: "Projekt:", date: "Data:", client: "Klient:", cost: "KOSZTORYS I ZESTAWIENIE", elem: "Element", dim: "Wymiary / Wytyczne", qty: "Ilość", priceBase: "Cena katalogowa", priceDisc: isAgency ? "Cena po rabacie" : "Cena", val: "Wartość", total: "ŁĄCZNIE (Netto):", savings: "Oszczędzasz:", tech: "SPECYFIKACJA TECHNICZNA", layout: "RZUT Z GÓRY (LAYOUT 2D)" },
         ENG: { title: "OFFER & SPECIFICATION", proj: "Project:", date: "Date:", client: "Client:", cost: "BILL OF MATERIALS", elem: "Item", dim: "Dimensions / Guidelines", qty: "Qty", priceBase: "List Price", priceDisc: isAgency ? "Discounted Price" : "Unit Price", val: "Total", total: "GRAND TOTAL (Net):", savings: "You save:", tech: "TECHNICAL SPECIFICATION", layout: "TOP VIEW (2D LAYOUT)" }
@@ -72,9 +72,16 @@ async function executePDFGeneration() {
     const applyDarkThemeAndFooter = (pageNo, sectionTitle) => {
         doc.setFillColor(18, 18, 18); doc.rect(0, 0, pageWidth, pageHeight, 'F');
         doc.setDrawColor(255, 0, 128); doc.setLineWidth(1.5); doc.line(15, 25, pageWidth - 15, 25);
-        doc.setFontSize(22); doc.setTextColor(255, 255, 255); doc.text(sectionTitle, 15, 20);
+        doc.setFontSize(22); doc.text(sectionTitle, 15, 20);
         doc.setLineWidth(0.5); doc.line(15, pageHeight - 15, pageWidth - 15, pageHeight - 15);
         doc.setFontSize(8); doc.setTextColor(100, 100, 100); doc.text("EXPO Builder PRO - Generated Automatically", 15, pageHeight - 10); doc.text(`${pageNo}`, pageWidth - 20, pageHeight - 10);
+    };
+
+    const applyLightThemeAndFooter = (pageNo, sectionTitle) => {
+        doc.setDrawColor(42, 117, 211); doc.setLineWidth(1.5); doc.line(15, 25, pageWidth - 15, 25);
+        doc.setFontSize(22); doc.setTextColor(33, 33, 33); doc.text(sectionTitle, 15, 20);
+        doc.setLineWidth(0.5); doc.setDrawColor(220, 220, 220); doc.line(15, pageHeight - 15, pageWidth - 15, pageHeight - 15);
+        doc.setFontSize(8); doc.setTextColor(120, 120, 120); doc.text("EXPO Builder PRO - Generated Automatically", 15, pageHeight - 10); doc.text(`${pageNo}`, pageWidth - 20, pageHeight - 10);
     };
 
     if (!was3DMode) {
@@ -87,9 +94,6 @@ async function executePDFGeneration() {
     }
     if (cancelPdfGeneration) return abortPdf();
 
-    // ===================================
-    // ZDJĘCIA 3D 
-    // ===================================
     let imgDataLeft, imgDataRight;
     const pdfScreenshotMode = document.getElementById('pdfScreenshotMode').value;
 
@@ -97,18 +101,14 @@ async function executePDFGeneration() {
         document.getElementById('pdfModalOverlay').style.display = 'none';
         try {
             const images = await captureManualScreenshots();
-            imgDataLeft = images[0];
-            imgDataRight = images[1];
+            imgDataLeft = images[0]; imgDataRight = images[1];
             document.getElementById('pdfModalOverlay').style.display = 'flex';
-        } catch (e) {
-            return abortPdf();
-        }
+        } catch (e) { return abortPdf(); }
     } else {
         updateProgress(30, "📸 Renderowanie rzutu lewego (-30°)...");
         showDimensions = false; isBlueprintMode = false; update3DScene();
         await new Promise(r => setTimeout(r, 400));
         imgDataLeft = autoFrameForScreenshot(-30);
-
         updateProgress(45, "📸 Renderowanie rzutu prawego (+30°)...");
         imgDataRight = autoFrameForScreenshot(30);
     }
@@ -116,12 +116,8 @@ async function executePDFGeneration() {
     let ratio = renderer.domElement.height / renderer.domElement.width;
     if (cancelPdfGeneration) return abortPdf();
 
-    // ===================================
-    // RZUT TECHNICZNY 3D
-    // ===================================
     updateProgress(60, "📐 Przeliczanie inżynierii technicznej...");
     showDimensions = true; isBlueprintMode = true; update3DScene();
-
     scene.background = new THREE.Color(0x000000);
     if (windowGridHelper) windowGridHelper.visible = false;
     sceneObjects.forEach(obj => {
@@ -137,31 +133,9 @@ async function executePDFGeneration() {
     showDimensions = originalDimState; isBlueprintMode = originalBlueState;
     if (is3DMode) update3DScene();
 
-    // ===================================
-    // STRONA 1: OKŁADKA + DWA UJĘCIA
-    // ===================================
-    updateProgress(75, "🖨️ Formatowanie dokumentu PDF...");
-    applyDarkThemeAndFooter(1, t.title);
-    doc.setFontSize(11); doc.setTextColor(200, 200, 200);
-    doc.text(`${t.proj} ${pName}`, 15, 33); doc.text(`${t.date} ${new Date().toLocaleDateString()}`, 15, 39); doc.text(`${t.client} ${cName}`, pageWidth - 80, 33);
-
-    if (imgDataLeft && imgDataRight) {
-        const imgW = 180;
-        let imgH = imgW * ratio;
-        if (imgH > 105) imgH = 105;
-
-        doc.addImage(imgDataLeft, 'JPEG', 15, 45, imgW, imgH);
-        doc.setDrawColor(255, 0, 128); doc.setLineWidth(0.3); doc.rect(15, 45, imgW, imgH, 'S');
-
-        const secondY = 45 + imgH + 8;
-        doc.addImage(imgDataRight, 'JPEG', 15, secondY, imgW, imgH);
-        doc.rect(15, secondY, imgW, imgH, 'S');
-    }
-
-    // ===================================
-    // STRONA 2: TABELA CENOWA (I KOLEJNE)
-    // ===================================
-    doc.addPage(); applyDarkThemeAndFooter(2, t.cost);
+    // ========================================================
+    // AGREGACJA DANYCH KOSZTORYSOWYCH (WSPÓLNA DLA OBU SYSTEMÓW)
+    // ========================================================
     let tableData = []; let totalFinal = 0; let totalBase = 0;
     const discountPercent = parseFloat(document.getElementById('discountInput').value) || 0;
 
@@ -174,106 +148,171 @@ async function executePDFGeneration() {
 
         totalBase += (baseRowUnit * item.qty); totalFinal += (finalRowUnit * item.qty);
 
-        // --- NOWA LOGIKA WYMIARÓW I LINKU ---
         let dimText = "-";
-
         let baseObj = Object.values(DB).find(e => e.name === name);
         if (baseObj && (baseObj.width || baseObj.length)) {
             dimText = `${baseObj.width || baseObj.length} x ${baseObj.height || baseObj.depth} cm`;
         }
-
-        // Jeśli moduł znajduje się w bazie guidelineLinks, zawsze na sztywno dajemy mu przycisk.
         if (typeof guidelineLinks !== 'undefined' && guidelineLinks[name]) {
             dimText = "Pobierz wytyczne";
         }
-        // ------------------------------------
 
         if (isAgency) tableData.push([itemName, dimText, `${item.qty}`, `${baseRowUnit.toFixed(2)} ${sym}`, `${finalRowUnit.toFixed(2)} ${sym}`, `${(finalRowUnit * item.qty).toFixed(2)} ${sym}`]);
         else tableData.push([itemName, dimText, `${item.qty}`, `${finalRowUnit.toFixed(2)} ${sym}`, `${(finalRowUnit * item.qty).toFixed(2)} ${sym}`]);
     }
 
-    const origAddPage = doc.addPage.bind(doc);
-    doc.addPage = function (...args) {
-        origAddPage(...args);
-        applyDarkThemeAndFooter(doc.internal.getNumberOfPages(), t.cost);
-    };
+    // Pobranie aktywnej struktury szaty graficznej z DOM
+    const selectedTheme = document.getElementById('pdfTheme') ? document.getElementById('pdfTheme').value : 'white';
 
-    doc.autoTable({
-        startY: 35, head: isAgency ? [[t.elem, t.dim, t.qty, t.priceBase, t.priceDisc, t.val]] : [[t.elem, t.dim, t.qty, t.priceDisc, t.val]],
-        body: tableData, theme: 'grid', styles: { font: 'Roboto', fontSize: 10, cellPadding: 4, valign: 'middle' },
-        headStyles: { fillColor: [255, 0, 128], textColor: 255, fontStyle: 'normal', halign: 'center' }, bodyStyles: { fillColor: [30, 30, 30], textColor: 230, lineColor: [50, 50, 50] }, alternateRowStyles: { fillColor: [22, 22, 22] },
-        columnStyles: isAgency ? { 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right', textColor: [0, 210, 255] }, 5: { halign: 'right' } } : { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+    if (selectedTheme === 'white') {
+        // ========================================================
+        // ⚪ SZATA GRAFICZNA: BIAŁA (START OD DANYCH KLIENTA + CENNIK)
+        // ========================================================
+        updateProgress(75, "🖨️ Formatowanie dokumentu PDF (Szata Biała)...");
+        applyLightThemeAndFooter(1, t.title);
 
-        didParseCell: (data) => {
-            if (data.section === 'body' && data.column.index === 1 && data.cell.text[0] === "Pobierz wytyczne") {
-                data.cell.styles.textColor = [0, 210, 255];
-                data.cell.styles.fontStyle = 'bold';
-            }
-        },
-        didDrawCell: (data) => {
-            if (data.section === 'body' && data.column.index === 1 && data.cell.text[0] === "Pobierz wytyczne") {
-                const rowItemName = data.row.raw[0];
-                const origName = Object.keys(globalCounts).find(n => {
-                    let loc = (lang !== 'PL') ? (Object.values(DB).find(e => e.name === n)?.labelEN || n) : n;
-                    return loc === rowItemName;
-                }) || rowItemName;
+        doc.setFontSize(11); doc.setTextColor(50, 50, 50);
+        doc.text(`${t.proj} ${pName}`, 15, 33);
+        doc.text(`${t.date} ${new Date().toLocaleDateString()}`, 15, 39);
+        doc.text(`${t.client} ${cName}`, pageWidth - 80, 33);
 
-                if (typeof guidelineLinks !== 'undefined' && guidelineLinks[origName]) {
-                    doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: guidelineLinks[origName] });
+        const origAddPage = doc.addPage.bind(doc);
+        doc.addPage = function (...args) {
+            origAddPage(...args);
+            applyLightThemeAndFooter(doc.internal.getNumberOfPages(), t.cost);
+        };
+
+        doc.autoTable({
+            startY: 46, head: isAgency ? [[t.elem, t.dim, t.qty, t.priceBase, t.priceDisc, t.val]] : [[t.elem, t.dim, t.qty, t.priceDisc, t.val]],
+            body: tableData, theme: 'grid', styles: { font: 'Roboto', fontSize: 10, cellPadding: 4, valign: 'middle' },
+            headStyles: { fillColor: [42, 117, 211], textColor: 255, fontStyle: 'normal', halign: 'center' },
+            bodyStyles: { fillColor: [255, 255, 255], textColor: 33, lineColor: [220, 220, 220] },
+            alternateRowStyles: { fillColor: [248, 249, 250] },
+            columnStyles: isAgency ? { 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right', textColor: [42, 117, 211] }, 5: { halign: 'right' } } : { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+            didParseCell: (data) => {
+                if (data.section === 'body' && data.column.index === 1 && data.cell.text[0] === "Pobierz wytyczne") {
+                    data.cell.styles.textColor = [0, 110, 220]; data.cell.styles.fontStyle = 'bold';
+                }
+            },
+            didDrawCell: (data) => {
+                if (data.section === 'body' && data.column.index === 1 && data.cell.text[0] === "Pobierz wytyczne") {
+                    const rowItemName = data.row.raw[0];
+                    const origName = Object.keys(globalCounts).find(n => {
+                        let loc = (lang !== 'PL') ? (Object.values(DB).find(e => e.name === n)?.labelEN || n) : n;
+                        return loc === rowItemName;
+                    }) || rowItemName;
+                    if (typeof guidelineLinks !== 'undefined' && guidelineLinks[origName]) {
+                        doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: guidelineLinks[origName] });
+                    }
                 }
             }
+        });
+
+        doc.addPage = origAddPage;
+
+        let finalY = doc.lastAutoTable.finalY + 15;
+        if (finalY > 260) { doc.addPage(); applyLightThemeAndFooter(doc.internal.getNumberOfPages(), t.cost); finalY = 35; }
+
+        doc.setFontSize(14); doc.setTextColor(33, 33, 33); doc.text(t.total, 110, finalY);
+        doc.setTextColor(42, 117, 211); doc.text(`${totalFinal.toFixed(2)} ${sym}`, 160, finalY);
+        if (isAgency && (totalBase > totalFinal)) {
+            doc.setFontSize(11); doc.setTextColor(120, 120, 120); doc.text(t.savings, 110, finalY + 8);
+            doc.setTextColor(42, 117, 211); doc.text(`${(totalBase - totalFinal).toFixed(2)} ${sym}`, 160, finalY + 8);
         }
-    });
 
-    doc.addPage = origAddPage;
+        // Pozostałe strony puste - przygotowane do późniejszego developmentu
+        doc.addPage(); applyLightThemeAndFooter(doc.internal.getNumberOfPages(), t.tech);
+        doc.addPage(); applyLightThemeAndFooter(doc.internal.getNumberOfPages(), t.layout);
 
-    let finalY = doc.lastAutoTable.finalY + 15;
-    if (finalY > 260) { doc.addPage(); applyDarkThemeAndFooter(doc.internal.getNumberOfPages(), t.cost); finalY = 35; }
+    } else {
+        // ========================================================
+        // ⬛ SZATA GRAFICZNA: CZARNA + MAGENTA (UJĘCIA 3D NA Karcie 1)
+        // ========================================================
+        updateProgress(75, "🖨️ Formatowanie dokumentu PDF (Szata Ciemna)...");
+        applyDarkThemeAndFooter(1, t.title);
+        doc.setFontSize(11); doc.setTextColor(200, 200, 200);
+        doc.text(`${t.proj} ${pName}`, 15, 33); doc.text(`${t.date} ${new Date().toLocaleDateString()}`, 15, 39); doc.text(`${t.client} ${cName}`, pageWidth - 80, 33);
 
-    doc.setFontSize(14); doc.setTextColor(230, 230, 230); doc.text(t.total, 110, finalY);
-    doc.setTextColor(255, 0, 128); doc.text(`${totalFinal.toFixed(2)} ${sym}`, 160, finalY);
-    if (isAgency && (totalBase > totalFinal)) {
-        doc.setFontSize(11); doc.setTextColor(150, 150, 150); doc.text(t.savings, 110, finalY + 8);
-        doc.setTextColor(0, 210, 255); doc.text(`${(totalBase - totalFinal).toFixed(2)} ${sym}`, 160, finalY + 8);
+        if (imgDataLeft && imgDataRight) {
+            const imgW = 180; let imgH = imgW * ratio; if (imgH > 105) imgH = 105;
+            doc.addImage(imgDataLeft, 'JPEG', 15, 45, imgW, imgH);
+            doc.setDrawColor(255, 0, 128); doc.setLineWidth(0.3); doc.rect(15, 45, imgW, imgH, 'S');
+            const secondY = 45 + imgH + 8;
+            doc.addImage(imgDataRight, 'JPEG', 15, secondY, imgW, imgH);
+            doc.rect(15, secondY, imgW, imgH, 'S');
+        }
+
+        doc.addPage(); applyDarkThemeAndFooter(2, t.cost);
+
+        const origAddPage = doc.addPage.bind(doc);
+        doc.addPage = function (...args) {
+            origAddPage(...args); applyDarkThemeAndFooter(doc.internal.getNumberOfPages(), t.cost);
+        };
+
+        doc.autoTable({
+            startY: 35, head: isAgency ? [[t.elem, t.dim, t.qty, t.priceBase, t.priceDisc, t.val]] : [[t.elem, t.dim, t.qty, t.priceDisc, t.val]],
+            body: tableData, theme: 'grid', styles: { font: 'Roboto', fontSize: 10, cellPadding: 4, valign: 'middle' },
+            headStyles: { fillColor: [255, 0, 128], textColor: 255, fontStyle: 'normal', halign: 'center' }, bodyStyles: { fillColor: [30, 30, 30], textColor: 230, lineColor: [50, 50, 50] }, alternateRowStyles: { fillColor: [22, 22, 22] },
+            columnStyles: isAgency ? { 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right', textColor: [255, 0, 128] }, 5: { halign: 'right' } } : { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+            didParseCell: (data) => {
+                if (data.section === 'body' && data.column.index === 1 && data.cell.text[0] === "Pobierz wytyczne") {
+                    data.cell.styles.textColor = [0, 210, 255]; data.cell.styles.fontStyle = 'bold';
+                }
+            },
+            didDrawCell: (data) => {
+                if (data.section === 'body' && data.column.index === 1 && data.cell.text[0] === "Pobierz wytyczne") {
+                    const rowItemName = data.row.raw[0];
+                    const origName = Object.keys(globalCounts).find(n => {
+                        let loc = (lang !== 'PL') ? (Object.values(DB).find(e => e.name === n)?.labelEN || n) : n;
+                        return loc === rowItemName;
+                    }) || rowItemName;
+                    if (typeof guidelineLinks !== 'undefined' && guidelineLinks[origName]) {
+                        doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: guidelineLinks[origName] });
+                    }
+                }
+            }
+        });
+
+        doc.addPage = origAddPage;
+
+        let finalY = doc.lastAutoTable.finalY + 15;
+        if (finalY > 260) { doc.addPage(); applyDarkThemeAndFooter(doc.internal.getNumberOfPages(), t.cost); finalY = 35; }
+
+        doc.setFontSize(14); doc.setTextColor(230, 230, 230); doc.text(t.total, 110, finalY);
+        doc.setTextColor(255, 0, 128); doc.text(`${totalFinal.toFixed(2)} ${sym}`, 160, finalY);
+        if (isAgency && (totalBase > totalFinal)) {
+            doc.setFontSize(11); doc.setTextColor(150, 150, 150); doc.text(t.savings, 110, finalY + 8);
+            doc.setTextColor(0, 210, 255); doc.text(`${(totalBase - totalFinal).toFixed(2)} ${sym}`, 160, finalY + 8);
+        }
+
+        if (imgDataTech) {
+            doc.addPage(); applyDarkThemeAndFooter(doc.internal.getNumberOfPages(), t.tech);
+            const maxW = 180; let finalH = maxW * ratio; if (finalH > 220) finalH = 220;
+            doc.addImage(imgDataTech, 'JPEG', 15, 35, maxW, finalH);
+            doc.setDrawColor(255, 0, 128); doc.setLineWidth(0.3); doc.rect(15, 35, maxW, finalH, 'S');
+        }
+
+        updateProgress(85, "🗺️ Skanowanie czystej architektury 2D...");
+        const hiddenElements = document.querySelectorAll('.light-toggle-btn, .studio-light-2d, .turn-toggle-btn, .acc-controls, .sego-joint');
+        hiddenElements.forEach(el => el.style.display = 'none');
+
+        await new Promise(r => setTimeout(r, 200));
+        if (cancelPdfGeneration) { hiddenElements.forEach(el => el.style.display = ''); return abortPdf(); }
+
+        doc.addPage(); applyDarkThemeAndFooter(doc.internal.getNumberOfPages(), t.layout);
+        try {
+            const stageDiv = document.getElementById('stage');
+            const canvas2D = await html2canvas(stageDiv, { scale: 2, backgroundColor: "#121212" });
+            const ratio2D = canvas2D.height / canvas2D.width;
+            const maxW = 180; let finalH = maxW * ratio2D; if (finalH > 220) finalH = 220;
+            doc.addImage(canvas2D.toDataURL('image/png'), 'PNG', 15, 35, maxW, finalH);
+            doc.setDrawColor(255, 0, 128); doc.rect(15, 35, maxW, finalH, 'S');
+        } catch (e) { doc.text("Brak danych rzutu 2D.", 15, 45); }
+        hiddenElements.forEach(el => el.style.display = '');
     }
-
-    // ===================================
-    // STRONA 3: RZUT TECHNICZNY 3D
-    // ===================================
-    if (imgDataTech) {
-        doc.addPage(); applyDarkThemeAndFooter(doc.internal.getNumberOfPages(), t.tech);
-        const maxW = 180; let finalH = maxW * ratio; if (finalH > 220) finalH = 220;
-        doc.addImage(imgDataTech, 'JPEG', 15, 35, maxW, finalH);
-        doc.setDrawColor(0, 210, 255); doc.setLineWidth(0.3); doc.rect(15, 35, maxW, finalH, 'S');
-    }
-
-    // ===================================
-    // STRONA 4: CZYSTY RZUT 2D Z WYMIARAMI
-    // ===================================
-    updateProgress(85, "🗺️ Skanowanie czystej architektury 2D...");
-
-    const hiddenElements = document.querySelectorAll('.light-toggle-btn, .studio-light-2d, .turn-toggle-btn, .acc-controls, .sego-joint');
-    hiddenElements.forEach(el => el.style.display = 'none');
-
-    await new Promise(r => setTimeout(r, 200));
-    if (cancelPdfGeneration) { hiddenElements.forEach(el => el.style.display = ''); return abortPdf(); }
-
-    doc.addPage(); applyDarkThemeAndFooter(doc.internal.getNumberOfPages(), t.layout);
-    try {
-        const stageDiv = document.getElementById('stage');
-        const canvas2D = await html2canvas(stageDiv, { scale: 2, backgroundColor: "#121212" });
-
-        const ratio2D = canvas2D.height / canvas2D.width;
-        const maxW = 180; let finalH = maxW * ratio2D; if (finalH > 220) finalH = 220;
-        doc.addImage(canvas2D.toDataURL('image/png'), 'PNG', 15, 35, maxW, finalH);
-        doc.setDrawColor(255, 0, 128); doc.rect(15, 35, maxW, finalH, 'S');
-    } catch (e) { doc.text("Brak danych rzutu 2D.", 15, 45); }
-
-    hiddenElements.forEach(el => el.style.display = '');
 
     updateProgress(100, "✅ Operacja zakończona! Pobieranie pliku...");
     await new Promise(r => setTimeout(r, 300));
-
     doc.save(`Oferta_EXPO_${pName.replace(/\s+/g, '_')}.pdf`);
     abortPdf();
 }
