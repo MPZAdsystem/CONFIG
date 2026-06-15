@@ -1701,6 +1701,10 @@ async function analyzeGraphicQuality(imgData, canvas) {
     }
 
 }
+/**
+ * Asynchroniczny silnik automatycznego dobierania i losowania grafik teksturalnych
+ * z obsługą łączenia płaszczyzn (Plane-Aware Aspect Ratio Solver) dla Mateusza.
+ */
 async function randomizeProjectGraphics(btnElement) {
     const btn = btnElement || document.getElementById('btnRandomizeGraphics');
 
@@ -1792,6 +1796,7 @@ async function randomizeProjectGraphics(btnElement) {
                 };
             });
 
+        // Inteligentny Solver Proporcji z uwzględnieniem tolerancji
         const findBestGraphic = (targetW, targetH) => {
             const targetRatio = targetW / targetH;
 
@@ -1806,6 +1811,7 @@ async function randomizeProjectGraphics(btnElement) {
                 if (diff < minDiff) minDiff = diff;
             });
 
+            // Bezpiecznik: jeśli rozjazd proporcji przekracza 0.4, ładujemy zieleń
             if (minDiff > 0.4) {
                 return greenFallback;
             }
@@ -1813,6 +1819,48 @@ async function randomizeProjectGraphics(btnElement) {
             const bestMatches = pool.filter(g => Math.abs(Math.abs(g.ratio - targetRatio) - minDiff) < 0.02);
             return bestMatches[Math.floor(Math.random() * bestMatches.length)];
         };
+
+        // ═══════════════════════════════════════════════════════════
+        // MAPOWANIE CIĄGÓW ŚCIAN DLA SYSTEMU FOLDABLE (BEZSZWOWE PANORAMY)
+        // ═══════════════════════════════════════════════════════════
+        let foldableWidthMap = {};
+        if (currentSystem === 'foldable' && typeof foldablePlanes !== 'undefined') {
+            foldablePlanes.forEach(plane => {
+                if (!plane.walls || plane.walls.length === 0) return;
+
+                // Obliczamy całkowity wymiar połączonej ściany
+                let totalLen = plane.walls.reduce((sum, w) => sum + w.length, 0);
+                let leaderItem = plane.walls[0];
+                let originalPlanItem = plan[leaderItem.planIndex];
+                let fSet = (originalPlanItem && originalPlanItem.foldableSettings) ? originalPlanItem.foldableSettings : { div: 'seamless', side: 'double', hasPrint: false };
+
+                // Domyślnie flagujemy wszystkie moduły w płaszczyźnie jako ukryte/podrzędne
+                plane.walls.forEach(w => {
+                    foldableWidthMap[w.planIndex] = { w: w.length, h: w.height, skip: true };
+                });
+
+                if (fSet.div === 'seamless') {
+                    // Tylko lider ciągu otrzymuje pełnowymiarową grafikę panoramy!
+                    foldableWidthMap[leaderItem.planIndex] = { w: totalLen, h: leaderItem.height, skip: false };
+                }
+                else if (fSet.div === 'half') {
+                    let len1 = Math.ceil((totalLen / 2) / 100) * 100;
+                    if (len1 >= totalLen) len1 = totalLen / 2;
+                    let len2 = totalLen - len1;
+
+                    let MathMidIndex = Math.floor(plane.walls.length / 2);
+                    let wall2Ref = plane.walls[MathMidIndex] || leaderItem;
+
+                    foldableWidthMap[leaderItem.planIndex] = { w: len1, h: leaderItem.height, skip: false };
+                    foldableWidthMap[wall2Ref.planIndex] = { w: len2, h: wall2Ref.height, skip: false };
+                }
+                else if (fSet.div === 'single') {
+                    plane.walls.forEach(w => {
+                        foldableWidthMap[w.planIndex] = { w: w.length, h: w.height, skip: false };
+                    });
+                }
+            });
+        }
 
         let updatedAny = false;
 
@@ -1830,11 +1878,26 @@ async function randomizeProjectGraphics(btnElement) {
                 }
             }
         } else {
-            plan.forEach(item => {
+            plan.forEach((item, index) => {
                 if (item.type === 'wall') {
-                    const gFront = findBestGraphic(item.length, item.height);
+                    let targetW = item.length;
+                    let targetH = item.height;
+
+                    // Nadpisanie wymiarów celowych dla bezszwowych grafik Foldable
+                    if (currentSystem === 'foldable' && foldableWidthMap[index]) {
+                        if (foldableWidthMap[index].skip) {
+                            // Czyszczenie tekstur podrzędnych modułów ramy
+                            item.textureFront = null; item.textureFrontName = null;
+                            item.textureBack = null; item.textureBackName = null;
+                            return;
+                        }
+                        targetW = foldableWidthMap[index].w;
+                        targetH = foldableWidthMap[index].h;
+                    }
+
+                    const gFront = findBestGraphic(targetW, targetH);
                     if (gFront) { item.textureFront = gFront.url; item.textureFrontName = gFront.name; updatedAny = true; }
-                    const gBack = findBestGraphic(item.length, item.height);
+                    const gBack = findBestGraphic(targetW, targetH);
                     if (gBack) { item.textureBack = gBack.url; item.textureBackName = gBack.name; }
                 }
                 else if (item.type === 'freestanding' || item.type === 'freestanding_s') {
