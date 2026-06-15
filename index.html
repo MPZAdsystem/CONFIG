@@ -768,6 +768,7 @@
                 onclick="clearWydruki()">
                 🗑 Wyczyść
             </button>
+<button id="btnRandomizeGraphics" class="fab-main" onclick="randomizeProjectGraphics(this)" style="display: none; background: linear-gradient(135deg, #10ac84, #1dd1a1); color: #000; border: none; font-weight: bold; box-shadow: 0 4px 15px rgba(29, 209, 161, 0.4);">🎲 Losuj grafiki</button>
         </div>
 
         <div id="instructionsModal" class="ticketModal"
@@ -886,12 +887,11 @@
                 🌙 Tryb Nocny (Realistyczny)
             </button>
         </div>
-
-        <div id="graphicsPanel" class="graphics-panel">
-            <h3>Zarządzanie Grafikami</h3>
-            <div id="graphicsListContent">Nanieś tekstury na ściany (Drag & Drop), aby zobaczyć listę.</div>
-            <a href="LINK_DO_PDF" target="_blank" class="btn-guidelines">📥 Ściągnij wytyczne DTP (PDF)</a>
-        </div>
+<div id="graphicsPanel" class="graphics-panel">
+    <h3>Zarządzanie Grafikami</h3>
+    <div id="graphicsListContent">Nanieś tekstury na ściany (Drag & Drop), aby zobaczyć listę.</div>
+        <a href="LINK_DO_PDF" target="_blank" class="btn-guidelines">📥 Ściągnij wytyczne DTP (PDF)</a>
+</div>
 
         <!-- BLUEPRINT LEGEND PANEL (outside graphicsPanel) -->
         <div id="blueprintLegend" style="display:none;">

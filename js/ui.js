@@ -147,14 +147,14 @@ function removePolishAccents(str) {
 function scoreResult(name, intranetId, queryWords) {
     let nameNorm = removePolishAccents(name.toLowerCase());
     let idNorm = String(intranetId || '').toLowerCase();
-    
+
     let matchedAll = true;
     let score = 0;
-    
+
     for (let word of queryWords) {
         let indexInName = nameNorm.indexOf(word);
         let indexInId = idNorm.indexOf(word);
-        
+
         if (indexInName !== -1) {
             if (indexInName === 0 || nameNorm.charAt(indexInName - 1) === ' ') {
                 score += 15;
@@ -169,13 +169,13 @@ function scoreResult(name, intranetId, queryWords) {
             break;
         }
     }
-    
+
     if (!matchedAll) return -1;
     score -= (name.length * 0.01);
     return score;
 }
 
-window.changeDraftQty = function(key, delta, itemData) {
+window.changeDraftQty = function (key, delta, itemData) {
     if (!window.manualCartDraft[key]) {
         if (delta <= 0) return;
         window.manualCartDraft[key] = {
@@ -186,7 +186,7 @@ window.changeDraftQty = function(key, delta, itemData) {
             isKaseton: itemData.isKaseton
         };
     }
-    
+
     window.manualCartDraft[key].qty += delta;
     if (window.manualCartDraft[key].qty <= 0) {
         delete window.manualCartDraft[key];
@@ -194,7 +194,7 @@ window.changeDraftQty = function(key, delta, itemData) {
     refreshManualPanel();
 };
 
-window.setDraftQty = function(key, val, itemData) {
+window.setDraftQty = function (key, val, itemData) {
     let qty = parseInt(val) || 0;
     if (qty <= 0) {
         delete window.manualCartDraft[key];
@@ -213,19 +213,19 @@ window.setDraftQty = function(key, val, itemData) {
     refreshManualPanel();
 };
 
-window.removeFromDraft = function(key) {
+window.removeFromDraft = function (key) {
     delete window.manualCartDraft[key];
     refreshManualPanel();
 };
 
-window.submitManualCart = function() {
+window.submitManualCart = function () {
     for (let k in manualItems) {
         delete manualItems[k];
     }
-    
+
     const multInput = document.getElementById('manualMultiplierInput');
     const currentMultiplier = multInput ? parseFloat(multInput.value) : 2.8;
-    
+
     for (let k in window.manualCartDraft) {
         let draftItem = window.manualCartDraft[k];
         if (draftItem.qty > 0) {
@@ -240,30 +240,30 @@ window.submitManualCart = function() {
             };
         }
     }
-    
+
     closeManualModal();
     if (typeof render === 'function') render();
 };
 
-window.clearManualCart = function() {
+window.clearManualCart = function () {
     window.manualCartDraft = {};
     refreshManualPanel();
 };
 
 function calculateWydrukArea(name) {
-  if (!name || typeof name !== 'string') return null;
-  if (!/wydruk/i.test(name)) return null;
-  const normalized = name.replace(/,/g, '.');
-  const match = normalized.match(/(\d+(?:\.\d+)?)\s*[xX]\s*(\d+(?:\.\d+)?)/);
-  if (!match) return null;
-  const val1 = parseFloat(match[1]);
-  const val2 = parseFloat(match[2]);
-  if (isNaN(val1) || isNaN(val2)) return null;
-  if (val1 <= 15 && val2 <= 15) {
-    return val1 * val2;
-  } else {
-    return (val1 / 100) * (val2 / 100);
-  }
+    if (!name || typeof name !== 'string') return null;
+    if (!/wydruk/i.test(name)) return null;
+    const normalized = name.replace(/,/g, '.');
+    const match = normalized.match(/(\d+(?:\.\d+)?)\s*[xX]\s*(\d+(?:\.\d+)?)/);
+    if (!match) return null;
+    const val1 = parseFloat(match[1]);
+    const val2 = parseFloat(match[2]);
+    if (isNaN(val1) || isNaN(val2)) return null;
+    if (val1 <= 15 && val2 <= 15) {
+        return val1 * val2;
+    } else {
+        return (val1 / 100) * (val2 / 100);
+    }
 }
 
 function refreshManualPanel() {
@@ -273,13 +273,13 @@ function refreshManualPanel() {
 
     const searchInput = document.getElementById('manualSearchInput');
     const multInput = document.getElementById('manualMultiplierInput');
-    
+
     const query = searchInput ? searchInput.value.trim() : '';
     const multiplier = multInput ? parseFloat(multInput.value) || 2.8 : 2.8;
     const ratePLN = window.KURS_PLN_DYNAMIC || 4.20;
 
     const allProducts = {};
-    
+
     if (typeof DB !== 'undefined') {
         for (let key in DB) {
             let dbItem = DB[key];
@@ -299,7 +299,7 @@ function refreshManualPanel() {
             }
         }
     }
-    
+
     if (window.KASETON_PRICES) {
         for (let name in window.KASETON_PRICES) {
             let kItem = window.KASETON_PRICES[name];
@@ -343,7 +343,7 @@ function refreshManualPanel() {
             let p = res.product;
             let draftItem = window.manualCartDraft[p.key];
             let qty = draftItem ? draftItem.qty : 0;
-            
+
             // Check if it's a print and extract area
             let isWydrukWithArea = false;
             let wydrukArea = 0;
@@ -372,7 +372,7 @@ function refreshManualPanel() {
                 plnMargin = clientPrice / multiplier;
                 hasNoPrice = false;
             }
-            
+
             let actionHtml = '';
             let itemDataJson = JSON.stringify({
                 name: p.name,
@@ -392,9 +392,9 @@ function refreshManualPanel() {
                     </div>
                 `;
             }
-            
+
             let categoryLabelHtml = p.category ? `<br><span style="font-size:10px; color:#8f95b2; font-style:italic;">${p.category}</span>` : '';
-            
+
             let priceLabelHtml = '';
             let marginLabelHtml = '';
             let rowStyle = '';
@@ -428,7 +428,7 @@ function refreshManualPanel() {
     let totalClientPriceSum = 0;
     let totalQty = 0;
     let hasMissingPriceInCart = false;
-    
+
     let draftKeys = Object.keys(window.manualCartDraft);
     if (draftKeys.length === 0) {
         cartHtml = `
@@ -440,7 +440,7 @@ function refreshManualPanel() {
     } else {
         draftKeys.forEach(key => {
             let item = window.manualCartDraft[key];
-            
+
             // Check if it's a print and extract area
             let isWydrukWithArea = false;
             let wydrukArea = 0;
@@ -473,7 +473,7 @@ function refreshManualPanel() {
             }
 
             let lineMargin = plnMargin * item.qty;
-            
+
             if (itemHasNoPrice) {
                 hasMissingPriceInCart = true;
             } else {
@@ -481,14 +481,14 @@ function refreshManualPanel() {
                 totalClientPriceSum += lineClientPrice;
             }
             totalQty += item.qty;
-            
+
             let itemDataJson = JSON.stringify({
                 name: item.name,
                 plnMargin: plnMargin,
                 intranetId: item.intranetId,
                 isKaseton: item.isKaseton
             }).replace(/"/g, '&quot;');
-            
+
             let cartRowStyle = '';
             let cartPriceHtml = '';
             if (itemHasNoPrice) {
@@ -525,12 +525,12 @@ function refreshManualPanel() {
             `;
         });
     }
-    
+
     selectedContainer.innerHTML = cartHtml;
-    
+
     const badge = document.getElementById('cartCountBadge');
     if (badge) badge.innerText = `${totalQty} szt`;
-    
+
     const marginSpan = document.getElementById('summaryMarginTotal');
     if (marginSpan) {
         marginSpan.innerText = `${totalMarginSum.toFixed(2)} PLN`;
@@ -538,7 +538,7 @@ function refreshManualPanel() {
             marginSpan.innerHTML += ` <span style="color:#ff3333; font-size:10px;">(+brak)</span>`;
         }
     }
-    
+
     const priceSpan = document.getElementById('summaryPriceTotal');
     if (priceSpan) {
         priceSpan.innerText = `${totalClientPriceSum.toFixed(2)} PLN`;
@@ -658,7 +658,7 @@ function toggleAutoRotate() {
 function openManualModal() {
     window.manualCartDraft = {};
     const ratePLN = window.KURS_PLN_DYNAMIC || 4.20;
-    
+
     if (typeof manualItems !== 'undefined') {
         for (let key in manualItems) {
             let item = manualItems[key];
@@ -687,10 +687,10 @@ function openManualModal() {
             }
         }
     }
-    
+
     const searchInput = document.getElementById('manualSearchInput');
     if (searchInput) searchInput.value = '';
-    
+
     const multInput = document.getElementById('manualMultiplierInput');
     if (multInput) {
         let firstKey = Object.keys(window.manualCartDraft)[0];
@@ -700,7 +700,7 @@ function openManualModal() {
             multInput.value = '2.8';
         }
     }
-    
+
     const modal = document.getElementById('manualModalOverlay');
     if (modal) modal.style.display = 'flex';
     if (typeof refreshManualPanel === 'function') refreshManualPanel();
@@ -724,6 +724,10 @@ function toggle3D() {
         const btnRadial = document.getElementById('btnToggleRadial');
         if (btnRadial) {
             btnRadial.style.display = (is3DMode && currentSystem === 'foldable') ? 'flex' : 'none';
+        }
+        const btnRand = document.getElementById('btnRandomizeGraphics');
+        if (btnRand) {
+            btnRand.style.display = (is3DMode && !['wydruki', 'mframe_pallet'].includes(currentSystem)) ? 'flex' : 'none';
         }
 
         if (is3DMode) {
@@ -762,7 +766,7 @@ function toggle3D() {
 }
 
 // Global helper: re-populates legend panel after programmatic update3DScene() calls
-window.refreshBlueprintLegend = function() {
+window.refreshBlueprintLegend = function () {
     const panel = document.getElementById('blueprintLegend');
     if (!panel) return;
     if (!showDimensions || !window.blueprintLegendItems || !window.blueprintDimensions) {
@@ -779,12 +783,12 @@ window.refreshBlueprintLegend = function() {
     }
     const listEl = document.getElementById('blList');
     if (listEl) {
-        listEl.innerHTML = window.blueprintLegendItems.map(function(item) {
+        listEl.innerHTML = window.blueprintLegendItems.map(function (item) {
             return '<div class="bl-item">' +
                 '<div class="bl-badge" style="background:' + item.color + ';">' + item.num + '</div>' +
                 '<div class="bl-item-text">' +
-                    '<div class="bl-item-name">' + item.name + '</div>' +
-                    (item.desc ? '<div class="bl-item-desc">' + item.desc + '</div>' : '') +
+                '<div class="bl-item-name">' + item.name + '</div>' +
+                (item.desc ? '<div class="bl-item-desc">' + item.desc + '</div>' : '') +
                 '</div></div>';
         }).join('');
     }
@@ -914,6 +918,14 @@ function switchSystem(newSystem) {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // 🔥 NOWOŚĆ: Automatyczna kontrola widoczności przycisku losowania grafik
+    // ═══════════════════════════════════════════════════════════
+    const btnRand = document.getElementById('btnRandomizeGraphics');
+    if (btnRand) {
+        btnRand.style.display = (is3DMode && !['wydruki', 'mframe_pallet'].includes(newSystem)) ? 'flex' : 'none';
+    }
+
     const allPanels = document.querySelectorAll('.system-ui-panel');
     allPanels.forEach(p => p.style.display = 'none');
 
@@ -956,7 +968,6 @@ function switchSystem(newSystem) {
         }, 400);
     }
 }
-
 function toggleRadialMenus() {
     radialMenusVisible = !radialMenusVisible;
     const layer = document.getElementById('foldable-ui-layer');
