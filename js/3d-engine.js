@@ -603,6 +603,7 @@ function update3DScene() {
 
   if (!scene) return;
 
+  // 1. CZYSZCZENIE BUFORÓW I GEOMETRII (Twój obecny kod)
   sceneObjects.forEach(obj => {
     if (scene) scene.remove(obj);
     if (arGroup) arGroup.remove(obj);
@@ -618,6 +619,7 @@ function update3DScene() {
             if (m) m.dispose();
           });
         } else {
+          doc.material.dispose(); // Poprawka ewentualnego typo (było obj.material.dispose)
           obj.material.dispose();
         }
       }
@@ -644,6 +646,25 @@ function update3DScene() {
       });
     }
   });
+
+  // =========================================================================
+  // 🔄 TUTAJ ZNAJDUJE SIĘ TWÓJ ISTNIEJĄCY KOD ODBUDOWYWANIA SCENY (REBUILD)
+  // (Pętla typu plan.forEach(item => { ... }) generująca ramy na nowo)
+  // =========================================================================
+
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // 🔥 KROK 2: Automatyczna kontrola widoczności anatomii wewnętrznej SEGO
+  // ═════════════════════════════════════════════════════════════════════════
+  if (typeof scene !== 'undefined' && scene) {
+    scene.traverse(obj => {
+      if (obj.userData && obj.userData.isInternalAnatomy) {
+        // Wyświetlaj rury i paski LED tylko, gdy włączony jest tryb pokazywania wymiarów
+        obj.visible = (typeof showDimensions !== 'undefined' && showDimensions);
+      }
+    });
+  }
+  ;
 
   sceneObjects = [];
   window.activeLedMaterials = [];
@@ -976,34 +997,18 @@ function update3DScene() {
           group.add(edges);
 
           // POPRAWKA: Dynamiczne generowanie wewnętrznych rur i krzyżaków MP w trybie inżynieryjnym
-          if (isBlueprintMode) {
-            const mpSupportMat = new THREE.MeshStandardMaterial({ color: 0x00e5ff, metalness: 0.8, roughness: 0.2, transparent: true, opacity: 0.7 });
-            const mpCrossMat = new THREE.MeshStandardMaterial({ color: 0xff0080, metalness: 0.8, roughness: 0.2, transparent: true, opacity: 0.8 });
-
-            // Automatyczne dzielenie długich ścian na sekcje modularne ~100cm
-            const numModules = Math.ceil(item.length / 100);
-            const segmentWidth = item.length / numModules;
-
-            for (let m = 0; m < numModules; m++) {
-              const modLeftX = -item.length / 2 + m * segmentWidth;
-              const modCenterX = modLeftX + segmentWidth / 2;
-
-              // Profil pionowy: SEGO MP support
-              const vSupGeom = new THREE.BoxGeometry(3, item.height - 12, 2);
-              const vSupMesh = new THREE.Mesh(vSupGeom, mpSupportMat);
-              vSupMesh.position.set(modCenterX, item.height / 2, 0);
-              group.add(vSupMesh);
-
-              // Profil poziomy krzyżaka: SEGO MP cross
-              const hCrossGeom = new THREE.BoxGeometry(segmentWidth - 12, 3, 2);
-              const hCrossMesh = new THREE.Mesh(hCrossGeom, mpCrossMat);
-              hCrossMesh.position.set(modCenterX, item.height / 2, 0);
-              group.add(hCrossMesh);
-            }
+          // ═════════════════════════════════════════════════════════════════════════
+          // 🔥 NOWOŚĆ: Wywołanie zaawansowanej geometrii anatomii wewnętrznej SEGO
+          // ═════════════════════════════════════════════════════════════════════════
+          if (typeof currentSystem !== 'undefined' && (currentSystem === 'SEGO' || currentSystem === 'SEGO_2_0')) {
+            buildSegoInternalAnatomy(item, group);
           }
         }
       }
 
+      // ─────────────────────────────────────────────────────────────────
+      // BLOK ETYKIETOWANIA I GENEROWANIA MIAR (Niezmieniony potok)
+      // ─────────────────────────────────────────────────────────────────
       const labelCol = (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? "#8bb3ff" : "#ffffff";
       const labelSprite = createTextSprite(item.labelEN || item.name, labelCol, 16);
       labelSprite.position.set(0, item.height + 25, 0);
@@ -1011,13 +1016,14 @@ function update3DScene() {
       group.add(createLeaderLine(item.height, item.height + 15, 0));
 
       if (typeof showDimensions !== 'undefined' && showDimensions) {
-        const p1W = new THREE.Vector3(-item.length / 2, 0, 0); const p2W = new THREE.Vector3(item.length / 2, 0, 0);
+        const p1W = new THREE.Vector3(-item.length / 2, 0, 0);
+        const p2W = new THREE.Vector3(item.length / 2, 0, 0);
         group.add(addDimension3D(p1W, p2W, `${item.length} cm`, new THREE.Vector3(0, -25, 0), 0.5));
       }
+
       scene.add(group);
       sceneObjects.push(group);
     }
-
     else if (item.type === 'daszek') {
       const group = new THREE.Group();
       group.position.set(item.cx, globalElevationY, item.cz);
@@ -1402,7 +1408,84 @@ function update3DScene() {
   }
   if (human3DModel) {
     human3DModel.position.x = humanPos.x;
-    human3DModel.position.z = humanPos.z;
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // 🔥 NOWOŚĆ: Automatyczna kontrola widoczności + Dynamiczna Legenda SEGO (Wzór LMD)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  // 1. Czyszczenie starego panelu legendy przed ewentualną przebudową
+  const oldLegend = document.getElementById('segoBlueprintLegend');
+  if (oldLegend) oldLegend.remove();
+
+  // 2. Kontrola widoczności obiektów 3D anatomii wewnętrznej w scenie WebGL
+  if (typeof scene !== 'undefined' && scene) {
+    scene.traverse(obj => {
+      if (obj.userData && obj.userData.isInternalAnatomy) {
+        obj.visible = (typeof showDimensions !== 'undefined' && showDimensions);
+      }
+    });
+  }
+
+  // 3. Wstrzykiwanie panelu legendy inżynieryjnej do interfejsu (lewy górny róg)
+  if (typeof showDimensions !== 'undefined' && showDimensions && window.blueprintLegendItems && window.blueprintLegendItems.length > 0) {
+    const container3D = document.getElementById('stage3DContainer');
+    if (container3D) {
+      const legendDiv = document.createElement('div');
+      legendDiv.id = 'segoBlueprintLegend';
+
+      // Nadanie panelowi luksusowego, ciemnego wyglądu z cienką ramką
+      legendDiv.style.cssText = `
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        background: rgba(10, 10, 20, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        padding: 15px;
+        color: #ffffff;
+        font-family: 'Segoe UI', sans-serif;
+        font-size: 12px;
+        z-index: 100;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+        pointer-events: none;
+        min-width: 260px;
+        backdrop-filter: blur(4px);
+      `;
+
+      // Nagłówek legendy technicznej
+      let legendHTML = '<div style="font-weight: bold; font-size: 13px; margin-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.15); padding-bottom: 6px; letter-spacing: 1px; color: #8bb3ff;">LEGENDA TECHNICZNA</div>';
+
+      // Dynamiczne mapowanie zarejestrowanych punktów konstrukcyjnych SEGO
+      window.blueprintLegendItems.forEach(item => {
+        legendHTML += `
+          <div style="display: flex; align-items: flex-start; margin-bottom: 10px;">
+            <div style="
+              background: ${item.color};
+              color: #000000;
+              font-weight: bold;
+              border-radius: 50%;
+              width: 18px;
+              height: 18px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 10px;
+              margin-right: 12px;
+              flex-shrink: 0;
+              box-shadow: 0 0 8px ${item.color}88;
+            ">${item.num}</div>
+            <div>
+              <div style="font-weight: bold; color: #ffffff; font-size: 11px; letter-spacing: 0.5px;">${item.name.toUpperCase()}</div>
+              <div style="color: #aaaaaa; font-size: 10.5px; margin-top: 2px; line-height: 1.2;">${item.desc}</div>
+            </div>
+          </div>
+        `;
+      });
+
+      legendDiv.innerHTML = legendHTML;
+      container3D.appendChild(legendDiv);
+    }
   }
 }
 

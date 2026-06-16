@@ -14,6 +14,20 @@ function removeLegAccessory(pIdx, aIdx, legAccIdx, e) {
 
 // Kod do wklejenia wewnątrz funkcji executePDFGeneration()
 
+function removeSuspended(index, e) { e.stopPropagation(); plan.splice(index, 1); render(); }
+
+function toggleAccDir(planIndex, accIndex, e) { e.stopPropagation(); plan[planIndex].accessories[accIndex].dir *= -1; render(); }
+
+function removeAccessory(planIndex, accIndex, e) { e.stopPropagation(); plan[planIndex].accessories.splice(accIndex, 1); render(); }
+
+function toggleLegAccDir(pIdx, aIdx, legAccIdx, e) {
+    e.stopPropagation(); plan[pIdx].accessories[aIdx].accessories[legAccIdx].dir *= -1; render();
+}
+
+function removeLegAccessory(pIdx, aIdx, legAccIdx, e) {
+    e.stopPropagation(); plan[pIdx].accessories[aIdx].accessories.splice(legAccIdx, 1); render();
+}
+
 async function executePDFGeneration() {
     isPdfGenerating = true; cancelPdfGeneration = false;
     document.getElementById('pdfModalButtons').style.display = 'none';
@@ -51,6 +65,7 @@ async function executePDFGeneration() {
     const abortPdf = () => {
         if (!was3DMode) { is3DMode = false; container3D.style.display = 'none'; container3D.style.opacity = '1'; }
         showDimensions = originalDimState; isBlueprintMode = originalBlueState;
+        if (human3DModel) human3DModel.visible = true; // Przywrócenie człowieka w razie awarii
         if (is3DMode) update3DScene();
         isPdfGenerating = false;
         document.getElementById('pdfModalOverlay').style.display = 'none'; document.getElementById('pdfModalButtons').style.display = 'flex'; document.getElementById('pdfLoadingStatus').style.display = 'none';
@@ -72,7 +87,7 @@ async function executePDFGeneration() {
     const applyDarkThemeAndFooter = (pageNo, sectionTitle) => {
         doc.setFillColor(18, 18, 18); doc.rect(0, 0, pageWidth, pageHeight, 'F');
         doc.setDrawColor(255, 0, 128); doc.setLineWidth(1.5); doc.line(15, 25, pageWidth - 15, 25);
-        doc.setFontSize(22); doc.text(sectionTitle, 15, 20);
+        doc.setFontSize(22); doc.setTextColor(255, 255, 255); doc.text(sectionTitle, 15, 20);
         doc.setLineWidth(0.5); doc.line(15, pageHeight - 15, pageWidth - 15, pageHeight - 15);
         doc.setFontSize(8); doc.setTextColor(100, 100, 100); doc.text("EXPO Builder PRO - Generated Automatically", 15, pageHeight - 10); doc.text(`${pageNo}`, pageWidth - 20, pageHeight - 10);
     };
@@ -109,6 +124,7 @@ async function executePDFGeneration() {
         showDimensions = false; isBlueprintMode = false; update3DScene();
         await new Promise(r => setTimeout(r, 400));
         imgDataLeft = autoFrameForScreenshot(-30);
+
         updateProgress(45, "📸 Renderowanie rzutu prawego (+30°)...");
         imgDataRight = autoFrameForScreenshot(30);
     }
@@ -116,8 +132,17 @@ async function executePDFGeneration() {
     let ratio = renderer.domElement.height / renderer.domElement.width;
     if (cancelPdfGeneration) return abortPdf();
 
+    // ===================================
+    // RZUT TECHNICZNY 3D (ZABEZPIECZONY I OCZYSZCZONY)
+    // ===================================
     updateProgress(60, "📐 Przeliczanie inżynierii technicznej...");
-    showDimensions = true; isBlueprintMode = true; update3DScene();
+    showDimensions = true; isBlueprintMode = true;
+
+    // ZMIANA: Ukrywamy trójwymiarowy model człowieka przed wygenerowaniem rzutu technicznego
+    if (human3DModel) human3DModel.visible = false;
+
+    update3DScene();
+
     scene.background = new THREE.Color(0x000000);
     if (windowGridHelper) windowGridHelper.visible = false;
     sceneObjects.forEach(obj => {
@@ -125,17 +150,19 @@ async function executePDFGeneration() {
         if (tBox.getSize(new THREE.Vector3()).x > 3000) obj.visible = false;
     });
 
-    await new Promise(r => setTimeout(r, 400));
+    // ZMIANA: Wydłużone opóźnienie do 800ms, aby sterownik GPU zdążył przetworzyć geometrię dużych projektów
+    await new Promise(r => setTimeout(r, 800));
     let imgDataTech = autoFrameForScreenshot(-30);
+
+    // Przywracamy widoczność człowieka dla sceny runtime
+    if (human3DModel) human3DModel.visible = true;
+
     if (cancelPdfGeneration) return abortPdf();
 
     if (!was3DMode) { is3DMode = false; container3D.style.display = 'none'; container3D.style.opacity = '1'; }
     showDimensions = originalDimState; isBlueprintMode = originalBlueState;
     if (is3DMode) update3DScene();
 
-    // ========================================================
-    // AGREGACJA DANYCH KOSZTORYSOWYCH (WSPÓLNA DLA OBU SYSTEMÓW)
-    // ========================================================
     let tableData = []; let totalFinal = 0; let totalBase = 0;
     const discountPercent = parseFloat(document.getElementById('discountInput').value) || 0;
 
@@ -161,12 +188,11 @@ async function executePDFGeneration() {
         else tableData.push([itemName, dimText, `${item.qty}`, `${finalRowUnit.toFixed(2)} ${sym}`, `${(finalRowUnit * item.qty).toFixed(2)} ${sym}`]);
     }
 
-    // Pobranie aktywnej struktury szaty graficznej z DOM
     const selectedTheme = document.getElementById('pdfTheme') ? document.getElementById('pdfTheme').value : 'white';
 
     if (selectedTheme === 'white') {
         // ========================================================
-        // ⚪ SZATA GRAFICZNA: BIAŁA (START OD DANYCH KLIENTA + CENNIK)
+        // ⚪ SZATA GRAFICZNA: BIAŁA
         // ========================================================
         updateProgress(75, "🖨️ Formatowanie dokumentu PDF (Szata Biała)...");
         applyLightThemeAndFooter(1, t.title);
@@ -188,7 +214,7 @@ async function executePDFGeneration() {
             headStyles: { fillColor: [42, 117, 211], textColor: 255, fontStyle: 'normal', halign: 'center' },
             bodyStyles: { fillColor: [255, 255, 255], textColor: 33, lineColor: [220, 220, 220] },
             alternateRowStyles: { fillColor: [248, 249, 250] },
-            columnStyles: isAgency ? { 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right', textColor: [42, 117, 211] }, 5: { halign: 'right' } } : { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+            columnStyles: isAgency ? { 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right', textColor: [42, 117, 211] }, 6: { halign: 'right' } } : { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
             didParseCell: (data) => {
                 if (data.section === 'body' && data.column.index === 1 && data.cell.text[0] === "Pobierz wytyczne") {
                     data.cell.styles.textColor = [0, 110, 220]; data.cell.styles.fontStyle = 'bold';
@@ -220,13 +246,71 @@ async function executePDFGeneration() {
             doc.setTextColor(42, 117, 211); doc.text(`${(totalBase - totalFinal).toFixed(2)} ${sym}`, 160, finalY + 8);
         }
 
-        // Pozostałe strony puste - przygotowane do późniejszego developmentu
-        doc.addPage(); applyLightThemeAndFooter(doc.internal.getNumberOfPages(), t.tech);
-        doc.addPage(); applyLightThemeAndFooter(doc.internal.getNumberOfPages(), t.layout);
+        // ═══════════════════════════════════════════════════════════
+        // ⚪ STRONA 2: DWUKOLUMNOWY UKŁAD KAFELKOWY 2x2
+        // ═══════════════════════════════════════════════════════════
+        updateProgress(85, "🗺️ Generowanie rysunków technicznych i kafelków wizualizacji...");
+        doc.addPage();
+        applyLightThemeAndFooter(doc.internal.getNumberOfPages(), lang === 'PL' ? "WIZUALIZACJE I SPECYFIKACJE" : "VISUALIZATIONS & SPECS");
+
+        const tileW = 86; const tileH = 60;
+        const leftX = 15; const rightX = 109;
+
+        doc.setDrawColor(210, 215, 225); doc.setLineWidth(0.3);
+        doc.setFontSize(10); doc.setTextColor(80, 80, 80);
+
+        if (imgDataLeft && imgDataRight) {
+            doc.addImage(imgDataLeft, 'JPEG', leftX, 35, tileW, tileH);
+            doc.rect(leftX, 35, tileW, tileH, 'S');
+            doc.text(lang === 'PL' ? "Wizualizacja poglądowa 1" : "Perspective View 1", leftX, 35 + tileH + 5);
+
+            doc.addImage(imgDataRight, 'JPEG', rightX, 35, tileW, tileH);
+            doc.rect(rightX, 35, tileW, tileH, 'S');
+            doc.text(lang === 'PL' ? "Wizualizacja poglądowa 2" : "Perspective View 2", rightX, 35 + tileH + 5);
+        }
+
+        const bottomY = 112;
+
+        // ZMIANA: Dodano klasę '.man2DElement' (ikonka człowieka) do selektora ukrywania warstw interfejsu rzutu 2D
+        const hiddenElements = document.querySelectorAll('.light-toggle-btn, .studio-light-2d, .turn-toggle-btn, .acc-controls, .sego-joint, #man2DElement');
+        hiddenElements.forEach(el => el.style.display = 'none');
+
+        const blueprintStyle = document.createElement('style');
+        blueprintStyle.id = 'pdf-temp-blueprint-style';
+        blueprintStyle.innerHTML = `
+            #stage, #stage * { 
+                color: #ffffff !important; 
+                border-color: #ffffff !important; 
+                box-shadow: none !important;
+                text-shadow: none !important;
+            }
+            .total-dim-2d { border-color: #ffffff !important; color: #ffffff !important; }
+        `;
+        document.head.appendChild(blueprintStyle);
+
+        await new Promise(r => setTimeout(r, 150));
+        if (cancelPdfGeneration) { blueprintStyle.remove(); hiddenElements.forEach(el => el.style.display = ''); return abortPdf(); }
+
+        try {
+            const stageDiv = document.getElementById('stage');
+            const canvas2D = await html2canvas(stageDiv, { scale: 2, backgroundColor: "#0a1a35" });
+            doc.addImage(canvas2D.toDataURL('image/png'), 'PNG', leftX, bottomY, tileW, tileH);
+            doc.setDrawColor(210, 215, 225); doc.rect(leftX, bottomY, tileW, tileH, 'S');
+            doc.text(t.layout, leftX, bottomY + tileH + 5);
+        } catch (e) { doc.text("Brak danych rzutu 2D.", leftX, bottomY + 15); }
+
+        blueprintStyle.remove();
+        hiddenElements.forEach(el => el.style.display = '');
+
+        if (imgDataTech) {
+            doc.addImage(imgDataTech, 'JPEG', rightX, bottomY, tileW, tileH);
+            doc.setDrawColor(210, 215, 225); doc.rect(rightX, bottomY, tileW, tileH, 'S');
+            doc.text(lang === 'PL' ? "Rzut techniczny z wymiarami" : "Technical Dimensions 3D", rightX, bottomY + tileH + 5);
+        }
 
     } else {
         // ========================================================
-        // ⬛ SZATA GRAFICZNA: CZARNA + MAGENTA (UJĘCIA 3D NA Karcie 1)
+        // ⬛ SZATA GRAFICZNA: CZARNA
         // ========================================================
         updateProgress(75, "🖨️ Formatowanie dokumentu PDF (Szata Ciemna)...");
         applyDarkThemeAndFooter(1, t.title);
@@ -289,7 +373,7 @@ async function executePDFGeneration() {
             doc.addPage(); applyDarkThemeAndFooter(doc.internal.getNumberOfPages(), t.tech);
             const maxW = 180; let finalH = maxW * ratio; if (finalH > 220) finalH = 220;
             doc.addImage(imgDataTech, 'JPEG', 15, 35, maxW, finalH);
-            doc.setDrawColor(255, 0, 128); doc.setLineWidth(0.3); doc.rect(15, 35, maxW, finalH, 'S');
+            doc.setDrawColor(255, 0, 128); doc.rect(15, 35, maxW, finalH, 'S');
         }
 
         updateProgress(85, "🗺️ Skanowanie czystej architektury 2D...");
@@ -311,8 +395,57 @@ async function executePDFGeneration() {
         hiddenElements.forEach(el => el.style.display = '');
     }
 
-    updateProgress(100, "✅ Operacja zakończona! Pobieranie pliku...");
-    await new Promise(r => setTimeout(r, 300));
+    // =========================================================================
+    // AUTOMATYCZNE STAPLOWANIE ZAŁĄCZNIKA OFERTY Z GITHUB RAW
+    // =========================================================================
+    updateProgress(90, "📥 Pobieranie oficjalnych załączników firmy z repozytorium...");
+    const GITHUB_APPEND_URL = "https://raw.githubusercontent.com/MPZAdsystem/CONFIG/main/Oferta/OF%20SEGO.pdf.pdf";
+
+    try {
+        const response = await fetch(GITHUB_APPEND_URL, { cache: "no-store" });
+        if (!response.ok) throw new Error(`Serwer GitHub zwrócił status: ${response.status}`);
+
+        const externalBuffer = await response.arrayBuffer();
+        const externalPdf = await pdfjsLib.getDocument({ data: new Uint8Array(externalBuffer) }).promise;
+        const totalAppendPages = externalPdf.numPages;
+
+        for (let pageNum = 1; pageNum <= totalAppendPages; pageNum++) {
+            const currentProgress = 90 + Math.round((pageNum / totalAppendPages) * 9);
+            updateProgress(currentProgress, `📄 Scalanie dokumentów: Dołączanie strony ${pageNum} z ${totalAppendPages}...`);
+
+            const page = await externalPdf.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 2.0 });
+
+            const appendCanvas = document.createElement('canvas');
+            appendCanvas.width = viewport.width;
+            appendCanvas.height = viewport.height;
+            const appendCtx = appendCanvas.getContext('2d');
+
+            await page.render({ canvasContext: appendCtx, viewport: viewport }).promise;
+            const pageImgData = appendCanvas.toDataURL('image/jpeg', 0.92);
+
+            doc.addPage();
+            doc.addImage(pageImgData, 'JPEG', 0, 0, pageWidth, pageHeight);
+
+            appendCanvas.width = 0;
+            appendCanvas.height = 0;
+        }
+        updateProgress(100, "✅ Operacja zakończona! Pobieranie pliku...");
+        await new Promise(r => setTimeout(r, 300));
+
+    } catch (appendError) {
+        console.error("[Architect Fallback] Wykryto błąd podsystemu staplowania:", appendError);
+        doc.addPage();
+        doc.setFont("Roboto", "normal");
+        doc.setFontSize(13);
+        doc.setTextColor(235, 59, 90);
+        doc.text("⚠️ [BŁĄD SYSTEMU INTEGRACJI DOKUMENTÓW]:", 15, 45);
+        doc.setFontSize(10);
+        doc.setTextColor(170, 170, 170);
+        doc.text(`Nie udało się automatycznie dołączyć pliku specyfikacji handlowej: OF SEGO.pdf.pdf`, 15, 53);
+        doc.text(`Powód anomalii: ${appendError.message}`, 15, 59);
+    }
+
     doc.save(`Oferta_EXPO_${pName.replace(/\s+/g, '_')}.pdf`);
     abortPdf();
 }
@@ -336,7 +469,6 @@ async function sendTicket() {
     btn.disabled = true;
 
     try {
-
         const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyXwLqKo2jTxHt4NryosZkRbwS2h4Ze8mLTWMR1xYX1Pt6UWAgexk4am4-sI8lA3rJEVg/exec';
 
         await fetch(SCRIPT_URL, {
