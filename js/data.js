@@ -170,6 +170,20 @@ let computed3DData = [];
 
 // --- 🛒 LOGIKA DODAWANIA RĘCZNEGO ---
 
+// Intranet WBS Input Rule:
+// If target element === '#ordp_count' or '#sto_ch', stringify float values using .replace('.', ',').
+window.formatWBSValue = function (value, targetElement) {
+    if (targetElement === '#ordp_count' || targetElement === '#sto_ch') {
+        if (typeof value === 'number') {
+            return value.toString().replace('.', ',');
+        }
+        if (typeof value === 'string') {
+            return value.replace('.', ',');
+        }
+    }
+    return value;
+};
+
 let manualItems = {};
 
 let lastSystemForManual = null;
@@ -218,8 +232,8 @@ let cancelPdfGeneration = false;
 
 let mixer; // Mikser animacji Three.js
 let humanPos = { x: 0, z: 350 }; // Pozycja człowieka w układzie 3D (x, z)
-let human3DModel = null;     // Referencja do obiektu 3D człowieka
-let isDraggingHuman3D = false; // Flaga: czy trwa przeciąganie ludzika w trybie 3D
+let human3DModel = null; // Referencja do obiektu 3D człowieka
+let isDraggingHuman3D = false; // Flaga przeciągania modelu ludzkiego w 3D
 
 
 const clock = new THREE.Clock(); // Zegar odmierzający czas między klatkami
@@ -928,6 +942,8 @@ const KASETON_NEON_MAP = {
 
     'LMS': { neon: '#00ff88', alpha: 'rgba(0, 255, 136, @@)' },
 
+    'LMSM': { neon: '#00ff88', alpha: 'rgba(0, 255, 136, @@)' },
+
     'DTF': { neon: '#ff6600', alpha: 'rgba(255, 102, 0, @@)' },
 
     'STF': { neon: '#ffcc00', alpha: 'rgba(255, 204, 0, @@)' },
@@ -944,7 +960,7 @@ const KASETON_NEON_MAP = {
 
 // Systems that have LED options (power supply + lighting)
 
-const KASETON_LED_SYSTEMS = ['LMD', 'LMS', 'CTF_LED', 'LCD_LMD'];
+const KASETON_LED_SYSTEMS = ['LMD', 'LMS', 'LMSM', 'CTF_LED', 'LCD_LMD'];
 
 // Close modal on backdrop click
 
@@ -1004,7 +1020,15 @@ const KASETON_WEIGHT_DATA = {
 
     LMS: { profile: 2.0, support: 0.6, accessories: 2.0, led: 0.2, feet: 1.0 },
 
-    LMSM: { profile: 1.3, support: 0.6, accessories: 2.0, led: 0.2, feet: 0 },
+    LMSM: {
+        profile: 1.3, support: 0.6, accessories: 2.0, led: 0.2, feet: 0,
+        getWeight: function(w, h) {
+            // w, h podane w metrach
+            const profileWeight = (2 * (w + h)) * 1.14;
+            const panelAndStabilizers = w * h * 0.45;
+            return parseFloat((profileWeight + panelAndStabilizers).toFixed(2));
+        }
+    },
 
     DTF: { profile: 2.4, support: 0.6, accessories: 2.0, led: 0.2, feet: 0 },
 
@@ -1013,6 +1037,19 @@ const KASETON_WEIGHT_DATA = {
     STFL: { profile: 2.0, support: 0.6, accessories: 2.0, led: 0.2, feet: 0 }
 
 };
+
+// Wstrzyknąć do istniejącego obiektu bazodanowego systemów profilowych
+window.PROFILE_DB = window.PROFILE_DB || {};
+window.PROFILE_DB["LMSM"] = {
+    depth: 6.0,
+    weightPerM: 1.14,
+    ledType: "SLIM_EDGE_24V",
+    maxLength: 600.0,
+    priceGroup: "SLIM",
+    skuBase: "ALU-060-SLIM"
+};
+
+window.KASETON_WEIGHT_DATA = KASETON_WEIGHT_DATA;
 
 const KASETON_PSU_WEIGHTS = {
 

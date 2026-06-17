@@ -46,13 +46,24 @@ function attemptLogin() {
     }
 
     // NOWE: Jeśli zaznaczono "Zapamiętaj mnie", zapisujemy rolę w przeglądarce
-    if (remember) localStorage.setItem('expoBuilderRole', currentUserRole);
+    if (remember) {
+        try {
+            localStorage.setItem('expoBuilderRole', currentUserRole);
+        } catch (e) {
+            console.warn("Storage item write blocked:", e);
+        }
+    }
     document.getElementById('loginOverlay').style.display = 'none';
     runFlavorLoading(() => { applyRolePermissions(); });
 }
 
 function checkSavedLogin() {
-    const savedRole = localStorage.getItem('expoBuilderRole');
+    let savedRole = null;
+    try {
+        savedRole = localStorage.getItem('expoBuilderRole');
+    } catch (e) {
+        console.warn("Storage read blocked:", e);
+    }
     if (savedRole) {
         currentUserRole = savedRole;
         document.getElementById('loginOverlay').style.display = 'none';
@@ -65,7 +76,11 @@ function checkSavedLogin() {
 }
 
 function logout() {
-    localStorage.removeItem('expoBuilderRole'); // Czyścimy pamięć
+    try {
+        localStorage.removeItem('expoBuilderRole'); // Czyścimy pamięć
+    } catch (e) {
+        console.warn("Storage remove blocked:", e);
+    }
     currentUserRole = null;
 
     // Czyścimy pola formularza
@@ -404,8 +419,13 @@ function refreshManualPanel() {
                 marginLabelHtml = `<span style="color:#ff3333; font-weight:bold;">Brak</span>`;
                 priceLabelHtml = `<span style="color:#ff3333; font-weight:bold;">Brak ceny w DB!</span>`;
             } else {
-                marginLabelHtml = `${plnMargin.toFixed(2)} zł`;
-                priceLabelHtml = `${clientPrice.toFixed(2)} zł`;
+                marginLabelHtml = `${plnMargin.toFixed(2).toString().replace('.', ',')} zł`;
+                priceLabelHtml = `${clientPrice.toFixed(2).toString().replace('.', ',')} zł`;
+            }
+
+            let skuDisplay = p.intranetId;
+            if (!skuDisplay) {
+                skuDisplay = '<span style="color:#ff3333; font-weight:bold;">Brak ERP-ERR</span>';
             }
 
             tableHtml += `
@@ -413,7 +433,7 @@ function refreshManualPanel() {
                     <td style="font-weight:600; color:#fff; text-align: left; vertical-align: middle;">
                         <span>${p.name}</span>${categoryLabelHtml}
                     </td>
-                    <td style="color:#a0a5c1; text-align: left;">${p.intranetId || '<span style="color:#555;">Brak</span>'}</td>
+                    <td style="color:#a0a5c1; text-align: left;">${skuDisplay}</td>
                     <td style="color:#00b894; font-weight:600; text-align: left;">${marginLabelHtml}</td>
                     <td style="color:#2a75d3; font-weight:bold; text-align: left;">${priceLabelHtml}</td>
                     <td style="text-align: center;">${actionHtml}</td>
@@ -428,6 +448,7 @@ function refreshManualPanel() {
     let totalClientPriceSum = 0;
     let totalQty = 0;
     let hasMissingPriceInCart = false;
+    let totalPrintArea = 0;
 
     let draftKeys = Object.keys(window.manualCartDraft);
     if (draftKeys.length === 0) {
@@ -448,6 +469,7 @@ function refreshManualPanel() {
             if (area !== null) {
                 isWydrukWithArea = true;
                 wydrukArea = area;
+                totalPrintArea += area * item.qty;
             }
 
             // Determine if it has no price in database
@@ -501,8 +523,8 @@ function refreshManualPanel() {
             } else {
                 cartPriceHtml = `
                     <div style="text-align: right;">
-                        <span style="color:#00b894; font-weight:600;">${lineMargin.toFixed(2)} zł</span> <br>
-                        <span style="color:#2a75d3; font-weight:bold; font-size:12px;">${lineClientPrice.toFixed(2)} zł</span>
+                        <span style="color:#00b894; font-weight:600;">${lineMargin.toFixed(2).toString().replace('.', ',')} zł</span> <br>
+                        <span style="color:#2a75d3; font-weight:bold; font-size:12px;">${lineClientPrice.toFixed(2).toString().replace('.', ',')} zł</span>
                     </div>
                 `;
             }
@@ -533,7 +555,7 @@ function refreshManualPanel() {
 
     const marginSpan = document.getElementById('summaryMarginTotal');
     if (marginSpan) {
-        marginSpan.innerText = `${totalMarginSum.toFixed(2)} PLN`;
+        marginSpan.innerText = `${totalMarginSum.toFixed(2).toString().replace('.', ',')} PLN`;
         if (hasMissingPriceInCart) {
             marginSpan.innerHTML += ` <span style="color:#ff3333; font-size:10px;">(+brak)</span>`;
         }
@@ -541,10 +563,25 @@ function refreshManualPanel() {
 
     const priceSpan = document.getElementById('summaryPriceTotal');
     if (priceSpan) {
-        priceSpan.innerText = `${totalClientPriceSum.toFixed(2)} PLN`;
+        priceSpan.innerText = `${totalClientPriceSum.toFixed(2).toString().replace('.', ',')} PLN`;
         if (hasMissingPriceInCart) {
             priceSpan.innerHTML += ` <span style="color:#ff3333; font-size:10px;">(+brak)</span>`;
         }
+    }
+
+    let totalWeight = 0;
+    if (window.currentKasetonConfig && typeof calculateKasetonWeight === 'function') {
+        totalWeight = calculateKasetonWeight(window.currentKasetonConfig);
+    }
+
+    const ordpCountEl = document.getElementById('ordp_count');
+    if (ordpCountEl) {
+        ordpCountEl.value = totalClientPriceSum.toFixed(2).toString().replace('.', ',');
+    }
+    const stoChEl = document.getElementById('sto_ch');
+    if (stoChEl) {
+        let valToInject = totalWeight > 0 ? totalWeight : totalPrintArea;
+        stoChEl.value = valToInject.toFixed(2).toString().replace('.', ',');
     }
 }
 
@@ -890,12 +927,23 @@ function switchSystem(newSystem) {
 
     currentSystem = newSystem;
 
+    if (currentSystem === 'LMSM') {
+        window.currentSystemConfig = { prefix: "LMSM", defWidth: 100, defHeight: 250, cornerType: "BI_FOLD_SLIM", neonColorHex: 0x00FF88 };
+        if (typeof clearPlan === 'function') clearPlan();
+        if (typeof updateFoldableRadialMenus === 'function') updateFoldableRadialMenus(camera, renderer);
+    }
+
     const sidebarElement = document.querySelector('.sidebar');
     if (sidebarElement) {
         if (currentSystem === 'foldable') {
             sidebarElement.classList.add('foldable-theme');
+            sidebarElement.classList.remove('lmsm-theme');
+        } else if (currentSystem === 'LMSM') {
+            sidebarElement.classList.add('lmsm-theme');
+            sidebarElement.classList.remove('foldable-theme');
         } else {
             sidebarElement.classList.remove('foldable-theme');
+            sidebarElement.classList.remove('lmsm-theme');
         }
     }
 
@@ -905,7 +953,7 @@ function switchSystem(newSystem) {
 
     const btnRadial = document.getElementById('btnToggleRadial');
     if (btnRadial) {
-        btnRadial.style.display = (is3DMode && currentSystem === 'foldable') ? 'flex' : 'none';
+        btnRadial.style.display = (is3DMode && (currentSystem === 'foldable' || currentSystem === 'LMSM')) ? 'flex' : 'none';
     }
 
     const btnSpakuj = document.getElementById('btnSpakuj');
@@ -1132,6 +1180,7 @@ function onKasetonSystemChange(sel) {
     if (!sel) return;
     const sys = sel.value;
     const root = document.documentElement;
+    const isCTF = (sys === 'CTF');
 
     if (typeof KASETON_NEON_MAP !== 'undefined' && KASETON_NEON_MAP[sys]) {
         const map = KASETON_NEON_MAP[sys];
@@ -1159,12 +1208,61 @@ function onKasetonSystemChange(sel) {
         }
     }
 
+    // CTF-specific sections: 3rd dimension and top panel
+    const heightSec = document.getElementById('kasetonHeightSection');
+    const topSec = document.getElementById('kasetonTopSection');
+    if (heightSec) {
+        if (isCTF) heightSec.classList.add('visible');
+        else heightSec.classList.remove('visible');
+    }
+    if (topSec) {
+        if (isCTF) topSec.classList.add('visible');
+        else topSec.classList.remove('visible');
+    }
+
+    // CTF: hide cut section (no cuts in CTF box system)
+    const cutSec = document.getElementById('kasetonCut');
+    if (cutSec) {
+        const cutParent = cutSec.closest('.kaseton-section');
+        if (cutParent) cutParent.style.display = isCTF ? 'none' : '';
+    }
+
+    // CTF: restrict usage options to freestanding + suspended only
+    const usageEl = document.getElementById('kasetonUsage');
+    if (usageEl) {
+        if (isCTF) {
+            usageEl.innerHTML = '<option value="freestanding">Wolnostojący (Stopy)</option>' +
+                '<option value="suspended">Podwieszany (Linki)</option>';
+        } else {
+            usageEl.innerHTML = '<option value="freestanding">Wolnostojący (Stopy)</option>' +
+                '<option value="suspended">Podwieszany (Linki)</option>' +
+                '<option value="wall">Naścienny</option>';
+        }
+    }
+
+    // CTF: adjust dimension limits
+    const widthEl = document.getElementById('kasetonWidth');
+    const depthEl = document.getElementById('kasetonDepth');
+    if (isCTF) {
+        if (widthEl) { widthEl.min = 50; widthEl.max = 800; }
+        if (depthEl) { depthEl.min = 50; depthEl.max = 800; }
+    } else {
+        if (widthEl) { widthEl.min = 40; widthEl.max = 1000; }
+        if (depthEl) { depthEl.min = 40; depthEl.max = 1000; }
+    }
+
     // Dynamiczne opcje wydruku zależne od systemu
     var printSel = document.getElementById('kasetonPrint');
     if (printSel) {
         printSel.innerHTML = '';
-        if (sys === 'LMS') {
-            // LMS: kaseton jednostronny - ograniczone opcje
+        if (isCTF) {
+            // CTF: box with 4 side walls
+            printSel.innerHTML = '<option value="all_sides">Wydruk na 4 ściany</option>' +
+                '<option value="front_back">Wydruk przód + tył</option>' +
+                '<option value="single_front">Wydruk tylko przód</option>' +
+                '<option value="no_print">Bez wydruku (sama rama)</option>';
+        } else if (sys === 'LMS' || sys === 'LMSM') {
+            // LMS / LMSM: kaseton jednostronny - ograniczone opcje
             printSel.innerHTML = '<option value="backlit_white" selected>Przód backlit + Tył białe plecy</option>' +
                 '<option value="backlit_blockout">Przód backlit + Tył kolorowy blockout</option>' +
                 '<option value="back_white">Tylko białe plecy</option>' +
@@ -1177,10 +1275,6 @@ function onKasetonSystemChange(sel) {
                 '<option value="back_blockout">Tylko Blockout tył</option>' +
                 '<option value="no_print">Bez wydruku (sama rama)</option>';
         }
-    }
-
-    if (typeof toggleCtfFields === 'function') {
-        toggleCtfFields();
     }
 
     console.log('🔲 Kaseton system changed to:', sys);
@@ -1196,23 +1290,15 @@ function kasetonAfterglowTrigger(el) {
 
 function submitKasetonConfig() {
     const sysEl = document.getElementById('kasetonSystem');
-    const sys = sysEl ? sysEl.value : '';
-
-    // BRAMKA DLA CTF - jeśli wykryje CTF, wywołuje builder i wychodzi z funkcji
-    if (sys === 'CTF' || sys === 'CTF_LED') {
-        onCTFGenerateClick();
-        return;
-    }
-    // --- ORYGINALNA LOGIKA DLA INNYCH SYSTEMÓW (SEGO/LMD itd.) ---
     const widthEl = document.getElementById('kasetonWidth');
     const depthEl = document.getElementById('kasetonDepth');
 
     if (!sysEl || !widthEl || !depthEl) return;
 
+    const sys = sysEl.value;
     const width = parseInt(widthEl.value);
     const depth = parseInt(depthEl.value);
 
-    // ... (pozostała część Twojej oryginalnej funkcji bez zmian)
     const cutEl = document.getElementById('kasetonCut');
     const printEl = document.getElementById('kasetonPrint');
     const usageEl = document.getElementById('kasetonUsage');
@@ -1221,13 +1307,25 @@ function submitKasetonConfig() {
     const print = printEl ? printEl.value : '';
     const usage = usageEl ? usageEl.value : '';
 
-    // Walidacje dla starych systemów
+    const isCTF = (sys === 'CTF');
+    const minDim = isCTF ? 50 : 40;
+    const maxDim = isCTF ? 800 : 1000;
+
     if (!sys) {
         alert('⚠️ Wybierz system kasetonu!');
         sysEl.focus();
         return;
     }
-    // ... (reszta walidacji i konfiguracji)
+    if (isNaN(width) || width < minDim || width > maxDim) {
+        alert('⚠️ Szerokość musi być w zakresie ' + minDim + '–' + maxDim + ' cm!');
+        widthEl.focus();
+        return;
+    }
+    if (isNaN(depth) || depth < minDim || depth > maxDim) {
+        alert('⚠️ Wysokość musi być w zakresie ' + minDim + '–' + maxDim + ' cm!');
+        depthEl.focus();
+        return;
+    }
 
     const config = {
         system: sys,
@@ -1238,7 +1336,21 @@ function submitKasetonConfig() {
         usage: usage
     };
 
-    // Obsługa LED dla starych systemów
+    // CTF-specific: 3rd dimension and top panel
+    if (isCTF) {
+        const heightEl = document.getElementById('kasetonHeight3D');
+        const height3D = heightEl ? parseInt(heightEl.value) : 120;
+        if (isNaN(height3D) || height3D < 50 || height3D > 800) {
+            alert('⚠️ Głębokość 3D musi być w zakresie 50–800 cm!');
+            if (heightEl) heightEl.focus();
+            return;
+        }
+        config.height3D = height3D;
+        const topEl = document.getElementById('kasetonTop');
+        config.topPanel = topEl ? topEl.value : 'none';
+        config.cut = 'none'; // CTF has no cuts
+    }
+
     const kasetonPowerEl = document.getElementById('kasetonPower');
     const kasetonLightEl = document.getElementById('kasetonLight');
 
@@ -1274,6 +1386,7 @@ function submitKasetonConfig() {
         }, 800);
     }
 }
+
 function toggleSpakuj() {
     window.isKasetonPackedMode = !window.isKasetonPackedMode;
     const btn = document.getElementById('btnSpakuj');
@@ -1288,15 +1401,3 @@ function toggleSpakuj() {
     }
     if (typeof update3DScene === 'function') update3DScene();
 }
-// Nasłuchiwanie zmiany systemu w menu
-document.addEventListener('DOMContentLoaded', () => {
-    const kasetonSystem = document.getElementById('kasetonSystem');
-    const ctfDepthRow = document.getElementById('ctfDepthRow');
-
-    if (kasetonSystem && ctfDepthRow) {
-        kasetonSystem.addEventListener('change', function () {
-            // Jeśli system to CTF, pokazujemy pole głębokości
-            ctfDepthRow.style.display = (this.value === 'CTF') ? 'flex' : 'none';
-        });
-    }
-});

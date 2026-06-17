@@ -11,6 +11,61 @@ function addKantorek1x1() {
 }
 
 function buildMiteredRing(hw, hd, profile, material) {
+  if (profile === "LMSM") {
+    const group = new THREE.Group();
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x444444 });
+    const segmentsConfig = [
+      { zMin: -3.25, zMax: -3.0,  t: 1.4 }, // Ścianka zewnętrzna tylna
+      { zMin: -3.0,  zMax: 1.25,  t: 4.3 }, // Kanał wewnętrzny konstrukcyjny / LED
+      { zMin: 1.25,  zMax: 2.25,  t: 1.6 }, // Ścianka montażowa stopy
+      { zMin: 2.25,  zMax: 3.25,  t: 0.5 }  // Cienka krawędź frontowa Slim
+    ];
+
+    segmentsConfig.forEach(seg => {
+      const subProfile = [
+        { x: seg.zMin, y: 0 },
+        { x: seg.zMin, y: seg.t },
+        { x: seg.zMax, y: seg.t },
+        { x: seg.zMax, y: 0 },
+        { x: seg.zMin, y: 0 }
+      ];
+
+      const verts = [];
+      for (let side = 0; side < 4; side++) {
+        for (let i = 0; i < subProfile.length - 1; i++) {
+          const pA = subProfile[i];
+          const pB = subProfile[i + 1];
+          let L_A, R_A, L_B, R_B;
+          if (side === 0) {
+            L_A = [-hw - pA.x, pA.y, hd + pA.x]; R_A = [hw + pA.x, pA.y, hd + pA.x];
+            L_B = [-hw - pB.x, pB.y, hd + pB.x]; R_B = [hw + pB.x, pB.y, hd + pB.x];
+          } else if (side === 1) {
+            L_A = [hw + pA.x, pA.y, hd + pA.x]; R_A = [hw + pA.x, pA.y, -hd - pA.x];
+            L_B = [hw + pB.x, pB.y, hd + pB.x]; R_B = [hw + pB.x, pB.y, -hd - pB.x];
+          } else if (side === 2) {
+            L_A = [hw + pA.x, pA.y, -hd - pA.x]; R_A = [-hw - pA.x, pA.y, -hd - pA.x];
+            L_B = [hw + pB.x, pB.y, -hd - pB.x]; R_B = [-hw - pB.x, pB.y, -hd - pB.x];
+          } else if (side === 3) {
+            L_A = [-hw - pA.x, pA.y, -hd - pA.x]; R_A = [-hw - pA.x, pA.y, hd + pA.x];
+            L_B = [-hw - pB.x, pB.y, -hd - pB.x]; R_B = [-hw - pB.x, pB.y, hd + pB.x];
+          }
+          verts.push(...L_A, ...L_B, ...R_B);
+          verts.push(...L_A, ...R_B, ...R_A);
+        }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, material);
+      const edges = new THREE.EdgesGeometry(geo);
+      const line = new THREE.LineSegments(edges, edgeMat);
+      mesh.add(line);
+      group.add(mesh);
+    });
+
+    return group;
+  }
+
   const verts = [];
   for (let side = 0; side < 4; side++) {
     for (let i = 0; i < profile.length - 1; i++) {
@@ -973,54 +1028,13 @@ function drawKasetonScene() {
   const W = parseFloat(config.width) || 120;
   const H = parseFloat(config.depth) || 200;
   const sys = config.system || 'LMD';
-  const pD = (sys === 'LMS') ? 12.0 : 14.0;
 
-  // 0. BRAMKA DLA CTF W SILNIKU 3D
-  if (sys === 'CTF' || sys === 'CTF_LED') {
-    const d = parseFloat(config.ctfDepth) || 12;
-    const elevY = config.usage === 'suspended' ? 100 : 0;
-    const kGroup = new THREE.Group();
-    kGroup.userData = { isKaseton: true };
-
-    buildCTFStructure({ w: W, h: H, d: d }, kGroup);
-
-    // 10. LINIE WYMIAROWE I NAPISY
-    if (!isBlueprintMode) {
-      const dimWSprite = createTextSprite(W + " cm", "var(--kaseton-neon, #00e5ff)", 24);
-      dimWSprite.position.set(0, elevY - 14, 15);
-      kGroup.add(dimWSprite);
-
-      const dimHSprite = createTextSprite(H + " cm", "var(--kaseton-neon, #00e5ff)", 24);
-      dimHSprite.position.set(W / 2 + 18, elevY + H / 2, 0);
-      kGroup.add(dimHSprite);
-
-      const titleSprite = createTextSprite("SYSTEM " + sys + " (" + W + "x" + H + " cm)", "var(--kaseton-neon, #00e5ff)", 28);
-      titleSprite.position.set(0, elevY + H + 25, 0);
-      kGroup.add(titleSprite);
-    } else {
-      const pW1 = new THREE.Vector3(-W / 2, elevY, 0);
-      const pW2 = new THREE.Vector3(W / 2, elevY, 0);
-      kGroup.add(addDimension3D(pW1, pW2, W + ' cm', new THREE.Vector3(0, -25, 0), 1.3));
-
-      const pH1 = new THREE.Vector3(W / 2, elevY, 0);
-      const pH2 = new THREE.Vector3(W / 2, elevY + H, 0);
-      kGroup.add(addDimension3D(pH1, pH2, H + ' cm', new THREE.Vector3(25, 0, 0), 1.3));
-    }
-
-    scene.add(kGroup);
-    sceneObjects.push(kGroup);
-
-    if (controls) {
-      controls.target.set(0, elevY + H / 2, 0);
-      const maxDim = Math.max(W, H);
-      camera.position.set(0, elevY + H / 2 + 10, maxDim * 1.5);
-      controls.update();
-    }
-
-    generateKasetonBOM();
-    console.log('✨ 3D CTF scene rendered successfully!');
-    return;
+  // CTF: completely different 3D model (box/cuboid), delegate to dedicated function
+  if (sys === 'CTF') {
+    return drawCTFScene(config);
   }
+
+  const pD = (sys === 'LMS') ? 12.0 : (sys === 'LMSM' ? 6.5 : 14.0);
 
   // 🟢 TUTAJ: Resetujemy licznik LED przy każdym nowym renderowaniu sceny
   window.kasetonLedSummary = {};
@@ -1045,7 +1059,7 @@ function drawKasetonScene() {
     metalness: 0.2
   }) : aluMat;
 
-  const isLedSys = ['LMD', 'LMS', 'CTF_LED', 'LCD_LMD'].includes(sys);
+  const isLedSys = ['LMD', 'LMS', 'LMSM', 'CTF_LED', 'LCD_LMD'].includes(sys);
 
   // Zoptymalizowana emisyjność i głębia kolorów dla grafik i blockoutów
   function getPrintMaterial(textureUrl, isBlockout) {
@@ -1141,10 +1155,33 @@ function drawKasetonScene() {
     return geom;
   }
 
-  // 3. GENERATOR PROFILU - WYBOR SYSTEMU (LMD vs LMS)
+  // 3. GENERATOR PROFILU - WYBOR SYSTEMU (LMD vs LMS vs LMSM)
   function createProfileGroup(L) {
+    if (sys === 'LMSM') return createProfileGroupLMSM(L);
     if (sys === 'LMS') return createProfileGroupLMS(L);
     return createProfileGroupLMD(L);
+  }
+
+  function createProfileGroupLMSM(L) {
+    const group = new THREE.Group();
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x444444 });
+    const segmentsConfig = [
+      { zMin: -3.25, zMax: -3.0,  t: 1.4 }, // Ścianka zewnętrzna tylna
+      { zMin: -3.0,  zMax: 1.25,  t: 4.3 }, // Kanał wewnętrzny konstrukcyjny / LED
+      { zMin: 1.25,  zMax: 2.25,  t: 1.6 }, // Ścianka montażowa stopy
+      { zMin: 2.25,  zMax: 3.25,  t: 0.5 }  // Cienka krawędź frontowa Slim
+    ];
+
+    segmentsConfig.forEach(seg => {
+      const segmentGeom = createMiteredSegmentGeometry(L, seg.zMin, seg.zMax, seg.t);
+      const mesh = new THREE.Mesh(segmentGeom, aluMat);
+      const edges = new THREE.EdgesGeometry(segmentGeom);
+      const line = new THREE.LineSegments(edges, edgeMat);
+      mesh.add(line);
+      group.add(mesh);
+    });
+
+    return { group };
   }
 
   // 3a. PROFIL LMD (140mm glebokosci, symetryczny)
@@ -1359,8 +1396,8 @@ function drawKasetonScene() {
   // Poprawne nanoszenie pasków LED oraz złączek w kanale profilu
   function addLedStripesToProfileGroup(targetGroup, L, isHorizontal) {
     const segments = getWorkingSegments(L, isHorizontal);
-    const ledY = (sys === 'LMS') ? 3.93 : 2.0;
-    const ledZ = (sys === 'LMS') ? -3.5 : 0;
+    const ledY = (sys === 'LMS' || sys === 'LMSM') ? 3.93 : 2.0;
+    const ledZ = (sys === 'LMS') ? -3.5 : (sys === 'LMSM' ? -0.875 : 0);
 
     segments.forEach(seg => {
       const combo = getBestLedCombination(seg.length);
@@ -1594,7 +1631,7 @@ function drawKasetonScene() {
   cutX.forEach(cx => {
     const vGeom = new THREE.BoxGeometry(5, H - 6.4, 1.5);
     const vMesh = new THREE.Mesh(vGeom, supportMat);
-    vMesh.position.set(cx, elevY + H / 2, (sys === 'LMS' ? -3.5 : 0));
+    vMesh.position.set(cx, elevY + H / 2, (sys === 'LMS' ? -3.5 : (sys === 'LMSM' ? -0.875 : 0)));
     kGroup.add(vMesh);
   });
 
@@ -1610,7 +1647,7 @@ function drawKasetonScene() {
       if (right > left) {
         const hGeom = new THREE.BoxGeometry(right - left, 5, 1.5);
         const hMesh = new THREE.Mesh(hGeom, supportMat);
-        hMesh.position.set((left + right) / 2, cy, (sys === 'LMS' ? -3.5 : 0));
+        hMesh.position.set((left + right) / 2, cy, (sys === 'LMS' ? -3.5 : (sys === 'LMSM' ? -0.875 : 0)));
         kGroup.add(hMesh);
       }
     }
@@ -1625,7 +1662,8 @@ function drawKasetonScene() {
   const connHoleMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8, metalness: 0.1 });
 
   const isLMS = (sys === 'LMS');
-  const zPos180 = isLMS ? [-5.5] : [-5.4, 5.4];
+  const isLMSM = (sys === 'LMSM');
+  const zPos180 = isLMS ? [-5.5] : (isLMSM ? [-2.5, 2.5] : [-5.4, 5.4]);
   const connZWidth = isLMS ? 0.8 : 1.5;
 
   // Cięcia pionowe (cutX) przecinają profile poziome (dół i góra)
@@ -1694,7 +1732,8 @@ function drawKasetonScene() {
     ];
 
     cornerPositions.forEach(corner => {
-      [-5.4, 5.4].forEach(zPos => {
+      const zPositions = (sys === 'LMSM') ? [-2.5, 2.5] : [-5.4, 5.4];
+      zPositions.forEach(zPos => {
         const cGroup = new THREE.Group();
         // Horizontal arm (10cm length in X, 0.5cm height in Y, 1.5cm width in Z)
         const hArm = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 1.5), cornerMat);
@@ -1814,7 +1853,7 @@ function drawKasetonScene() {
     const printW = W - 0.4;
     const printH = H - 0.4;
     const planeGeom = new THREE.PlaneGeometry(printW, printH);
-    const pD = (sys === 'LMS') ? 12.0 : 14.0;
+    const pD = (sys === 'LMS') ? 12.0 : (sys === 'LMSM' ? 6.5 : 14.0);
 
 
     // Przód
@@ -2253,6 +2292,412 @@ function drawKasetonScene() {
   console.log('✨ 3D Kaseton scene rendered successfully!');
 }
 
+// =================================================================
+// CTF BOX SCENE — Prostopadłościan z profilami pod kątem 45° i trójdzielnymi łącznikami
+// =================================================================
+function drawCTFScene(config) {
+  if (!scene) return;
+
+  // Usuwamy poprzedni kaseton
+  const oldKasetony = [];
+  scene.traverse(obj => { if (obj.userData && obj.userData.isKaseton) oldKasetony.push(obj); });
+  oldKasetony.forEach(obj => scene.remove(obj));
+
+  const W = parseFloat(config.width) || 100;   // Szerokość (X)
+  const H = parseFloat(config.depth) || 200;    // Wysokość (Y)
+  const D = parseFloat(config.height3D) || 120;  // Głębokość 3D (Z)
+  const elevY = config.usage === 'suspended' ? 100 : 0;
+
+  const connLen = 6;   // Długość ramienia łącznika (60mm = 6cm)
+  const profW = 6;     // Szerokość profilu 60mm = 6cm
+  const profT = 2;     // Grubość profilu 20mm = 2cm
+
+  const gOffset = 3.3 / Math.sqrt(2); // Odstęp rowka od osi profilu w rzucie normalnym (~2.33 cm)
+  const eOffset = 2.7 / Math.sqrt(2); // Wydłużenie tkaniny w płaszczyźnie boku (~1.91 cm)
+
+  console.log('📦 Drawing CTF box in 3D:', W, 'x', H, 'x', D, 'cm');
+
+  const kGroup = new THREE.Group();
+  kGroup.userData = { isKaseton: true };
+
+  // --- MATERIAŁY ---
+  const aluMat = new THREE.MeshStandardMaterial({
+    color: 0xd0d4d9,
+    metalness: 0.55,
+    roughness: 0.45,
+    name: 'ctf_aluminum'
+  });
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x444444 });
+
+  // Łącznik: matowy plastik, ciemniejszy szary
+  const connMat = new THREE.MeshStandardMaterial({
+    color: 0x5a5a5a,
+    metalness: 0.05,
+    roughness: 0.85,
+    name: 'ctf_connector_plastic'
+  });
+
+  // --- FUNKCJA BAZOWA: Tworzenie profilu z rowkami ---
+  function createCTFProfileMesh(length) {
+    const shape = new THREE.Shape();
+    shape.moveTo(-3, -1);
+    shape.lineTo(-3, 1);
+    shape.lineTo(3, 1);
+    // Rowek 1
+    shape.lineTo(3, 0.45);
+    shape.lineTo(1.5, 0.45);
+    shape.lineTo(1.5, 0.15);
+    shape.lineTo(3, 0.15);
+    // Środek
+    shape.lineTo(3, -0.15);
+    // Rowek 2
+    shape.lineTo(1.5, -0.15);
+    shape.lineTo(1.5, -0.45);
+    shape.lineTo(3, -0.45);
+    // Dół
+    shape.lineTo(3, -1);
+    shape.closePath();
+
+    const geom = new THREE.ExtrudeGeometry(shape, { depth: length, bevelEnabled: false });
+    geom.center();
+
+    const mesh = new THREE.Mesh(geom, aluMat);
+
+    // Krawędzie konturu
+    const edges = new THREE.EdgesGeometry(geom);
+    const line = new THREE.LineSegments(edges, edgeMat);
+    mesh.add(line);
+
+    return mesh;
+  }
+
+  // --- FUNKCJA POMOCNICZA: Pozycjonowanie i orientacja profilu ---
+  function createCTFProfile(length, startPoint, endPoint, outerDir) {
+    const mesh = createCTFProfileMesh(length);
+    
+    // Pozycja w połowie drogi
+    const midPoint = new THREE.Vector3().addVectors(startPoint, endPoint).multiplyScalar(0.5);
+    mesh.position.copy(midPoint);
+    
+    // Kierunki bazowe
+    const dirLong = new THREE.Vector3().subVectors(endPoint, startPoint).normalize();
+    const dirOuter = outerDir.clone().normalize();
+    const dirThickness = new THREE.Vector3().crossVectors(dirLong, dirOuter).normalize();
+    
+    // Ustawienie orientacji
+    const matrix = new THREE.Matrix4();
+    matrix.makeBasis(dirOuter, dirThickness, dirLong);
+    mesh.quaternion.setFromRotationMatrix(matrix);
+    
+    return mesh;
+  }
+
+  // --- FUNKCJA: Trójdzielny łącznik narożny ---
+  function createCTFConnector(cx, cy, cz, dx, dy, dz) {
+    const cGroup = new THREE.Group();
+
+    // Ramię X
+    const startX = new THREE.Vector3(cx, cy, cz);
+    const endX = new THREE.Vector3(cx + dx * connLen, cy, cz);
+    const outerX = new THREE.Vector3(0, dy, dz);
+    const armX = createCTFProfileMesh(connLen);
+    armX.position.copy(new THREE.Vector3().addVectors(startX, endX).multiplyScalar(0.5));
+    const dirLongX = new THREE.Vector3().subVectors(endX, startX).normalize();
+    const dirOuterX = outerX.clone().normalize();
+    const dirThicknessX = new THREE.Vector3().crossVectors(dirLongX, dirOuterX).normalize();
+    const matrixX = new THREE.Matrix4();
+    matrixX.makeBasis(dirOuterX, dirThicknessX, dirLongX);
+    armX.quaternion.setFromRotationMatrix(matrixX);
+    armX.material = connMat;
+    cGroup.add(armX);
+
+    // Ramię Y
+    const startY = new THREE.Vector3(cx, cy, cz);
+    const endY = new THREE.Vector3(cx, cy + dy * connLen, cz);
+    const outerY = new THREE.Vector3(dx, 0, dz);
+    const armY = createCTFProfileMesh(connLen);
+    armY.position.copy(new THREE.Vector3().addVectors(startY, endY).multiplyScalar(0.5));
+    const dirLongY = new THREE.Vector3().subVectors(endY, startY).normalize();
+    const dirOuterY = outerY.clone().normalize();
+    const dirThicknessY = new THREE.Vector3().crossVectors(dirLongY, dirOuterY).normalize();
+    const matrixY = new THREE.Matrix4();
+    matrixY.makeBasis(dirOuterY, dirThicknessY, dirLongY);
+    armY.quaternion.setFromRotationMatrix(matrixY);
+    armY.material = connMat;
+    cGroup.add(armY);
+
+    // Ramię Z
+    const startZ = new THREE.Vector3(cx, cy, cz);
+    const endZ = new THREE.Vector3(cx, cy, cz + dz * connLen);
+    const outerZ = new THREE.Vector3(dx, dy, 0);
+    const armZ = createCTFProfileMesh(connLen);
+    armZ.position.copy(new THREE.Vector3().addVectors(startZ, endZ).multiplyScalar(0.5));
+    const dirLongZ = new THREE.Vector3().subVectors(endZ, startZ).normalize();
+    const dirOuterZ = outerZ.clone().normalize();
+    const dirThicknessZ = new THREE.Vector3().crossVectors(dirLongZ, dirOuterZ).normalize();
+    const matrixZ = new THREE.Matrix4();
+    matrixZ.makeBasis(dirOuterZ, dirThicknessZ, dirLongZ);
+    armZ.quaternion.setFromRotationMatrix(matrixZ);
+    armZ.material = connMat;
+    cGroup.add(armZ);
+
+    return cGroup;
+  }
+
+  // --- MATERIAŁ DLA TKANIN ---
+  function createFabricMaterial(textureUrl, isBlockout = false) {
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: isBlockout ? 0.95 : 0.75,
+      metalness: 0.0,
+      side: THREE.DoubleSide
+    });
+    if (textureUrl) {
+      const tex = new THREE.TextureLoader().load(textureUrl);
+      tex.encoding = THREE.sRGBEncoding;
+      mat.map = tex;
+    } else if (isBlockout) {
+      mat.color.setHex(0xeeeeee);
+    }
+    return mat;
+  }
+
+  // --- WYMIARY PROFILI (skrócone o 2×connLen na łączniki) ---
+  const profLenX = W - 2 * connLen;  // Długość profili wzdłuż X
+  const profLenY = H - 2 * connLen;  // Długość profili wzdłuż Y
+  const profLenZ = D - 2 * connLen;  // Długość profili wzdłuż Z
+
+  const hw = W / 2;  // half width
+  const hh = H / 2;  // half height
+  const hd = D / 2;  // half depth
+
+  // --- GENEROWANIE 12 PROFILI ---
+
+  // 4 krawędzie pionowe (wzdłuż Y)
+  const vertProfilesConfig = [
+    { start: new THREE.Vector3(hw, connLen, -hd), end: new THREE.Vector3(hw, H - connLen, -hd), outer: new THREE.Vector3(1, 0, -1) },
+    { start: new THREE.Vector3(-hw, connLen, -hd), end: new THREE.Vector3(-hw, H - connLen, -hd), outer: new THREE.Vector3(-1, 0, -1) },
+    { start: new THREE.Vector3(hw, connLen, hd), end: new THREE.Vector3(hw, H - connLen, hd), outer: new THREE.Vector3(1, 0, 1) },
+    { start: new THREE.Vector3(-hw, connLen, hd), end: new THREE.Vector3(-hw, H - connLen, hd), outer: new THREE.Vector3(-1, 0, 1) }
+  ];
+  vertProfilesConfig.forEach(cfg => {
+    const startP = cfg.start.clone();
+    startP.y += elevY;
+    const endP = cfg.end.clone();
+    endP.y += elevY;
+    const prof = createCTFProfile(profLenY, startP, endP, cfg.outer);
+    kGroup.add(prof);
+  });
+
+  // 4 krawędzie poziome wzdłuż X
+  const horizXProfilesConfig = [
+    { start: new THREE.Vector3(-hw + connLen, 0, -hd), end: new THREE.Vector3(hw - connLen, 0, -hd), outer: new THREE.Vector3(0, -1, -1) },
+    { start: new THREE.Vector3(-hw + connLen, 0, hd), end: new THREE.Vector3(hw - connLen, 0, hd), outer: new THREE.Vector3(0, -1, 1) },
+    { start: new THREE.Vector3(-hw + connLen, H, -hd), end: new THREE.Vector3(hw - connLen, H, -hd), outer: new THREE.Vector3(0, 1, -1) },
+    { start: new THREE.Vector3(-hw + connLen, H, hd), end: new THREE.Vector3(hw - connLen, H, hd), outer: new THREE.Vector3(0, 1, 1) }
+  ];
+  horizXProfilesConfig.forEach(cfg => {
+    const startP = cfg.start.clone();
+    startP.y += elevY;
+    const endP = cfg.end.clone();
+    endP.y += elevY;
+    const prof = createCTFProfile(profLenX, startP, endP, cfg.outer);
+    kGroup.add(prof);
+  });
+
+  // 4 krawędzie poziome wzdłuż Z
+  const horizZProfilesConfig = [
+    { start: new THREE.Vector3(-hw, 0, -hd + connLen), end: new THREE.Vector3(-hw, 0, hd - connLen), outer: new THREE.Vector3(-1, -1, 0) },
+    { start: new THREE.Vector3(hw, 0, -hd + connLen), end: new THREE.Vector3(hw, 0, hd - connLen), outer: new THREE.Vector3(1, -1, 0) },
+    { start: new THREE.Vector3(-hw, H, -hd + connLen), end: new THREE.Vector3(-hw, H, hd - connLen), outer: new THREE.Vector3(-1, 1, 0) },
+    { start: new THREE.Vector3(hw, H, -hd + connLen), end: new THREE.Vector3(hw, H, hd - connLen), outer: new THREE.Vector3(1, 1, 0) }
+  ];
+  horizZProfilesConfig.forEach(cfg => {
+    const startP = cfg.start.clone();
+    startP.y += elevY;
+    const endP = cfg.end.clone();
+    endP.y += elevY;
+    const prof = createCTFProfile(profLenZ, startP, endP, cfg.outer);
+    kGroup.add(prof);
+  });
+
+  // --- 8 ŁĄCZNIKÓW NAROŻNYCH ---
+  const corners = [
+    // Dolne 4 narożniki
+    { x: -hw, y: 0, z: -hd, dx: 1, dy: 1, dz: 1 },
+    { x: hw, y: 0, z: -hd, dx: -1, dy: 1, dz: 1 },
+    { x: -hw, y: 0, z: hd, dx: 1, dy: 1, dz: -1 },
+    { x: hw, y: 0, z: hd, dx: -1, dy: 1, dz: -1 },
+    // Górne 4 narożniki
+    { x: -hw, y: H, z: -hd, dx: 1, dy: -1, dz: 1 },
+    { x: hw, y: H, z: -hd, dx: -1, dy: -1, dz: 1 },
+    { x: -hw, y: H, z: hd, dx: 1, dy: -1, dz: -1 },
+    { x: hw, y: H, z: hd, dx: -1, dy: -1, dz: -1 }
+  ];
+  corners.forEach(c => {
+    const conn = createCTFConnector(c.x, c.y, c.z, c.dx, c.dy, c.dz);
+    conn.position.set(0, elevY, 0); // profile positions relative to center of cuboid
+    kGroup.add(conn);
+  });
+
+  // --- TKANINY REKLAMOWE (6 płacht od rowka do rowka) ---
+  const printOption = config.print || 'all_sides';
+  if (printOption !== 'no_print') {
+    // 1. Przód (Z = -hd - gOffset)
+    const frontGeom = new THREE.PlaneGeometry(W + 2 * eOffset, H + 2 * eOffset);
+    const frontMat = createFabricMaterial(config.textureFront, false);
+    const frontMesh = new THREE.Mesh(frontGeom, frontMat);
+    frontMesh.position.set(0, elevY + hh, -hd - gOffset);
+    frontMesh.rotation.y = Math.PI;
+    frontMesh.userData = { isKasetonPrint: true, side: 'front' };
+    kGroup.add(frontMesh);
+
+    // 2. Tył (Z = hd + gOffset)
+    const backGeom = new THREE.PlaneGeometry(W + 2 * eOffset, H + 2 * eOffset);
+    const backMat = createFabricMaterial(config.textureBack, !config.textureBack);
+    const backMesh = new THREE.Mesh(backGeom, backMat);
+    backMesh.position.set(0, elevY + hh, hd + gOffset);
+    backMesh.userData = { isKasetonPrint: true, side: 'back' };
+    kGroup.add(backMesh);
+
+    // 3. Lewo (X = -hw - gOffset)
+    const leftGeom = new THREE.PlaneGeometry(D + 2 * eOffset, H + 2 * eOffset);
+    const leftMat = createFabricMaterial(null, true);
+    const leftMesh = new THREE.Mesh(leftGeom, leftMat);
+    leftMesh.position.set(-hw - gOffset, elevY + hh, 0);
+    leftMesh.rotation.y = -Math.PI / 2;
+    leftMesh.userData = { isKasetonPrint: true, side: 'left' };
+    kGroup.add(leftMesh);
+
+    // 4. Prawo (X = hw + gOffset)
+    const rightGeom = new THREE.PlaneGeometry(D + 2 * eOffset, H + 2 * eOffset);
+    const rightMat = createFabricMaterial(null, true);
+    const rightMesh = new THREE.Mesh(rightGeom, rightMat);
+    rightMesh.position.set(hw + gOffset, elevY + hh, 0);
+    rightMesh.rotation.y = Math.PI / 2;
+    rightMesh.userData = { isKasetonPrint: true, side: 'right' };
+    kGroup.add(rightMesh);
+
+    // 5. Góra (Y = H + gOffset)
+    const topFabGeom = new THREE.PlaneGeometry(W + 2 * eOffset, D + 2 * eOffset);
+    const topFabMat = createFabricMaterial(null, true);
+    const topFabMesh = new THREE.Mesh(topFabGeom, topFabMat);
+    topFabMesh.position.set(0, elevY + H + gOffset, 0);
+    topFabMesh.rotation.x = -Math.PI / 2;
+    topFabMesh.userData = { isKasetonPrint: true, side: 'top' };
+    kGroup.add(topFabMesh);
+
+    // 6. Dół (Y = -gOffset)
+    const bottomFabGeom = new THREE.PlaneGeometry(W + 2 * eOffset, D + 2 * eOffset);
+    const bottomFabMat = createFabricMaterial(null, true);
+    const bottomFabMesh = new THREE.Mesh(bottomFabGeom, bottomFabMat);
+    bottomFabMesh.position.set(0, elevY - gOffset, 0);
+    bottomFabMesh.rotation.x = Math.PI / 2;
+    bottomFabMesh.userData = { isKasetonPrint: true, side: 'bottom' };
+    kGroup.add(bottomFabMesh);
+  }
+
+  // --- BLAT GÓRNY ---
+  const topPanel = config.topPanel || 'none';
+  if (topPanel !== 'none') {
+    let topMat;
+    if (topPanel === 'mdf') {
+      topMat = new THREE.MeshStandardMaterial({
+        color: 0xf0ece0,
+        roughness: 0.9,
+        metalness: 0.0,
+        side: THREE.DoubleSide
+      });
+    } else if (topPanel === 'plexi') {
+      topMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.05,
+        metalness: 0.1,
+        transparent: true,
+        opacity: 0.3,
+        side: THREE.DoubleSide
+      });
+    } else if (topPanel === 'polycarbonate') {
+      topMat = new THREE.MeshStandardMaterial({
+        color: 0xf8f8ff,
+        roughness: 0.3,
+        metalness: 0.05,
+        transparent: true,
+        opacity: 0.6,
+        side: THREE.DoubleSide
+      });
+    }
+    if (topMat) {
+      const topGeom = new THREE.BoxGeometry(W + 2 * eOffset, 1, D + 2 * eOffset);
+      const topMesh = new THREE.Mesh(topGeom, topMat);
+      topMesh.position.set(0, elevY + H + gOffset + 0.5, 0);
+      kGroup.add(topMesh);
+
+      // Krawędzie blatu
+      const topEdges = new THREE.EdgesGeometry(topGeom);
+      const topLine = new THREE.LineSegments(topEdges, edgeMat);
+      topMesh.add(topLine);
+    }
+  }
+
+  // --- STOPY (wolnostojący) ---
+  if (config.usage === 'freestanding') {
+    const footGeom = new THREE.BoxGeometry(8, 2, 8);
+    const footPositions = [
+      { x: -hw + 6, z: -hd + 6 },
+      { x: hw - 6, z: -hd + 6 },
+      { x: -hw + 6, z: hd - 6 },
+      { x: hw - 6, z: hd - 6 }
+    ];
+    footPositions.forEach(pos => {
+      const foot = new THREE.Mesh(footGeom, aluMat);
+      foot.position.set(pos.x, elevY - 1, pos.z);
+      kGroup.add(foot);
+    });
+  }
+
+  // --- PODWIESZENIE (suspended) ---
+  if (config.usage === 'suspended') {
+    const wireMat = new THREE.MeshStandardMaterial({
+      color: 0x888888, roughness: 0.3, metalness: 0.9
+    });
+
+    const wirePositions = [
+      { x: -hw + 3, z: -hd + 3 },
+      { x: hw - 3, z: -hd + 3 },
+      { x: -hw + 3, z: hd - 3 },
+      { x: hw - 3, z: hd - 3 }
+    ];
+
+    wirePositions.forEach(pos => {
+      // Linka
+      const wireGeom = new THREE.CylinderGeometry(0.1, 0.1, 100, 6);
+      const wire = new THREE.Mesh(wireGeom, wireMat);
+      wire.position.set(pos.x, elevY + H + 50, pos.z);
+      kGroup.add(wire);
+
+      // Oczko
+      const eyeGeom = new THREE.TorusGeometry(0.8, 0.2, 8, 16);
+      const eye = new THREE.Mesh(eyeGeom, wireMat);
+      eye.position.set(pos.x, elevY + H + 0.5, pos.z);
+      eye.rotation.x = Math.PI / 2;
+      kGroup.add(eye);
+    });
+  }
+
+  scene.add(kGroup);
+
+  // Ustawienie kamery na widok kasetonu
+  if (camera && controls) {
+    const maxDim = Math.max(W, H, D);
+    camera.position.set(maxDim * 0.8, elevY + H * 0.6, maxDim * 1.2);
+    controls.target.set(0, elevY + H / 2, 0);
+    controls.update();
+  }
+
+  console.log('✨ 3D CTF box scene rendered successfully!');
+}
+
 function drawCartonScene() {
   if (!scene) return;
   const config = window.currentKasetonConfig;
@@ -2494,201 +2939,10 @@ function drawCartonScene() {
 
   console.log('📦 Carton scene rendered:', cartonQty, 'x', cartonName, '| Weight:', totalWeight.toFixed(1), 'kg');
 }
-
-// ─────────────────────────────────────────────────────────────────
-// NARZĘDZIA DO IMPORTU MODELI (GLTF / OBJ)
-// ─────────────────────────────────────────────────────────────────
-
-const gltfLoader = new THREE.GLTFLoader();
-const objLoader = new THREE.OBJLoader();
-const modelCache = {}; // Cache zapobiegający wielokrotnemu pobieraniu tych samych plików
-
-// Cache i stany ładowania dla modeli CTF
-const ctfModelsCache = {
-  profil: null,
-  lacznik: null
-};
-const ctfModelsLoadingState = {
-  profil: 'idle',  // 'idle', 'loading', 'loaded', 'failed'
-  lacznik: 'idle'
-};
-
 /**
- * Zwraca właściwy adres URL dla modelu. Jeśli strona jest uruchomiona lokalnie (protokół file://),
- * przekierowuje zapytania do repozytorium GitHub, aby uniknąć problemów z polityką CORS.
+ * Silnik renderujący anatomię wewnętrzną kasetonów SEGO v7
+ * Zmiany: Szerokość jako pierwsza w napisie, rozbudowa modułu 200cm o pionowy słupek i MP Cross.
  */
-function getCTFModelUrl(relativePath) {
-  if (window.location.protocol === 'file:') {
-    return 'https://raw.githubusercontent.com/MPZAdsystem/CONFIG/main/' + relativePath;
-  }
-  return relativePath;
-}
-
-/**
- * Uruchamia asynchroniczne pobieranie modeli z GitHub / serwera lokalnego.
- */
-function triggerCTFModelLoad(name, path) {
-  if (ctfModelsLoadingState[name] !== 'idle') return;
-  
-  ctfModelsLoadingState[name] = 'loading';
-  const url = getCTFModelUrl(path);
-  console.log(`[CTF Loader] Preloading ${name} from: ${url}`);
-  
-  gltfLoader.load(
-    url,
-    function (gltf) {
-      console.log(`[CTF Loader] Successfully loaded ${name} from: ${url}`);
-      ctfModelsCache[name] = gltf.scene;
-      ctfModelsLoadingState[name] = 'loaded';
-      
-      // Po załadowaniu modelu wymuszamy ponowne narysowanie sceny
-      if (typeof drawKasetonScene === 'function') {
-        drawKasetonScene();
-      }
-    },
-    undefined,
-    function (error) {
-      console.error(`[CTF Loader] Failed to load ${name} from ${url}:`, error);
-      ctfModelsLoadingState[name] = 'failed';
-    }
-  );
-}
-
-/**
- * Proceduralny fallback dla profilu CTF, wywoływany w przypadku braku połączenia lub błędu pobierania.
- */
-function buildProceduralCTFProfile(position, rotation, scaleX, targetGroup) {
-  const BASE_LEN   = 0.384;   // bazowa długość modelu w jednostkach Three.js
-  const THICKNESS  = 0.028;   // grubość ścianki profilu
-  const FLANGE     = 0.057;   // szerokość stopki (2 × 0.0286)
-
-  const length = BASE_LEN * scaleX;
-  const offset = length / 2;
-
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xc8c8c8,
-    metalness: 0.7,
-    roughness: 0.3
-  });
-
-  const group = new THREE.Group();
-
-  // Ścianki profilu L-kształtnego: pozioma + pionowa
-  const hGeom = new THREE.BoxGeometry(length, THICKNESS, FLANGE);
-  const hMesh = new THREE.Mesh(hGeom, mat);
-  hMesh.position.set(0, THICKNESS / 2, FLANGE / 2);
-  group.add(hMesh);
-
-  const vGeom = new THREE.BoxGeometry(length, FLANGE, THICKNESS);
-  const vMesh = new THREE.Mesh(vGeom, mat);
-  vMesh.position.set(0, FLANGE / 2, THICKNESS / 2);
-  group.add(vMesh);
-
-  group.position.set(position.x + offset, position.y, position.z);
-  group.rotation.set(rotation.x, rotation.y, rotation.z);
-
-  targetGroup.add(group);
-}
-
-/**
- * Proceduralny fallback dla łącznika CTF, wywoływany w przypadku braku połączenia lub błędu pobierania.
- */
-function buildProceduralCTFConnector(position, rotation, scale, targetGroup) {
-  const SIZE = 0.118 * (scale || 1);
-
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xa0a0a0,
-    metalness: 0.6,
-    roughness: 0.4
-  });
-
-  const geom  = new THREE.BoxGeometry(SIZE, SIZE, SIZE);
-  const mesh  = new THREE.Mesh(geom, mat);
-
-  mesh.position.copy(position);
-  mesh.rotation.set(rotation.x, rotation.y, rotation.z);
-
-  targetGroup.add(mesh);
-}
-
-/**
- * Wczytuje profil CTF (z cache jeśli dostępny, w przeciwnym razie inicjuje pobieranie z GitHuba).
- */
-function loadCTFProfile(modelPath, position, rotation, scaleX, targetGroup) {
-  if (ctfModelsCache.profil) {
-    const parentGroup = new THREE.Group();
-    const modelClone = ctfModelsCache.profil.clone();
-    
-    // Model w GLTF ma pivot na środku (zakres x: -0.192 do 0.192, długość: 0.384)
-    // Aby początek profilu zaczynał się w punkcie (0,0,0) lokalnego układu, przesuwamy model o length/2 w prawo.
-    const length = 0.384 * scaleX;
-    modelClone.position.set(length / 2, 0, 0);
-    modelClone.scale.set(scaleX, 1, 1);
-    
-    // Nadanie ujednoliconego materiału o estetyce aluminium
-    modelClone.traverse(function (node) {
-      if (node.isMesh) {
-        node.castShadow = true;
-        node.receiveShadow = true;
-        node.material = new THREE.MeshStandardMaterial({
-          color: 0xd0d4d9,
-          metalness: 0.65,
-          roughness: 0.35,
-          name: 'ctf_profile_alu'
-        });
-      }
-    });
-    
-    parentGroup.add(modelClone);
-    parentGroup.position.copy(position);
-    parentGroup.rotation.set(rotation.x, rotation.y, rotation.z);
-    
-    targetGroup.add(parentGroup);
-  } else {
-    // Rozpocznij ładowanie w tle i wyświetl wersję proceduralną jako placeholder
-    triggerCTFModelLoad('profil', modelPath);
-    buildProceduralCTFProfile(position, rotation, scaleX, targetGroup);
-  }
-}
-
-/**
- * Wczytuje łącznik narożny CTF (z cache jeśli dostępny, w przeciwnym razie inicjuje pobieranie z GitHuba).
- */
-function loadProfileModel(modelPath, position, rotation, scale, targetGroup) {
-  if (ctfModelsCache.lacznik) {
-    const modelClone = ctfModelsCache.lacznik.clone();
-    
-    modelClone.position.copy(position);
-    modelClone.rotation.set(rotation.x, rotation.y, rotation.z);
-    
-    const s = scale || 1;
-    modelClone.scale.set(s, s, s);
-    
-    // Nadanie ujednoliconego metalicznego materiału
-    modelClone.traverse(function (node) {
-      if (node.isMesh) {
-        node.castShadow = true;
-        node.receiveShadow = true;
-        node.material = new THREE.MeshStandardMaterial({
-          color: 0xa0a0a0,
-          metalness: 0.55,
-          roughness: 0.45,
-          name: 'ctf_connector_metal'
-        });
-      }
-    });
-    
-    targetGroup.add(modelClone);
-  } else {
-    // Rozpocznij ładowanie w tle i wyświetl wersję proceduralną jako placeholder
-    triggerCTFModelLoad('lacznik', modelPath);
-    buildProceduralCTFConnector(position, rotation, scale, targetGroup);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────
-// Silnik renderujący anatomię wewnętrzną kasetonów SEGO v7
-// ─────────────────────────────────────────────────────────────────
 function buildSegoInternalAnatomy(item, group) {
   const w = parseFloat(item.length) || 100;
   const h = parseFloat(item.height) || 250;
@@ -2970,120 +3224,6 @@ function buildSegoInternalAnatomy(item, group) {
       currentOffset += size;
     });
   }
-}
 
-function buildCTFStructure(dims, group) {
-  const { w, h, d } = dims;
-  // Ścieżki zgodne z Twoim folderem 'models/'
-  const profilePath = 'models/ctf_profil.gltf';
-  const cornerPath = 'models/ctf_lacznik.gltf';
-  const baseLength = 0.384;
-
-  // 1. Definicja krawędzi
-  const edges = [
-    { pos: [0, 0, 0], rot: [0, 0, 0], len: w }, { pos: [0, h, 0], rot: [0, 0, 0], len: w },
-    { pos: [0, 0, d], rot: [0, 0, 0], len: w }, { pos: [0, h, d], rot: [0, 0, 0], len: w },
-    { pos: [0, 0, 0], rot: [0, 0, Math.PI / 2], len: h }, { pos: [w, 0, 0], rot: [0, 0, Math.PI / 2], len: h },
-    { pos: [0, 0, d], rot: [0, 0, Math.PI / 2], len: h }, { pos: [w, 0, d], rot: [0, 0, Math.PI / 2], len: h },
-    { pos: [0, 0, 0], rot: [0, -Math.PI / 2, 0], len: d }, { pos: [w, 0, 0], rot: [0, -Math.PI / 2, 0], len: d },
-    { pos: [0, h, 0], rot: [0, -Math.PI / 2, 0], len: d }, { pos: [w, h, 0], rot: [0, -Math.PI / 2, 0], len: d }
-  ];
-
-  // 2. Budowa profili
-  edges.forEach(edge => {
-    const scaleX = edge.len / baseLength;
-    loadCTFProfile(profilePath, new THREE.Vector3(...edge.pos), new THREE.Euler(...edge.rot), scaleX, group);
-  });
-
-  // 3. Budowa 8 narożników
-  const corners = [
-    [0, 0, 0], [w, 0, 0], [0, h, 0], [0, 0, d],
-    [w, h, 0], [w, 0, d], [0, h, d], [w, h, d]
-  ];
-
-  corners.forEach(pos => {
-    loadProfileModel(cornerPath, new THREE.Vector3(...pos), new THREE.Euler(0, 0, 0), 1, group);
-  });
-}
-function toggleCtfFields() {
-  // 1. Pobierz system z selecta
-  const sysEl = document.getElementById('kasetonSystem');
-  if (!sysEl) return;
-
-  const type = sysEl.value;
-  const isCTF = (type === 'CTF' || type === 'CTF_LED');
-
-  // 2. Pokaż/ukryj sekcję dodatkowych wymiarów CTF (redundantna sekcja poniżej)
-  const ctfSection = document.getElementById('ctfDimensionsSection');
-  if (ctfSection) ctfSection.style.display = 'none'; // zawsze ukryta – używamy pól głównych
-
-  // 3. Pokaż/ukryj sekcję SEGO (zasilacz, oświetlenie)
-  const segoSection = document.getElementById('segoConfigSection');
-  if (segoSection) segoSection.style.display = isCTF ? 'none' : 'block';
-
-  // 4. Pokaż/ukryj wiersz głębokości CTF w głównym panelu wymiarów
-  const ctfDepthRow = document.getElementById('ctfDepthRow');
-  if (ctfDepthRow) ctfDepthRow.style.display = isCTF ? 'flex' : 'none';
-
-  console.log('Przełączono widok na:', type);
-}
-
-function onCTFGenerateClick() {
-  // Czytamy wymiary z głównych, zawsze widocznych pól formularza kasetonu
-  const widthEl = document.getElementById('kasetonWidth');  // Szerokość
-  const heightEl = document.getElementById('kasetonDepth');  // Wysokość (pole "Wys.")
-  // Głębokość CTF – dedykowany wiersz ctfDepthRow (id=ctf_depth wewnątrz #ctfDepthRow)
-  const depthEl = document.querySelector('#ctfDepthRow input') ||
-    document.getElementById('ctf_depth');
-
-  const w = widthEl ? (parseFloat(widthEl.value) || 100) : 100;
-  const h = heightEl ? (parseFloat(heightEl.value) || 200) : 200;
-  const d = depthEl ? (parseFloat(depthEl.value) || 12) : 12;
-
-  const sysEl = document.getElementById('kasetonSystem');
-  const cutEl = document.getElementById('kasetonCut');
-  const printEl = document.getElementById('kasetonPrint');
-  const usageEl = document.getElementById('kasetonUsage');
-
-  const sys = sysEl ? sysEl.value : 'CTF';
-  const cut = cutEl ? cutEl.value : 'none';
-  const print = printEl ? printEl.value : 'single';
-  const usage = usageEl ? usageEl.value : 'freestanding';
-
-  // Zapisz konfigurację
-  window.currentKasetonConfig = {
-    system: sys,
-    width: w,
-    depth: h,        // pole depth = wysokość H (zgodnie ze standardem kasetonu)
-    ctfDepth: d,      // głębokość profilu CTF
-    cut: cut,
-    print: print,
-    usage: usage
-  };
-
-  console.log('✅ CTF config:', window.currentKasetonConfig);
-
-  const btn = document.querySelector('.kaseton-submit');
-  if (btn) {
-    const origText = btn.textContent;
-    btn.textContent = '✅ Zapisano konfigurację!';
-    btn.style.background = 'var(--kaseton-neon)';
-    btn.style.color = '#000';
-    setTimeout(() => {
-      btn.textContent = origText;
-      btn.style.background = '';
-      btn.style.color = '';
-      closeKasetonModal();
-
-      if (typeof currentSystem !== 'undefined' && currentSystem !== 'kasetony_niestandardowe') {
-        switchSystem('kasetony_niestandardowe');
-      }
-
-      if (typeof is3DMode !== 'undefined' && !is3DMode) {
-        toggle3D();
-      } else {
-        if (typeof update3DScene === 'function') update3DScene();
-      }
-    }, 800);
-  }
+  populateProfileLeds(bottomP, w); populateProfileLeds(topP, w);
 }

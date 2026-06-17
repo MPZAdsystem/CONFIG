@@ -990,6 +990,21 @@ async function checkEdgeMatching() {
 
 function redefineSystemRules(system) {
     switch (system) {
+        case 'LMSM':
+            window.currentSystemConfig = {
+                name: "LMSM",
+                prefix: "LMSM",
+                defaultWidth: 100,
+                defaultHeight: 250,
+                defWidth: 100,
+                defHeight: 250,
+                cornerType: "BI_FOLD_SLIM",
+                neonColorHex: 0x00FF88,
+                bomPrefix: "ALU-060-SLIM",
+                canDoubleSide: true
+            };
+            break;
+
         case 'SEGO':
             window.currentSystemConfig = {
                 name: "SEGO",

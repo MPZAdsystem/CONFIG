@@ -476,6 +476,19 @@ function init3D() {
   // =================================================================
   // LISTENERY INTERAKCJI (Ruch i upuszczenie ludzika w 3D)
   // =================================================================
+  container.addEventListener('mousedown', (e) => {
+    if (!is3DMode || !human3DModel) return;
+    const rect = container.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObject(human3DModel, true);
+    if (intersects.length > 0) {
+      isDraggingHuman3D = true;
+      controls.enabled = false;
+    }
+  });
+
   container.addEventListener('mousemove', (e) => {
     // Jeśli nie jesteśmy w trybie 3D, nie przeciągamy ludzika lub model nie istnieje - przerywamy
     if (!is3DMode || !isDraggingHuman3D || !human3DModel) return;

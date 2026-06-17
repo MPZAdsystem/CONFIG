@@ -16,9 +16,140 @@
  const W = parseFloat(config.width) || 120;
  const H = parseFloat(config.depth) || 200;
  const sys = config.system || 'LMD';
- const isLedSys = ['LMD', 'LMS', 'CTF_LED', 'LCD_LMD'].includes(sys);
+ const isLedSys = ['LMD', 'LMS', 'LMSM', 'CTF_LED', 'LCD_LMD'].includes(sys);
 
  const bomItems = [];
+
+  if (sys === 'CTF') {
+    const D = parseFloat(config.height3D) || 120; // Głębokość 3D
+    const wMeters = W / 100;
+    const hMeters = H / 100;
+    const dMeters = D / 100;
+    
+    // 12 profili CTF (4 szerokości, 4 wysokości, 4 głębokości)
+    const totalProfileMeters = 4 * wMeters + 4 * hMeters + 4 * dMeters;
+    bomItems.push({ name: "profil CTF", qty: parseFloat(totalProfileMeters.toFixed(2)), unit: "mb" });
+    
+    // 8 łączników narożnych
+    bomItems.push({ name: "adFrame CTF Plastic connector", qty: 8, unit: "szt" });
+    
+    // Blat górny
+    const topPanel = config.topPanel || 'none';
+    if (topPanel !== 'none') {
+      const topPanelName = topPanel === 'mdf' ? 'blat MDF CTF' : (topPanel === 'plexi' ? 'blat PLEXI CTF' : 'blat poliwęglan CTF');
+      bomItems.push({ name: topPanelName, qty: 1, unit: "szt" });
+    }
+    
+    // Montaż (Wolnostojący / Podwieszany)
+    if (config.usage === 'freestanding') {
+      bomItems.push({ name: "stopa CTF", qty: 4, unit: "szt" });
+    } else if (config.usage === 'suspended') {
+      bomItems.push({ name: "adFrame CTF - zestaw do podwieszenia 2m (4 PKT) do MO", qty: 1, unit: "szt" });
+    }
+    
+    // Wydruki (tkaniny)
+    const printOption = config.print || 'all_sides';
+    if (printOption !== 'no_print') {
+      if (printOption === 'all_sides') {
+        bomItems.push({ name: `Wydruk adFrame CTF ${W}x${H}`, qty: 2, unit: "szt" });
+        bomItems.push({ name: `Wydruk adFrame CTF ${D}x${H}`, qty: 2, unit: "szt" });
+        bomItems.push({ name: `Wydruk adFrame CTF ${W}x${D}`, qty: 2, unit: "szt" }); // góra + dół
+      } else if (printOption === 'front_back') {
+        bomItems.push({ name: `Wydruk adFrame CTF ${W}x${H}`, qty: 2, unit: "szt" });
+        bomItems.push({ name: `Wydruk adFrame CTF Blockout ${D}x${H}`, qty: 2, unit: "szt" });
+        bomItems.push({ name: `Wydruk adFrame CTF Blockout ${W}x${D}`, qty: 2, unit: "szt" }); // góra + dół
+      } else if (printOption === 'single_front') {
+        bomItems.push({ name: `Wydruk adFrame CTF ${W}x${H}`, qty: 1, unit: "szt" });
+        bomItems.push({ name: `Wydruk adFrame CTF Blockout ${W}x${H}`, qty: 1, unit: "szt" });
+        bomItems.push({ name: `Wydruk adFrame CTF Blockout ${D}x${H}`, qty: 2, unit: "szt" });
+        bomItems.push({ name: `Wydruk adFrame CTF Blockout ${W}x${D}`, qty: 2, unit: "szt" }); // góra + dół
+      }
+    }
+    
+    // Save carton info for packaging/nesting engine
+    config.cartonName = "Karton CTF - 120x60x40cm";
+    config.cartonQty = 1;
+    
+    // Integrate manual items
+    if (typeof manualItems !== 'undefined') {
+      for (let key in manualItems) {
+        let item = manualItems[key];
+        if (item && typeof item === 'object' && item.qty > 0) {
+          bomItems.push({
+            name: item.name,
+            qty: item.qty,
+            unit: 'szt',
+            intranetId: item.intranetId,
+            isManual: true,
+            plnMargin: item.plnMargin,
+            multiplier: item.multiplier || 2.8,
+            plnPrice: item.plnMargin * (item.multiplier || 2.8)
+          });
+        }
+      }
+    }
+    
+    finishKasetonBOM(bomItems, W, H, sys, config);
+    return;
+  }
+
+ if (sys === 'LMSM') {
+    const wMeters = W / 100;
+    const hMeters = H / 100;
+    const perimeter = 2 * (wMeters + hMeters);
+    
+    bomItems.push({ name: "profil LMSM poziomy (ALU-060-SLIM)", qty: 2, length: W - 0.2, unit: "szt" });
+    bomItems.push({ name: "profil LMSM pionowy (ALU-060-SLIM)", qty: 2, length: H - 0.2, unit: "szt" });
+    bomItems.push({ name: "Łącznik narożny wsuwany L-Slim (SL-06)", qty: 4, unit: "szt" });
+    bomItems.push({ name: "Mikro-keder silikonowy 9x2mm (KEDER-9X2)", qty: parseFloat(perimeter.toFixed(2)), unit: "mb" });
+    
+    // Solver doboru oświetlenia krawędziowego wysokiej gęstości
+    const totalLedWattage = perimeter * 22.0; // 22W na metr bieżący dla wersji Slim
+    const driverRequiredPower = totalLedWattage * 1.25; // Współczynnik bezpieczeństwa 25%
+    
+    bomItems.push({
+        name: "Taśma LED obwodowa high-density (LED-SLIM-24V)",
+        qty: Math.ceil(perimeter),
+        unit: "mb"
+    });
+    
+    // Dobór zasilacza wąskoprofilowego z bazy danych ERP
+    const driverSku = driverRequiredPower <= 60 ? "PSU-SLIM-60W" : (driverRequiredPower <= 150 ? "PSU-SLIM-150W" : "PSU-SLIM-240W");
+    bomItems.push({
+        name: driverSku + " Zasilacz impulsowy wąskoprofilowy IP20",
+        qty: 1,
+        unit: "szt"
+    });
+
+    bomItems.push({ name: "Karton BOX-SLIM (65x10x10cm)", qty: 1, unit: "szt" });
+
+    // Save carton info for packaging/nesting engine
+    config.cartonName = "Karton BOX-SLIM (65x10x10cm)";
+    config.cartonQty = 1;
+    config.totalPowerW = totalLedWattage;
+
+    // Integrate manual items to BOM
+    if (typeof manualItems !== 'undefined') {
+        for (let key in manualItems) {
+            let item = manualItems[key];
+            if (item && typeof item === 'object' && item.qty > 0) {
+                bomItems.push({
+                    name: item.name,
+                    qty: item.qty,
+                    unit: 'szt',
+                    intranetId: item.intranetId,
+                    isManual: true,
+                    plnMargin: item.plnMargin,
+                    multiplier: item.multiplier || 2.8,
+                    plnPrice: item.plnMargin * (item.multiplier || 2.8)
+                });
+            }
+        }
+    }
+
+    finishKasetonBOM(bomItems, W, H, sys, config);
+    return;
+  }
 
  // 1. PROFIL - suma długości boków w metrach (nazwa zależna od systemu)
  const totalProfileMeters = (2 * W + 2 * H) / 100;
@@ -259,6 +390,17 @@
 
 // 9. DATABASE & CURRENCY LOGIC
 const KASETON_PRICES = {
+
+  // --- Kategoria: LMSM Slim 65mm ---
+  "profil LMSM poziomy (ALU-060-SLIM)": { plnPrice: 120.0, plnMargin: 40.0, intranetId: 10936, category: "ramy tekstylne akcesoria" },
+  "profil LMSM pionowy (ALU-060-SLIM)": { plnPrice: 120.0, plnMargin: 40.0, intranetId: 10936, category: "ramy tekstylne akcesoria" },
+  "Łącznik narożny wsuwany L-Slim (SL-06)": { plnPrice: 15.0, plnMargin: 5.0, intranetId: 17452, category: "ramy tekstylne akcesoria" },
+  "Mikro-keder silikonowy 9x2mm (KEDER-9X2)": { plnPrice: 5.0, plnMargin: 2.0, intranetId: 16194, category: "ramy tekstylne akcesoria" },
+  "Taśma LED obwodowa high-density (LED-SLIM-24V)": { plnPrice: 45.0, plnMargin: 15.0, intranetId: 18979, category: "ramy tekstylne akcesoria" },
+  "PSU-SLIM-60W Zasilacz impulsowy wąskoprofilowy IP20": { plnPrice: 85.0, plnMargin: 30.0, intranetId: 14812, category: "ramy tekstylne akcesoria" },
+  "PSU-SLIM-150W Zasilacz impulsowy wąskoprofilowy IP20": { plnPrice: 125.0, plnMargin: 45.0, intranetId: 14812, category: "ramy tekstylne akcesoria" },
+  "PSU-SLIM-240W Zasilacz impulsowy wąskoprofilowy IP20": { plnPrice: 185.0, plnMargin: 65.0, intranetId: 14812, category: "ramy tekstylne akcesoria" },
+  "Karton BOX-SLIM (65x10x10cm)": { plnPrice: 25.0, plnMargin: 10.0, intranetId: 14835, category: "półprodukty" },
 
   // --- Kategoria: adfloor ---
   "adFloor": { plnPrice: 1858.584, plnMargin: 663.78, intranetId: 15376, category: "adfloor" },
@@ -4512,6 +4654,10 @@ const KASETON_PRICES = {
   "\u017car\u00f3wka 40W do adFrame CTF Hanging (ma\u0142a)": { plnPrice: 0.0, plnMargin: 0.0, intranetId: 16051, category: "ramy tekstylne akcesoria", noPrice: true },
   "\u017car\u00f3wka 80W do adFrame CTF Hanging (du\u017ca)": { plnPrice: 0.0, plnMargin: 0.0, intranetId: 15232, category: "ramy tekstylne akcesoria", noPrice: true },
   "\u017car\u00f3wka 80W do adFrame CTF Hanging (du\u017ca) ciep\u0142a barwa": { plnPrice: 0.0, plnMargin: 0.0, intranetId: 17648, category: "ramy tekstylne akcesoria", noPrice: true },
+  "blat MDF CTF": { plnPrice: 150.0, plnMargin: 50.0, intranetId: 19553, category: "ramy tekstylne akcesoria" },
+  "blat PLEXI CTF": { plnPrice: 280.0, plnMargin: 100.0, intranetId: 19554, category: "ramy tekstylne akcesoria" },
+  "blat poliwęglan CTF": { plnPrice: 220.0, plnMargin: 80.0, intranetId: 19555, category: "ramy tekstylne akcesoria" },
+  "stopa CTF": { plnPrice: 45.0, plnMargin: 15.0, intranetId: 19556, category: "ramy tekstylne akcesoria" }
 };
 window.KASETON_PRICES = KASETON_PRICES;
 
@@ -4677,6 +4823,9 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
  const W = parseFloat(config.width) || 120;
  const H = parseFloat(config.depth) || 200;
  const wt = KASETON_WEIGHT_DATA[sys] || KASETON_WEIGHT_DATA.LMD;
+ if (wt && typeof wt.getWeight === 'function') {
+   return wt.getWeight(W / 100, H / 100);
+ }
  let total = 0;
 
  // Profile

@@ -133,7 +133,11 @@
                 // Konstruowanie adresu URL z parametrem mframe do automatycznego startu wtyczki
                 const intranetUrl = `https://int.adsystem.pl/index.php?MODULE=wbs&MODGO=orders&mframe=${base64Str}`;
                 
-                localStorage.setItem('pending_configurator_order', jsonStr);
+                try {
+                    localStorage.setItem('pending_configurator_order', jsonStr);
+                } catch (e) {
+                    console.warn("Storage item write blocked:", e);
+                }
 
                 // Otwieramy nową kartę natychmiast, aby przeglądarka nie zablokowała wyskakującego okienka (Popup Blocker)
                 window.open(intranetUrl, '_blank');

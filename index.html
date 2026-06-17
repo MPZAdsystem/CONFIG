@@ -2,11 +2,27 @@
 <html lang="pl">
 
 <head>
+    <script>
+        window.addEventListener('error', function (e) {
+            console.error("GLOBAL ERROR CAPTURED: ", e.message, " at ", e.filename, ":", e.lineno);
+            var errDiv = document.createElement('div');
+            errDiv.style.position = 'fixed';
+            errDiv.style.top = '10px';
+            errDiv.style.left = '10px';
+            errDiv.style.background = 'red';
+            errDiv.style.color = 'white';
+            errDiv.style.padding = '20px';
+            errDiv.style.zIndex = '999999';
+            errDiv.style.fontSize = '20px';
+            errDiv.style.fontWeight = 'bold';
+            errDiv.innerHTML = "BŁĄD JS: " + e.message + "<br>Plik: " + e.filename + "<br>Linia: " + e.lineno;
+            document.body.appendChild(errDiv);
+        });
+    </script>
     <meta charset="UTF-8">
     <title>Konfigurator SEGO v61 - beta version</title>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
@@ -587,15 +603,6 @@
             <div id="ui-system-kasetony_niestandardowe" class="system-ui-panel" style="display: none;">
                 <p style="color:var(--kaseton-neon, #00e5ff); font-size:12px; margin-top:20px; text-align:center;">🔲
                     Kasetony niestandardowe (konfigurator na wymiar)</p>
-
-                <div style="margin: 10px 0; display: flex; gap: 5px; justify-content: center;">
-                    <input type="number" id="ctf_width" placeholder="Szer. (cm)"
-                        style="width: 30%; background: #222; border: 1px solid #444; color: #fff; padding: 5px;">
-                    <input type="number" id="ctf_height" placeholder="Wys. (cm)"
-                        style="width: 30%; background: #222; border: 1px solid #444; color: #fff; padding: 5px;">
-                    <input type="number" id="ctf_depth" placeholder="Głęb. (cm)"
-                        style="width: 30%; background: #222; border: 1px solid #444; color: #fff; padding: 5px;">
-                </div>
                 <button class="btn btn-action"
                     style="background: var(--kaseton-neon, #00e5ff); color: #000; font-weight: bold; margin-top:10px; width:100%; justify-content:center;"
                     onclick="openKasetonModal()">⚙️ Otwórz konfigurator kasetonu</button>
@@ -1502,6 +1509,7 @@
                     <option value="" disabled selected>-- Wybierz system --</option>
                     <option value="LMD">adFrame LMD (140mm LED)</option>
                     <option value="LMS">adFrame LMS (100mm LED)</option>
+                    <option value="LMSM">adFrame LMSM (Slim 65mm LED)</option>
                     <option value="DTF">adFrame DTF (Dwustronny bez LED)</option>
                     <option value="STF">adFrame STF</option>
                     <option value="STFL">adFrame STFL</option>
@@ -1512,22 +1520,42 @@
             </div>
 
             <div class="kaseton-section">
-                <label class="kaseton-label"><span class="kaseton-badge">2</span> Wymiary (cm)</label>
-                <div class="kaseton-dim-row" style="display: flex; gap: 10px;">
-                    <div style="flex: 1;">
-                        <input type="number" id="kasetonWidth" class="kaseton-input" value="100" style="width: 100%;">
-                        <div class="kaseton-unit">Szer.</div>
+                <label class="kaseton-label"><span class="kaseton-badge">2</span> Wymiary (Szer. x Wys.)</label>
+                <div class="kaseton-dim-row">
+                    <div>
+                        <input type="number" id="kasetonWidth" class="kaseton-input" placeholder="Szerokość (cm)"
+                            min="40" max="1000" value="100">
+                        <div class="kaseton-unit">cm</div>
                     </div>
-                    <div style="flex: 1;">
-                        <input type="number" id="kasetonDepth" class="kaseton-input" value="200" style="width: 100%;">
-                        <div class="kaseton-unit">Wys.</div>
-                    </div>
-                    <div id="ctfDepthRow" style="flex: 1; display: none;">
-                        <input type="number" id="ctf_depth" class="kaseton-input" value="12" style="width: 100%;">
-                        <div class="kaseton-unit">Głęb.</div>
+                    <div>
+                        <input type="number" id="kasetonDepth" class="kaseton-input" placeholder="Wysokość (cm)"
+                            min="40" max="1000" value="200">
+                        <div class="kaseton-unit">cm</div>
                     </div>
                 </div>
             </div>
+
+            <div id="kasetonHeightSection" class="kaseton-section kaseton-conditional">
+                <label class="kaseton-label"><span class="kaseton-badge">2b</span> Głębokość 3D (CTF)</label>
+                <div class="kaseton-dim-row">
+                    <div>
+                        <input type="number" id="kasetonHeight3D" class="kaseton-input" placeholder="Głębokość (cm)"
+                            min="50" max="800" value="120">
+                        <div class="kaseton-unit">cm</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="kasetonTopSection" class="kaseton-section kaseton-conditional">
+                <label class="kaseton-label"><span class="kaseton-badge">🔲</span> Blat górny</label>
+                <select id="kasetonTop" class="kaseton-select">
+                    <option value="none">Bez blatu</option>
+                    <option value="mdf">Blat MDF</option>
+                    <option value="plexi">Blat PLEXI</option>
+                    <option value="polycarbonate">Blat Poliwęglan</option>
+                </select>
+            </div>
+
             <div class="kaseton-section">
                 <label class="kaseton-label"><span class="kaseton-badge">3</span> Cięcie profili</label>
                 <select id="kasetonCut" class="kaseton-select">
@@ -1573,35 +1601,22 @@
                 </select>
             </div>
 
-
-            <!-- ctfDimensionsSection: zachowana dla kompatybilności, ale nieużywana – wymiary CTF są pobierane z kasetonWidth/kasetonDepth + ctfDepthRow -->
-            <div id="ctfDimensionsSection" class="kaseton-section kaseton-conditional" style="display:none;">
-                <label class="kaseton-label"><span class="kaseton-badge">🛠️</span> Wymiary CTF (cm)</label>
-                <div style="display: flex; gap: 5px;">
-                    <input type="number" id="ctf_width" placeholder="Szer." class="kaseton-input" style="width: 32%;">
-                    <input type="number" id="ctf_height" placeholder="Wys." class="kaseton-input" style="width: 32%;">
-                    <input type="number" id="ctf_depth" placeholder="Głęb." class="kaseton-input" style="width: 32%;">
-                </div>
+            <div id="kasetonPowerSection" class="kaseton-section kaseton-conditional">
+                <label class="kaseton-label"><span class="kaseton-badge">⚡</span> Zasilacz</label>
+                <select id="kasetonPower" class="kaseton-select">
+                    <option value="internal">Wewnętrzny (w ramie)</option>
+                    <option value="external">Zewnętrzny</option>
+                    <option value="none">Bez zasilacza</option>
+                </select>
             </div>
 
-            <div id="segoConfigSection">
-                <div id="kasetonPowerSection" class="kaseton-section kaseton-conditional">
-                    <label class="kaseton-label"><span class="kaseton-badge">⚡</span> Zasilacz</label>
-                    <select id="kasetonPower" class="kaseton-select">
-                        <option value="internal">Wewnętrzny (w ramie)</option>
-                        <option value="external">Zewnętrzny</option>
-                        <option value="none">Bez zasilacza</option>
-                    </select>
-                </div>
-
-                <div id="kasetonLightSection" class="kaseton-section kaseton-conditional">
-                    <label class="kaseton-label"><span class="kaseton-badge">💡</span> Układ oświetlenia LED</label>
-                    <select id="kasetonLight" class="kaseton-select">
-                        <option value="power_long">Krawędziowo - Długie boki (Góra/Dół)</option>
-                        <option value="power_short">Krawędziowo - Krótkie boki (Lewo/Prawo)</option>
-                        <option value="power_around">Po obwodzie (Wszystkie 4 boki)</option>
-                    </select>
-                </div>
+            <div id="kasetonLightSection" class="kaseton-section kaseton-conditional">
+                <label class="kaseton-label"><span class="kaseton-badge">💡</span> Układ oświetlenia LED</label>
+                <select id="kasetonLight" class="kaseton-select">
+                    <option value="power_long">Krawędziowo - Długie boki (Góra/Dół)</option>
+                    <option value="power_short">Krawędziowo - Krótkie boki (Lewo/Prawo)</option>
+                    <option value="power_around">Po obwodzie (Wszystkie 4 boki)</option>
+                </select>
             </div>
 
             <div class="kaseton-separator"></div>
@@ -1617,4 +1632,6 @@
     <script src="js/3d-engine.js"></script>
     <script src="js/bom.js"></script>
     <script src="js/main.js"></script>
-
+</body>
+
+</html>
