@@ -975,6 +975,53 @@ function drawKasetonScene() {
   const sys = config.system || 'LMD';
   const pD = (sys === 'LMS') ? 12.0 : 14.0;
 
+  // 0. BRAMKA DLA CTF W SILNIKU 3D
+  if (sys === 'CTF' || sys === 'CTF_LED') {
+    const d = parseFloat(config.ctfDepth) || 12;
+    const elevY = config.usage === 'suspended' ? 100 : 0;
+    const kGroup = new THREE.Group();
+    kGroup.userData = { isKaseton: true };
+
+    buildCTFStructure({ w: W, h: H, d: d }, kGroup);
+
+    // 10. LINIE WYMIAROWE I NAPISY
+    if (!isBlueprintMode) {
+      const dimWSprite = createTextSprite(W + " cm", "var(--kaseton-neon, #00e5ff)", 24);
+      dimWSprite.position.set(0, elevY - 14, 15);
+      kGroup.add(dimWSprite);
+
+      const dimHSprite = createTextSprite(H + " cm", "var(--kaseton-neon, #00e5ff)", 24);
+      dimHSprite.position.set(W / 2 + 18, elevY + H / 2, 0);
+      kGroup.add(dimHSprite);
+
+      const titleSprite = createTextSprite("SYSTEM " + sys + " (" + W + "x" + H + " cm)", "var(--kaseton-neon, #00e5ff)", 28);
+      titleSprite.position.set(0, elevY + H + 25, 0);
+      kGroup.add(titleSprite);
+    } else {
+      const pW1 = new THREE.Vector3(-W / 2, elevY, 0);
+      const pW2 = new THREE.Vector3(W / 2, elevY, 0);
+      kGroup.add(addDimension3D(pW1, pW2, W + ' cm', new THREE.Vector3(0, -25, 0), 1.3));
+
+      const pH1 = new THREE.Vector3(W / 2, elevY, 0);
+      const pH2 = new THREE.Vector3(W / 2, elevY + H, 0);
+      kGroup.add(addDimension3D(pH1, pH2, H + ' cm', new THREE.Vector3(25, 0, 0), 1.3));
+    }
+
+    scene.add(kGroup);
+    sceneObjects.push(kGroup);
+
+    if (controls) {
+      controls.target.set(0, elevY + H / 2, 0);
+      const maxDim = Math.max(W, H);
+      camera.position.set(0, elevY + H / 2 + 10, maxDim * 1.5);
+      controls.update();
+    }
+
+    generateKasetonBOM();
+    console.log('✨ 3D CTF scene rendered successfully!');
+    return;
+  }
+
   // 🟢 TUTAJ: Resetujemy licznik LED przy każdym nowym renderowaniu sceny
   window.kasetonLedSummary = {};
 
@@ -2447,10 +2494,201 @@ function drawCartonScene() {
 
   console.log('📦 Carton scene rendered:', cartonQty, 'x', cartonName, '| Weight:', totalWeight.toFixed(1), 'kg');
 }
+
+// ─────────────────────────────────────────────────────────────────
+// NARZĘDZIA DO IMPORTU MODELI (GLTF / OBJ)
+// ─────────────────────────────────────────────────────────────────
+
+const gltfLoader = new THREE.GLTFLoader();
+const objLoader = new THREE.OBJLoader();
+const modelCache = {}; // Cache zapobiegający wielokrotnemu pobieraniu tych samych plików
+
+// Cache i stany ładowania dla modeli CTF
+const ctfModelsCache = {
+  profil: null,
+  lacznik: null
+};
+const ctfModelsLoadingState = {
+  profil: 'idle',  // 'idle', 'loading', 'loaded', 'failed'
+  lacznik: 'idle'
+};
+
 /**
- * Silnik renderujący anatomię wewnętrzną kasetonów SEGO v7
- * Zmiany: Szerokość jako pierwsza w napisie, rozbudowa modułu 200cm o pionowy słupek i MP Cross.
+ * Zwraca właściwy adres URL dla modelu. Jeśli strona jest uruchomiona lokalnie (protokół file://),
+ * przekierowuje zapytania do repozytorium GitHub, aby uniknąć problemów z polityką CORS.
  */
+function getCTFModelUrl(relativePath) {
+  if (window.location.protocol === 'file:') {
+    return 'https://raw.githubusercontent.com/MPZAdsystem/CONFIG/main/' + relativePath;
+  }
+  return relativePath;
+}
+
+/**
+ * Uruchamia asynchroniczne pobieranie modeli z GitHub / serwera lokalnego.
+ */
+function triggerCTFModelLoad(name, path) {
+  if (ctfModelsLoadingState[name] !== 'idle') return;
+  
+  ctfModelsLoadingState[name] = 'loading';
+  const url = getCTFModelUrl(path);
+  console.log(`[CTF Loader] Preloading ${name} from: ${url}`);
+  
+  gltfLoader.load(
+    url,
+    function (gltf) {
+      console.log(`[CTF Loader] Successfully loaded ${name} from: ${url}`);
+      ctfModelsCache[name] = gltf.scene;
+      ctfModelsLoadingState[name] = 'loaded';
+      
+      // Po załadowaniu modelu wymuszamy ponowne narysowanie sceny
+      if (typeof drawKasetonScene === 'function') {
+        drawKasetonScene();
+      }
+    },
+    undefined,
+    function (error) {
+      console.error(`[CTF Loader] Failed to load ${name} from ${url}:`, error);
+      ctfModelsLoadingState[name] = 'failed';
+    }
+  );
+}
+
+/**
+ * Proceduralny fallback dla profilu CTF, wywoływany w przypadku braku połączenia lub błędu pobierania.
+ */
+function buildProceduralCTFProfile(position, rotation, scaleX, targetGroup) {
+  const BASE_LEN   = 0.384;   // bazowa długość modelu w jednostkach Three.js
+  const THICKNESS  = 0.028;   // grubość ścianki profilu
+  const FLANGE     = 0.057;   // szerokość stopki (2 × 0.0286)
+
+  const length = BASE_LEN * scaleX;
+  const offset = length / 2;
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xc8c8c8,
+    metalness: 0.7,
+    roughness: 0.3
+  });
+
+  const group = new THREE.Group();
+
+  // Ścianki profilu L-kształtnego: pozioma + pionowa
+  const hGeom = new THREE.BoxGeometry(length, THICKNESS, FLANGE);
+  const hMesh = new THREE.Mesh(hGeom, mat);
+  hMesh.position.set(0, THICKNESS / 2, FLANGE / 2);
+  group.add(hMesh);
+
+  const vGeom = new THREE.BoxGeometry(length, FLANGE, THICKNESS);
+  const vMesh = new THREE.Mesh(vGeom, mat);
+  vMesh.position.set(0, FLANGE / 2, THICKNESS / 2);
+  group.add(vMesh);
+
+  group.position.set(position.x + offset, position.y, position.z);
+  group.rotation.set(rotation.x, rotation.y, rotation.z);
+
+  targetGroup.add(group);
+}
+
+/**
+ * Proceduralny fallback dla łącznika CTF, wywoływany w przypadku braku połączenia lub błędu pobierania.
+ */
+function buildProceduralCTFConnector(position, rotation, scale, targetGroup) {
+  const SIZE = 0.118 * (scale || 1);
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xa0a0a0,
+    metalness: 0.6,
+    roughness: 0.4
+  });
+
+  const geom  = new THREE.BoxGeometry(SIZE, SIZE, SIZE);
+  const mesh  = new THREE.Mesh(geom, mat);
+
+  mesh.position.copy(position);
+  mesh.rotation.set(rotation.x, rotation.y, rotation.z);
+
+  targetGroup.add(mesh);
+}
+
+/**
+ * Wczytuje profil CTF (z cache jeśli dostępny, w przeciwnym razie inicjuje pobieranie z GitHuba).
+ */
+function loadCTFProfile(modelPath, position, rotation, scaleX, targetGroup) {
+  if (ctfModelsCache.profil) {
+    const parentGroup = new THREE.Group();
+    const modelClone = ctfModelsCache.profil.clone();
+    
+    // Model w GLTF ma pivot na środku (zakres x: -0.192 do 0.192, długość: 0.384)
+    // Aby początek profilu zaczynał się w punkcie (0,0,0) lokalnego układu, przesuwamy model o length/2 w prawo.
+    const length = 0.384 * scaleX;
+    modelClone.position.set(length / 2, 0, 0);
+    modelClone.scale.set(scaleX, 1, 1);
+    
+    // Nadanie ujednoliconego materiału o estetyce aluminium
+    modelClone.traverse(function (node) {
+      if (node.isMesh) {
+        node.castShadow = true;
+        node.receiveShadow = true;
+        node.material = new THREE.MeshStandardMaterial({
+          color: 0xd0d4d9,
+          metalness: 0.65,
+          roughness: 0.35,
+          name: 'ctf_profile_alu'
+        });
+      }
+    });
+    
+    parentGroup.add(modelClone);
+    parentGroup.position.copy(position);
+    parentGroup.rotation.set(rotation.x, rotation.y, rotation.z);
+    
+    targetGroup.add(parentGroup);
+  } else {
+    // Rozpocznij ładowanie w tle i wyświetl wersję proceduralną jako placeholder
+    triggerCTFModelLoad('profil', modelPath);
+    buildProceduralCTFProfile(position, rotation, scaleX, targetGroup);
+  }
+}
+
+/**
+ * Wczytuje łącznik narożny CTF (z cache jeśli dostępny, w przeciwnym razie inicjuje pobieranie z GitHuba).
+ */
+function loadProfileModel(modelPath, position, rotation, scale, targetGroup) {
+  if (ctfModelsCache.lacznik) {
+    const modelClone = ctfModelsCache.lacznik.clone();
+    
+    modelClone.position.copy(position);
+    modelClone.rotation.set(rotation.x, rotation.y, rotation.z);
+    
+    const s = scale || 1;
+    modelClone.scale.set(s, s, s);
+    
+    // Nadanie ujednoliconego metalicznego materiału
+    modelClone.traverse(function (node) {
+      if (node.isMesh) {
+        node.castShadow = true;
+        node.receiveShadow = true;
+        node.material = new THREE.MeshStandardMaterial({
+          color: 0xa0a0a0,
+          metalness: 0.55,
+          roughness: 0.45,
+          name: 'ctf_connector_metal'
+        });
+      }
+    });
+    
+    targetGroup.add(modelClone);
+  } else {
+    // Rozpocznij ładowanie w tle i wyświetl wersję proceduralną jako placeholder
+    triggerCTFModelLoad('lacznik', modelPath);
+    buildProceduralCTFConnector(position, rotation, scale, targetGroup);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Silnik renderujący anatomię wewnętrzną kasetonów SEGO v7
+// ─────────────────────────────────────────────────────────────────
 function buildSegoInternalAnatomy(item, group) {
   const w = parseFloat(item.length) || 100;
   const h = parseFloat(item.height) || 250;
@@ -2732,6 +2970,120 @@ function buildSegoInternalAnatomy(item, group) {
       currentOffset += size;
     });
   }
+}
 
-  populateProfileLeds(bottomP, w); populateProfileLeds(topP, w);
+function buildCTFStructure(dims, group) {
+  const { w, h, d } = dims;
+  // Ścieżki zgodne z Twoim folderem 'models/'
+  const profilePath = 'models/ctf_profil.gltf';
+  const cornerPath = 'models/ctf_lacznik.gltf';
+  const baseLength = 0.384;
+
+  // 1. Definicja krawędzi
+  const edges = [
+    { pos: [0, 0, 0], rot: [0, 0, 0], len: w }, { pos: [0, h, 0], rot: [0, 0, 0], len: w },
+    { pos: [0, 0, d], rot: [0, 0, 0], len: w }, { pos: [0, h, d], rot: [0, 0, 0], len: w },
+    { pos: [0, 0, 0], rot: [0, 0, Math.PI / 2], len: h }, { pos: [w, 0, 0], rot: [0, 0, Math.PI / 2], len: h },
+    { pos: [0, 0, d], rot: [0, 0, Math.PI / 2], len: h }, { pos: [w, 0, d], rot: [0, 0, Math.PI / 2], len: h },
+    { pos: [0, 0, 0], rot: [0, -Math.PI / 2, 0], len: d }, { pos: [w, 0, 0], rot: [0, -Math.PI / 2, 0], len: d },
+    { pos: [0, h, 0], rot: [0, -Math.PI / 2, 0], len: d }, { pos: [w, h, 0], rot: [0, -Math.PI / 2, 0], len: d }
+  ];
+
+  // 2. Budowa profili
+  edges.forEach(edge => {
+    const scaleX = edge.len / baseLength;
+    loadCTFProfile(profilePath, new THREE.Vector3(...edge.pos), new THREE.Euler(...edge.rot), scaleX, group);
+  });
+
+  // 3. Budowa 8 narożników
+  const corners = [
+    [0, 0, 0], [w, 0, 0], [0, h, 0], [0, 0, d],
+    [w, h, 0], [w, 0, d], [0, h, d], [w, h, d]
+  ];
+
+  corners.forEach(pos => {
+    loadProfileModel(cornerPath, new THREE.Vector3(...pos), new THREE.Euler(0, 0, 0), 1, group);
+  });
+}
+function toggleCtfFields() {
+  // 1. Pobierz system z selecta
+  const sysEl = document.getElementById('kasetonSystem');
+  if (!sysEl) return;
+
+  const type = sysEl.value;
+  const isCTF = (type === 'CTF' || type === 'CTF_LED');
+
+  // 2. Pokaż/ukryj sekcję dodatkowych wymiarów CTF (redundantna sekcja poniżej)
+  const ctfSection = document.getElementById('ctfDimensionsSection');
+  if (ctfSection) ctfSection.style.display = 'none'; // zawsze ukryta – używamy pól głównych
+
+  // 3. Pokaż/ukryj sekcję SEGO (zasilacz, oświetlenie)
+  const segoSection = document.getElementById('segoConfigSection');
+  if (segoSection) segoSection.style.display = isCTF ? 'none' : 'block';
+
+  // 4. Pokaż/ukryj wiersz głębokości CTF w głównym panelu wymiarów
+  const ctfDepthRow = document.getElementById('ctfDepthRow');
+  if (ctfDepthRow) ctfDepthRow.style.display = isCTF ? 'flex' : 'none';
+
+  console.log('Przełączono widok na:', type);
+}
+
+function onCTFGenerateClick() {
+  // Czytamy wymiary z głównych, zawsze widocznych pól formularza kasetonu
+  const widthEl = document.getElementById('kasetonWidth');  // Szerokość
+  const heightEl = document.getElementById('kasetonDepth');  // Wysokość (pole "Wys.")
+  // Głębokość CTF – dedykowany wiersz ctfDepthRow (id=ctf_depth wewnątrz #ctfDepthRow)
+  const depthEl = document.querySelector('#ctfDepthRow input') ||
+    document.getElementById('ctf_depth');
+
+  const w = widthEl ? (parseFloat(widthEl.value) || 100) : 100;
+  const h = heightEl ? (parseFloat(heightEl.value) || 200) : 200;
+  const d = depthEl ? (parseFloat(depthEl.value) || 12) : 12;
+
+  const sysEl = document.getElementById('kasetonSystem');
+  const cutEl = document.getElementById('kasetonCut');
+  const printEl = document.getElementById('kasetonPrint');
+  const usageEl = document.getElementById('kasetonUsage');
+
+  const sys = sysEl ? sysEl.value : 'CTF';
+  const cut = cutEl ? cutEl.value : 'none';
+  const print = printEl ? printEl.value : 'single';
+  const usage = usageEl ? usageEl.value : 'freestanding';
+
+  // Zapisz konfigurację
+  window.currentKasetonConfig = {
+    system: sys,
+    width: w,
+    depth: h,        // pole depth = wysokość H (zgodnie ze standardem kasetonu)
+    ctfDepth: d,      // głębokość profilu CTF
+    cut: cut,
+    print: print,
+    usage: usage
+  };
+
+  console.log('✅ CTF config:', window.currentKasetonConfig);
+
+  const btn = document.querySelector('.kaseton-submit');
+  if (btn) {
+    const origText = btn.textContent;
+    btn.textContent = '✅ Zapisano konfigurację!';
+    btn.style.background = 'var(--kaseton-neon)';
+    btn.style.color = '#000';
+    setTimeout(() => {
+      btn.textContent = origText;
+      btn.style.background = '';
+      btn.style.color = '';
+      closeKasetonModal();
+
+      if (typeof currentSystem !== 'undefined' && currentSystem !== 'kasetony_niestandardowe') {
+        switchSystem('kasetony_niestandardowe');
+      }
+
+      if (typeof is3DMode !== 'undefined' && !is3DMode) {
+        toggle3D();
+      } else {
+        if (typeof update3DScene === 'function') update3DScene();
+      }
+    }, 800);
+  }
 }

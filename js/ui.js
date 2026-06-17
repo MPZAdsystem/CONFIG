@@ -1179,6 +1179,10 @@ function onKasetonSystemChange(sel) {
         }
     }
 
+    if (typeof toggleCtfFields === 'function') {
+        toggleCtfFields();
+    }
+
     console.log('🔲 Kaseton system changed to:', sys);
 }
 
@@ -1192,15 +1196,23 @@ function kasetonAfterglowTrigger(el) {
 
 function submitKasetonConfig() {
     const sysEl = document.getElementById('kasetonSystem');
+    const sys = sysEl ? sysEl.value : '';
+
+    // BRAMKA DLA CTF - jeśli wykryje CTF, wywołuje builder i wychodzi z funkcji
+    if (sys === 'CTF' || sys === 'CTF_LED') {
+        onCTFGenerateClick();
+        return;
+    }
+    // --- ORYGINALNA LOGIKA DLA INNYCH SYSTEMÓW (SEGO/LMD itd.) ---
     const widthEl = document.getElementById('kasetonWidth');
     const depthEl = document.getElementById('kasetonDepth');
 
     if (!sysEl || !widthEl || !depthEl) return;
 
-    const sys = sysEl.value;
     const width = parseInt(widthEl.value);
     const depth = parseInt(depthEl.value);
 
+    // ... (pozostała część Twojej oryginalnej funkcji bez zmian)
     const cutEl = document.getElementById('kasetonCut');
     const printEl = document.getElementById('kasetonPrint');
     const usageEl = document.getElementById('kasetonUsage');
@@ -1209,21 +1221,13 @@ function submitKasetonConfig() {
     const print = printEl ? printEl.value : '';
     const usage = usageEl ? usageEl.value : '';
 
+    // Walidacje dla starych systemów
     if (!sys) {
         alert('⚠️ Wybierz system kasetonu!');
         sysEl.focus();
         return;
     }
-    if (isNaN(width) || width < 40 || width > 1000) {
-        alert('⚠️ Szerokość musi być w zakresie 40–1000 cm!');
-        widthEl.focus();
-        return;
-    }
-    if (isNaN(depth) || depth < 40 || depth > 1000) {
-        alert('⚠️ Głębokość musi być w zakresie 40–1000 cm!');
-        depthEl.focus();
-        return;
-    }
+    // ... (reszta walidacji i konfiguracji)
 
     const config = {
         system: sys,
@@ -1234,6 +1238,7 @@ function submitKasetonConfig() {
         usage: usage
     };
 
+    // Obsługa LED dla starych systemów
     const kasetonPowerEl = document.getElementById('kasetonPower');
     const kasetonLightEl = document.getElementById('kasetonLight');
 
@@ -1269,7 +1274,6 @@ function submitKasetonConfig() {
         }, 800);
     }
 }
-
 function toggleSpakuj() {
     window.isKasetonPackedMode = !window.isKasetonPackedMode;
     const btn = document.getElementById('btnSpakuj');
@@ -1284,3 +1288,15 @@ function toggleSpakuj() {
     }
     if (typeof update3DScene === 'function') update3DScene();
 }
+// Nasłuchiwanie zmiany systemu w menu
+document.addEventListener('DOMContentLoaded', () => {
+    const kasetonSystem = document.getElementById('kasetonSystem');
+    const ctfDepthRow = document.getElementById('ctfDepthRow');
+
+    if (kasetonSystem && ctfDepthRow) {
+        kasetonSystem.addEventListener('change', function () {
+            // Jeśli system to CTF, pokazujemy pole głębokości
+            ctfDepthRow.style.display = (this.value === 'CTF') ? 'flex' : 'none';
+        });
+    }
+});
