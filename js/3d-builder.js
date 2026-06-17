@@ -2313,7 +2313,8 @@ function drawCTFScene(config) {
   const profT = 2;     // Grubość profilu 20mm = 2cm
 
   const gOffset = 3.3 / Math.sqrt(2); // Odstęp rowka od osi profilu w rzucie normalnym (~2.33 cm)
-  const eOffset = 2.7 / Math.sqrt(2); // Wydłużenie tkaniny w płaszczyźnie boku (~1.91 cm)
+  const eOffset = 2.7 / Math.sqrt(2); // Odległość rowka od krawędzi w płaszczyźnie boku (~1.91 cm)
+  const fOffset = 2.0 / Math.sqrt(2); // Odległość krawędzi załamania od osi w płaszczyźnie boku (~1.41 cm)
 
   console.log('📦 Drawing CTF box in 3D:', W, 'x', H, 'x', D, 'cm');
 
@@ -2396,10 +2397,15 @@ function drawCTFScene(config) {
   function createCTFConnector(cx, cy, cz, dx, dy, dz) {
     const cGroup = new THREE.Group();
 
+    // Wyznaczenie znaków współrzędnych narożnika względem środka konstrukcji
+    const sX = cx < 0 ? -1 : 1;
+    const sY = cy === 0 ? -1 : 1;
+    const sZ = cz < 0 ? -1 : 1;
+
     // Ramię X
     const startX = new THREE.Vector3(cx, cy, cz);
     const endX = new THREE.Vector3(cx + dx * connLen, cy, cz);
-    const outerX = new THREE.Vector3(0, dy, dz);
+    const outerX = new THREE.Vector3(0, sY, sZ);
     const armX = createCTFProfileMesh(connLen);
     armX.position.copy(new THREE.Vector3().addVectors(startX, endX).multiplyScalar(0.5));
     const dirLongX = new THREE.Vector3().subVectors(endX, startX).normalize();
@@ -2414,7 +2420,7 @@ function drawCTFScene(config) {
     // Ramię Y
     const startY = new THREE.Vector3(cx, cy, cz);
     const endY = new THREE.Vector3(cx, cy + dy * connLen, cz);
-    const outerY = new THREE.Vector3(dx, 0, dz);
+    const outerY = new THREE.Vector3(sX, 0, sZ);
     const armY = createCTFProfileMesh(connLen);
     armY.position.copy(new THREE.Vector3().addVectors(startY, endY).multiplyScalar(0.5));
     const dirLongY = new THREE.Vector3().subVectors(endY, startY).normalize();
@@ -2429,7 +2435,7 @@ function drawCTFScene(config) {
     // Ramię Z
     const startZ = new THREE.Vector3(cx, cy, cz);
     const endZ = new THREE.Vector3(cx, cy, cz + dz * connLen);
-    const outerZ = new THREE.Vector3(dx, dy, 0);
+    const outerZ = new THREE.Vector3(sX, sY, 0);
     const armZ = createCTFProfileMesh(connLen);
     armZ.position.copy(new THREE.Vector3().addVectors(startZ, endZ).multiplyScalar(0.5));
     const dirLongZ = new THREE.Vector3().subVectors(endZ, startZ).normalize();
@@ -2460,6 +2466,55 @@ function drawCTFScene(config) {
       mat.color.setHex(0xeeeeee);
     }
     return mat;
+  }
+
+  // --- FUNKCJA BAZOWA: Tworzenie geometrii tkaniny z zagięciem (2 części) ---
+  function createFabricGeometry(wVal, hVal) {
+    const geom = new THREE.BufferGeometry();
+    const hw = wVal / 2;
+    const hh = hVal / 2;
+
+    const dz = gOffset - fOffset; // Przesunięcie rowka w głąb (ok. 0.92 cm)
+
+    const vertices = [
+      // Główna płaszczyzna (Z = 0)
+      -hw - fOffset, -hh - fOffset, 0, // v0
+       hw + fOffset, -hh - fOffset, 0, // v1
+       hw + fOffset,  hh + fOffset, 0, // v2
+      -hw - fOffset,  hh + fOffset, 0, // v3
+
+      // Rowki (Z = dz)
+      -hw - eOffset, -hh - eOffset, dz, // v4
+       hw + eOffset, -hh - eOffset, dz, // v5
+       hw + eOffset,  hh + eOffset, dz, // v6
+      -hw - eOffset,  hh + eOffset, dz  // v7
+    ];
+
+    const indices = [
+      0, 1, 2,  0, 2, 3, // Główna część płótna
+      0, 4, 5,  0, 5, 1, // Dolny pas załamania
+      1, 5, 6,  1, 6, 2, // Prawy pas załamania
+      2, 6, 7,  2, 7, 3, // Górny pas załamania
+      3, 7, 4,  3, 4, 0  // Lewy pas załamania
+    ];
+
+    const uvs = [];
+    const totalW = 2 * eOffset + wVal;
+    const totalH = 2 * eOffset + hVal;
+    for (let i = 0; i < vertices.length; i += 3) {
+      const x = vertices[i];
+      const y = vertices[i+1];
+      uvs.push(
+        (x + hw + eOffset) / totalW,
+        (y + hh + eOffset) / totalH
+      );
+    }
+
+    geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+    geom.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+    return geom;
   }
 
   // --- WYMIARY PROFILI (skrócone o 2×connLen na łączniki) ---
@@ -2540,58 +2595,58 @@ function drawCTFScene(config) {
     kGroup.add(conn);
   });
 
-  // --- TKANINY REKLAMOWE (6 płacht od rowka do rowka) ---
+  // --- TKANINY REKLAMOWE (6 płacht od rowka do rowka z zagięciem) ---
   const printOption = config.print || 'all_sides';
   if (printOption !== 'no_print') {
-    // 1. Przód (Z = -hd - gOffset)
-    const frontGeom = new THREE.PlaneGeometry(W + 2 * eOffset, H + 2 * eOffset);
+    // 1. Przód (Z = -hd - fOffset)
+    const frontGeom = createFabricGeometry(W, H);
     const frontMat = createFabricMaterial(config.textureFront, false);
     const frontMesh = new THREE.Mesh(frontGeom, frontMat);
-    frontMesh.position.set(0, elevY + hh, -hd - gOffset);
+    frontMesh.position.set(0, elevY + hh, -hd - fOffset);
     frontMesh.rotation.y = Math.PI;
     frontMesh.userData = { isKasetonPrint: true, side: 'front' };
     kGroup.add(frontMesh);
 
-    // 2. Tył (Z = hd + gOffset)
-    const backGeom = new THREE.PlaneGeometry(W + 2 * eOffset, H + 2 * eOffset);
+    // 2. Tył (Z = hd + fOffset)
+    const backGeom = createFabricGeometry(W, H);
     const backMat = createFabricMaterial(config.textureBack, !config.textureBack);
     const backMesh = new THREE.Mesh(backGeom, backMat);
-    backMesh.position.set(0, elevY + hh, hd + gOffset);
+    backMesh.position.set(0, elevY + hh, hd + fOffset);
     backMesh.userData = { isKasetonPrint: true, side: 'back' };
     kGroup.add(backMesh);
 
-    // 3. Lewo (X = -hw - gOffset)
-    const leftGeom = new THREE.PlaneGeometry(D + 2 * eOffset, H + 2 * eOffset);
+    // 3. Lewo (X = -hw - fOffset)
+    const leftGeom = createFabricGeometry(D, H);
     const leftMat = createFabricMaterial(null, true);
     const leftMesh = new THREE.Mesh(leftGeom, leftMat);
-    leftMesh.position.set(-hw - gOffset, elevY + hh, 0);
+    leftMesh.position.set(-hw - fOffset, elevY + hh, 0);
     leftMesh.rotation.y = -Math.PI / 2;
     leftMesh.userData = { isKasetonPrint: true, side: 'left' };
     kGroup.add(leftMesh);
 
-    // 4. Prawo (X = hw + gOffset)
-    const rightGeom = new THREE.PlaneGeometry(D + 2 * eOffset, H + 2 * eOffset);
+    // 4. Prawo (X = hw + fOffset)
+    const rightGeom = createFabricGeometry(D, H);
     const rightMat = createFabricMaterial(null, true);
     const rightMesh = new THREE.Mesh(rightGeom, rightMat);
-    rightMesh.position.set(hw + gOffset, elevY + hh, 0);
+    rightMesh.position.set(hw + fOffset, elevY + hh, 0);
     rightMesh.rotation.y = Math.PI / 2;
     rightMesh.userData = { isKasetonPrint: true, side: 'right' };
     kGroup.add(rightMesh);
 
-    // 5. Góra (Y = H + gOffset)
-    const topFabGeom = new THREE.PlaneGeometry(W + 2 * eOffset, D + 2 * eOffset);
+    // 5. Góra (Y = H + fOffset)
+    const topFabGeom = createFabricGeometry(W, D);
     const topFabMat = createFabricMaterial(null, true);
     const topFabMesh = new THREE.Mesh(topFabGeom, topFabMat);
-    topFabMesh.position.set(0, elevY + H + gOffset, 0);
+    topFabMesh.position.set(0, elevY + H + fOffset, 0);
     topFabMesh.rotation.x = -Math.PI / 2;
     topFabMesh.userData = { isKasetonPrint: true, side: 'top' };
     kGroup.add(topFabMesh);
 
-    // 6. Dół (Y = -gOffset)
-    const bottomFabGeom = new THREE.PlaneGeometry(W + 2 * eOffset, D + 2 * eOffset);
+    // 6. Dół (Y = -fOffset)
+    const bottomFabGeom = createFabricGeometry(W, D);
     const bottomFabMat = createFabricMaterial(null, true);
     const bottomFabMesh = new THREE.Mesh(bottomFabGeom, bottomFabMat);
-    bottomFabMesh.position.set(0, elevY - gOffset, 0);
+    bottomFabMesh.position.set(0, elevY - fOffset, 0);
     bottomFabMesh.rotation.x = Math.PI / 2;
     bottomFabMesh.userData = { isKasetonPrint: true, side: 'bottom' };
     kGroup.add(bottomFabMesh);
@@ -2628,9 +2683,9 @@ function drawCTFScene(config) {
       });
     }
     if (topMat) {
-      const topGeom = new THREE.BoxGeometry(W + 2 * eOffset, 1, D + 2 * eOffset);
+      const topGeom = new THREE.BoxGeometry(W + 2 * fOffset, 1, D + 2 * fOffset);
       const topMesh = new THREE.Mesh(topGeom, topMat);
-      topMesh.position.set(0, elevY + H + gOffset + 0.5, 0);
+      topMesh.position.set(0, elevY + H + fOffset + 0.5, 0);
       kGroup.add(topMesh);
 
       // Krawędzie blatu
