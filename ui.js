@@ -46,13 +46,24 @@ function attemptLogin() {
     }
 
     // NOWE: Jeśli zaznaczono "Zapamiętaj mnie", zapisujemy rolę w przeglądarce
-    if (remember) localStorage.setItem('expoBuilderRole', currentUserRole);
+    if (remember) {
+        try {
+            localStorage.setItem('expoBuilderRole', currentUserRole);
+        } catch (e) {
+            console.warn("Storage item write blocked:", e);
+        }
+    }
     document.getElementById('loginOverlay').style.display = 'none';
     runFlavorLoading(() => { applyRolePermissions(); });
 }
 
 function checkSavedLogin() {
-    const savedRole = localStorage.getItem('expoBuilderRole');
+    let savedRole = null;
+    try {
+        savedRole = localStorage.getItem('expoBuilderRole');
+    } catch (e) {
+        console.warn("Storage read blocked:", e);
+    }
     if (savedRole) {
         currentUserRole = savedRole;
         document.getElementById('loginOverlay').style.display = 'none';
@@ -65,7 +76,11 @@ function checkSavedLogin() {
 }
 
 function logout() {
-    localStorage.removeItem('expoBuilderRole'); // Czyścimy pamięć
+    try {
+        localStorage.removeItem('expoBuilderRole'); // Czyścimy pamięć
+    } catch (e) {
+        console.warn("Storage remove blocked:", e);
+    }
     currentUserRole = null;
 
     // Czyścimy pola formularza
@@ -372,6 +387,10 @@ function refreshManualPanel() {
                 plnMargin = clientPrice / multiplier;
                 hasNoPrice = false;
             }
+
+            if (plnMargin > 0 || clientPrice > 0) {
+                hasNoPrice = false;
+            }
             
             let actionHtml = '';
             let itemDataJson = JSON.stringify({
@@ -404,8 +423,13 @@ function refreshManualPanel() {
                 marginLabelHtml = `<span style="color:#ff3333; font-weight:bold;">Brak</span>`;
                 priceLabelHtml = `<span style="color:#ff3333; font-weight:bold;">Brak ceny w DB!</span>`;
             } else {
-                marginLabelHtml = `${plnMargin.toFixed(2)} zł`;
-                priceLabelHtml = `${clientPrice.toFixed(2)} zł`;
+                marginLabelHtml = `${plnMargin.toFixed(2).toString().replace('.', ',')} zł`;
+                priceLabelHtml = `${clientPrice.toFixed(2).toString().replace('.', ',')} zł`;
+            }
+
+            let skuDisplay = p.intranetId;
+            if (!skuDisplay) {
+                skuDisplay = '<span style="color:#ff3333; font-weight:bold;">Brak ERP-ERR</span>';
             }
 
             tableHtml += `
@@ -413,7 +437,7 @@ function refreshManualPanel() {
                     <td style="font-weight:600; color:#fff; text-align: left; vertical-align: middle;">
                         <span>${p.name}</span>${categoryLabelHtml}
                     </td>
-                    <td style="color:#a0a5c1; text-align: left;">${p.intranetId || '<span style="color:#555;">Brak</span>'}</td>
+                    <td style="color:#a0a5c1; text-align: left;">${skuDisplay}</td>
                     <td style="color:#00b894; font-weight:600; text-align: left;">${marginLabelHtml}</td>
                     <td style="color:#2a75d3; font-weight:bold; text-align: left;">${priceLabelHtml}</td>
                     <td style="text-align: center;">${actionHtml}</td>
@@ -428,6 +452,7 @@ function refreshManualPanel() {
     let totalClientPriceSum = 0;
     let totalQty = 0;
     let hasMissingPriceInCart = false;
+    let totalPrintArea = 0;
     
     let draftKeys = Object.keys(window.manualCartDraft);
     if (draftKeys.length === 0) {
@@ -448,6 +473,7 @@ function refreshManualPanel() {
             if (area !== null) {
                 isWydrukWithArea = true;
                 wydrukArea = area;
+                totalPrintArea += area * item.qty;
             }
 
             // Determine if it has no price in database
@@ -469,6 +495,10 @@ function refreshManualPanel() {
             if (window.customPriceOverrides && window.customPriceOverrides[item.name] !== undefined) {
                 lineClientPrice = (window.customPriceOverrides[item.name] * ratePLN) * item.qty;
                 plnMargin = (window.customPriceOverrides[item.name] * ratePLN) / multiplier;
+                itemHasNoPrice = false;
+            }
+
+            if (plnMargin > 0 || lineClientPrice > 0) {
                 itemHasNoPrice = false;
             }
 
@@ -501,8 +531,8 @@ function refreshManualPanel() {
             } else {
                 cartPriceHtml = `
                     <div style="text-align: right;">
-                        <span style="color:#00b894; font-weight:600;">${lineMargin.toFixed(2)} zł</span> <br>
-                        <span style="color:#2a75d3; font-weight:bold; font-size:12px;">${lineClientPrice.toFixed(2)} zł</span>
+                        <span style="color:#00b894; font-weight:600;">${lineMargin.toFixed(2).toString().replace('.', ',')} zł</span> <br>
+                        <span style="color:#2a75d3; font-weight:bold; font-size:12px;">${lineClientPrice.toFixed(2).toString().replace('.', ',')} zł</span>
                     </div>
                 `;
             }
@@ -533,7 +563,7 @@ function refreshManualPanel() {
     
     const marginSpan = document.getElementById('summaryMarginTotal');
     if (marginSpan) {
-        marginSpan.innerText = `${totalMarginSum.toFixed(2)} PLN`;
+        marginSpan.innerText = `${totalMarginSum.toFixed(2).toString().replace('.', ',')} PLN`;
         if (hasMissingPriceInCart) {
             marginSpan.innerHTML += ` <span style="color:#ff3333; font-size:10px;">(+brak)</span>`;
         }
@@ -541,10 +571,25 @@ function refreshManualPanel() {
     
     const priceSpan = document.getElementById('summaryPriceTotal');
     if (priceSpan) {
-        priceSpan.innerText = `${totalClientPriceSum.toFixed(2)} PLN`;
+        priceSpan.innerText = `${totalClientPriceSum.toFixed(2).toString().replace('.', ',')} PLN`;
         if (hasMissingPriceInCart) {
             priceSpan.innerHTML += ` <span style="color:#ff3333; font-size:10px;">(+brak)</span>`;
         }
+    }
+
+    let totalWeight = 0;
+    if (window.currentKasetonConfig && typeof calculateKasetonWeight === 'function') {
+        totalWeight = calculateKasetonWeight(window.currentKasetonConfig);
+    }
+
+    const ordpCountEl = document.getElementById('ordp_count');
+    if (ordpCountEl) {
+        ordpCountEl.value = totalClientPriceSum.toFixed(2).toString().replace('.', ',');
+    }
+    const stoChEl = document.getElementById('sto_ch');
+    if (stoChEl) {
+        let valToInject = totalWeight > 0 ? totalWeight : totalPrintArea;
+        stoChEl.value = valToInject.toFixed(2).toString().replace('.', ',');
     }
 }
 
@@ -886,12 +931,23 @@ function switchSystem(newSystem) {
 
     currentSystem = newSystem;
 
+    if (currentSystem === 'LMSM') {
+        window.currentSystemConfig = { prefix: "LMSM", defWidth: 100, defHeight: 250, cornerType: "BI_FOLD_SLIM", neonColorHex: 0x00FF88 };
+        if (typeof clearPlan === 'function') clearPlan();
+        if (typeof updateFoldableRadialMenus === 'function') updateFoldableRadialMenus(camera, renderer);
+    }
+
     const sidebarElement = document.querySelector('.sidebar');
     if (sidebarElement) {
         if (currentSystem === 'foldable') {
             sidebarElement.classList.add('foldable-theme');
+            sidebarElement.classList.remove('lmsm-theme');
+        } else if (currentSystem === 'LMSM') {
+            sidebarElement.classList.add('lmsm-theme');
+            sidebarElement.classList.remove('foldable-theme');
         } else {
             sidebarElement.classList.remove('foldable-theme');
+            sidebarElement.classList.remove('lmsm-theme');
         }
     }
 
@@ -901,7 +957,7 @@ function switchSystem(newSystem) {
 
     const btnRadial = document.getElementById('btnToggleRadial');
     if (btnRadial) {
-        btnRadial.style.display = (is3DMode && currentSystem === 'foldable') ? 'flex' : 'none';
+        btnRadial.style.display = (is3DMode && (currentSystem === 'foldable' || currentSystem === 'LMSM')) ? 'flex' : 'none';
     }
 
     const btnSpakuj = document.getElementById('btnSpakuj');
@@ -1152,8 +1208,8 @@ function onKasetonSystemChange(sel) {
     var printSel = document.getElementById('kasetonPrint');
     if (printSel) {
         printSel.innerHTML = '';
-        if (sys === 'LMS') {
-            // LMS: kaseton jednostronny - ograniczone opcje
+        if (sys === 'LMS' || sys === 'LMSM') {
+            // LMS / LMSM: kaseton jednostronny - ograniczone opcje
             printSel.innerHTML = '<option value="backlit_white" selected>Przód backlit + Tył białe plecy</option>' +
                 '<option value="backlit_blockout">Przód backlit + Tył kolorowy blockout</option>' +
                 '<option value="back_white">Tylko białe plecy</option>' +

@@ -4621,6 +4621,10 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
       priceEUR = plnPrice / ratePLN;
     }
 
+    if (plnPrice > 0 || priceEUR > 0) {
+      hasNoPrice = false;
+    }
+
     item.plnPrice = plnPrice;
     item.plnMargin = plnMargin;
     item.price = priceEUR;
@@ -4656,7 +4660,7 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
       warningHtml = '<span style="color: #ff3333; font-weight: bold; margin-left: 5px; font-size: 10px;">[Brak ceny!]</span>';
     }
 
-    const escapedName = item.name.replace(/'/g, "\\'");
+    const escapedName = item.name.replace(/\x27/g, "\\\x27").replace(/\x22/g, "&quot;");
 
     html += '<div class="bom-item" style="align-items: center; gap: 5px;' + (item.hasNoPrice ? ' background: rgba(255,0,0,0.1); border-radius: 4px; padding: 2px;' : '') + '">';
     html += '<span style="flex-grow: 1; text-align: left;">' + q + u + ' ' + item.name + warningHtml + '</span>';

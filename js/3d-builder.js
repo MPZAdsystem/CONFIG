@@ -2308,13 +2308,14 @@ function drawCTFScene(config) {
   const D = parseFloat(config.height3D) || 120;  // Głębokość 3D (Z)
   const elevY = config.usage === 'suspended' ? 100 : 0;
 
-  const connLen = 6;   // Długość ramienia łącznika (60mm = 6cm)
+  const connLen = 6;   // Długość ramienia łącznika (60mm = 6cm od wierzchołka)
   const profW = 6;     // Szerokość profilu 60mm = 6cm
   const profT = 2;     // Grubość profilu 20mm = 2cm
 
-  const gOffset = 3.3 / Math.sqrt(2); // Odstęp rowka od osi profilu w rzucie normalnym (~2.33 cm)
-  const eOffset = 2.7 / Math.sqrt(2); // Odległość rowka od krawędzi w płaszczyźnie boku (~1.91 cm)
-  const fOffset = 2.0 / Math.sqrt(2); // Odległość krawędzi załamania od osi w płaszczyźnie boku (~1.41 cm)
+  const eOffset = 2.0 / Math.sqrt(2); // Odległość krawędzi (corner) od osi (~1.41 cm)
+  const gxOffset = 2.7 / Math.sqrt(2); // Odległość rowka od osi w rzucie płaskim (~1.91 cm)
+  const cOffset = 4.0 / Math.sqrt(2); // Odległość krawędzi od środka w rzucie normalnym (~2.83 cm)
+  const gOffset = 3.3 / Math.sqrt(2); // Odległość rowka od środka w rzucie normalnym (~2.33 cm)
 
   console.log('📦 Drawing CTF box in 3D:', W, 'x', H, 'x', D, 'cm');
 
@@ -2330,11 +2331,29 @@ function drawCTFScene(config) {
   });
   const edgeMat = new THREE.LineBasicMaterial({ color: 0x444444 });
 
-  // Łącznik: matowy plastik, ciemniejszy szary
+  // Łącznik: satynowy szary plastik z delikatną teksturą proceduralną
+  const plasticCanvas = document.createElement('canvas');
+  plasticCanvas.width = 128;
+  plasticCanvas.height = 128;
+  const pCtx = plasticCanvas.getContext('2d');
+  pCtx.fillStyle = '#909090'; // Neutralny szary plastik
+  pCtx.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 4000; i++) {
+    const x = Math.random() * 128;
+    const y = Math.random() * 128;
+    const a = Math.random() * 0.06;
+    pCtx.fillStyle = Math.random() > 0.5 ? `rgba(255,255,255,${a})` : `rgba(0,0,0,${a})`;
+    pCtx.fillRect(x, y, 1, 1);
+  }
+  const plasticTex = new THREE.CanvasTexture(plasticCanvas);
+  plasticTex.wrapS = THREE.RepeatWrapping;
+  plasticTex.wrapT = THREE.RepeatWrapping;
+
   const connMat = new THREE.MeshStandardMaterial({
-    color: 0x5a5a5a,
+    map: plasticTex,
+    color: 0xdddddd, // Rozjaśnienie tekstury bazowej do szarego koloru z próbki
     metalness: 0.05,
-    roughness: 0.85,
+    roughness: 0.8,
     name: 'ctf_connector_plastic'
   });
 
@@ -2393,59 +2412,107 @@ function drawCTFScene(config) {
     return mesh;
   }
 
-  // --- FUNKCJA: Trójdzielny łącznik narożny ---
+  // --- FUNKCJA: Trójdzielny łącznik narożny z mitrowaniem wierzchołka ---
   function createCTFConnector(cx, cy, cz, dx, dy, dz) {
     const cGroup = new THREE.Group();
 
-    // Wyznaczenie znaków współrzędnych narożnika względem środka konstrukcji
+    function createConnectorArm(startPt, endPt, outerDir, armType) {
+      const shape = new THREE.Shape();
+      shape.moveTo(-3, -1);
+      shape.lineTo(-3, 1);
+      shape.lineTo(3, 1);
+      // Rowek 1
+      shape.lineTo(3, 0.45);
+      shape.lineTo(1.5, 0.45);
+      shape.lineTo(1.5, 0.15);
+      shape.lineTo(3, 0.15);
+      // Środek
+      shape.lineTo(3, -0.15);
+      // Rowek 2
+      shape.lineTo(1.5, -0.15);
+      shape.lineTo(1.5, -0.45);
+      shape.lineTo(3, -0.45);
+      // Dół
+      shape.lineTo(3, -1);
+      shape.closePath();
+
+      const overlap = 4.0;
+      const totalLen = connLen + overlap;
+      const geom = new THREE.ExtrudeGeometry(shape, { depth: totalLen, bevelEnabled: false });
+      geom.center();
+
+      const dirLong = new THREE.Vector3().subVectors(endPt, startPt).normalize();
+      const dirOuter = outerDir.clone().normalize();
+      const dirThickness = new THREE.Vector3().crossVectors(dirLong, dirOuter).normalize();
+
+      const matrix = new THREE.Matrix4();
+      matrix.makeBasis(dirOuter, dirThickness, dirLong);
+
+      // Zastosowanie orientacji i pozycji bezpośrednio do wierzchołków
+      geom.applyMatrix4(matrix);
+      const midPoint = new THREE.Vector3().copy(startPt).addScaledVector(dirLong, (connLen - overlap) * 0.5);
+      geom.translate(midPoint.x, midPoint.y, midPoint.z);
+
+      // Przycinanie wierzchołków na stykach diagonalnych
+      const posAttr = geom.attributes.position;
+      const v = new THREE.Vector3();
+      for (let i = 0; i < posAttr.count; i++) {
+        v.fromBufferAttribute(posAttr, i);
+
+        const rx = (v.x - cx) * dx;
+        const ry = (v.y - cy) * dy;
+        const rz = (v.z - cz) * dz;
+
+        if (armType === 'X') {
+          const rx_new = Math.max(rx, ry, rz);
+          v.x = cx + rx_new * dx;
+        } else if (armType === 'Y') {
+          const ry_new = Math.max(ry, rx, rz);
+          v.y = cy + ry_new * dy;
+        } else if (armType === 'Z') {
+          const rz_new = Math.max(rz, rx, ry);
+          v.z = cz + rz_new * dz;
+        }
+
+        posAttr.setXYZ(i, v.x, v.y, v.z);
+      }
+      geom.computeVertexNormals();
+
+      const mesh = new THREE.Mesh(geom, connMat);
+      const edges = new THREE.EdgesGeometry(geom);
+      const line = new THREE.LineSegments(edges, edgeMat);
+      mesh.add(line);
+
+      return mesh;
+    }
+
     const sX = cx < 0 ? -1 : 1;
     const sY = cy === 0 ? -1 : 1;
     const sZ = cz < 0 ? -1 : 1;
 
     // Ramię X
-    const startX = new THREE.Vector3(cx, cy, cz);
-    const endX = new THREE.Vector3(cx + dx * connLen, cy, cz);
-    const outerX = new THREE.Vector3(0, sY, sZ);
-    const armX = createCTFProfileMesh(connLen);
-    armX.position.copy(new THREE.Vector3().addVectors(startX, endX).multiplyScalar(0.5));
-    const dirLongX = new THREE.Vector3().subVectors(endX, startX).normalize();
-    const dirOuterX = outerX.clone().normalize();
-    const dirThicknessX = new THREE.Vector3().crossVectors(dirLongX, dirOuterX).normalize();
-    const matrixX = new THREE.Matrix4();
-    matrixX.makeBasis(dirOuterX, dirThicknessX, dirLongX);
-    armX.quaternion.setFromRotationMatrix(matrixX);
-    armX.material = connMat;
-    cGroup.add(armX);
+    cGroup.add(createConnectorArm(
+      new THREE.Vector3(cx, cy, cz),
+      new THREE.Vector3(cx + dx * connLen, cy, cz),
+      new THREE.Vector3(0, sY, sZ),
+      'X'
+    ));
 
     // Ramię Y
-    const startY = new THREE.Vector3(cx, cy, cz);
-    const endY = new THREE.Vector3(cx, cy + dy * connLen, cz);
-    const outerY = new THREE.Vector3(sX, 0, sZ);
-    const armY = createCTFProfileMesh(connLen);
-    armY.position.copy(new THREE.Vector3().addVectors(startY, endY).multiplyScalar(0.5));
-    const dirLongY = new THREE.Vector3().subVectors(endY, startY).normalize();
-    const dirOuterY = outerY.clone().normalize();
-    const dirThicknessY = new THREE.Vector3().crossVectors(dirLongY, dirOuterY).normalize();
-    const matrixY = new THREE.Matrix4();
-    matrixY.makeBasis(dirOuterY, dirThicknessY, dirLongY);
-    armY.quaternion.setFromRotationMatrix(matrixY);
-    armY.material = connMat;
-    cGroup.add(armY);
+    cGroup.add(createConnectorArm(
+      new THREE.Vector3(cx, cy, cz),
+      new THREE.Vector3(cx, cy + dy * connLen, cz),
+      new THREE.Vector3(sX, 0, sZ),
+      'Y'
+    ));
 
     // Ramię Z
-    const startZ = new THREE.Vector3(cx, cy, cz);
-    const endZ = new THREE.Vector3(cx, cy, cz + dz * connLen);
-    const outerZ = new THREE.Vector3(sX, sY, 0);
-    const armZ = createCTFProfileMesh(connLen);
-    armZ.position.copy(new THREE.Vector3().addVectors(startZ, endZ).multiplyScalar(0.5));
-    const dirLongZ = new THREE.Vector3().subVectors(endZ, startZ).normalize();
-    const dirOuterZ = outerZ.clone().normalize();
-    const dirThicknessZ = new THREE.Vector3().crossVectors(dirLongZ, dirOuterZ).normalize();
-    const matrixZ = new THREE.Matrix4();
-    matrixZ.makeBasis(dirOuterZ, dirThicknessZ, dirLongZ);
-    armZ.quaternion.setFromRotationMatrix(matrixZ);
-    armZ.material = connMat;
-    cGroup.add(armZ);
+    cGroup.add(createConnectorArm(
+      new THREE.Vector3(cx, cy, cz),
+      new THREE.Vector3(cx, cy, cz + dz * connLen),
+      new THREE.Vector3(sX, sY, 0),
+      'Z'
+    ));
 
     return cGroup;
   }
@@ -2468,51 +2535,95 @@ function drawCTFScene(config) {
     return mat;
   }
 
-  // --- FUNKCJA BAZOWA: Tworzenie geometrii tkaniny z zagięciem (2 części) ---
+  // --- FUNKCJA BAZOWA: Tworzenie geometrii tkaniny z zagięciem (nieindeksowana, bez rozciągania) ---
   function createFabricGeometry(wVal, hVal) {
     const geom = new THREE.BufferGeometry();
     const hw = wVal / 2;
     const hh = hVal / 2;
 
-    const dz = gOffset - fOffset; // Przesunięcie rowka w głąb (ok. 0.92 cm)
+    const dz = -(cOffset - gOffset); // Przesunięcie rowka w głąb (ok. -0.50 cm)
+    const bw = Math.sqrt((gxOffset - eOffset) * (gxOffset - eOffset) + dz * dz); // Szerokość rozwiniętego zagięcia
 
-    const vertices = [
-      // Główna płaszczyzna (Z = 0)
-      -hw - fOffset, -hh - fOffset, 0, // v0
-       hw + fOffset, -hh - fOffset, 0, // v1
-       hw + fOffset,  hh + fOffset, 0, // v2
-      -hw - fOffset,  hh + fOffset, 0, // v3
+    const totalW = wVal + 2 * eOffset + 2 * bw;
+    const totalH = hVal + 2 * eOffset + 2 * bw;
 
-      // Rowki (Z = dz)
-      -hw - eOffset, -hh - eOffset, dz, // v4
-       hw + eOffset, -hh - eOffset, dz, // v5
-       hw + eOffset,  hh + eOffset, dz, // v6
-      -hw - eOffset,  hh + eOffset, dz  // v7
-    ];
-
-    const indices = [
-      0, 1, 2,  0, 2, 3, // Główna część płótna
-      0, 4, 5,  0, 5, 1, // Dolny pas załamania
-      1, 5, 6,  1, 6, 2, // Prawy pas załamania
-      2, 6, 7,  2, 7, 3, // Górny pas załamania
-      3, 7, 4,  3, 4, 0  // Lewy pas załamania
-    ];
-
+    const vertices = [];
     const uvs = [];
-    const totalW = 2 * eOffset + wVal;
-    const totalH = 2 * eOffset + hVal;
-    for (let i = 0; i < vertices.length; i += 3) {
-      const x = vertices[i];
-      const y = vertices[i+1];
-      uvs.push(
-        (x + hw + eOffset) / totalW,
-        (y + hh + eOffset) / totalH
-      );
+
+    function addVertex(x, y, z) {
+      vertices.push(x, y, z);
+      
+      // Obliczenie współrzędnych na płaskim rozwinięciu tkaniny
+      let x_unfolded, y_unfolded;
+      if (Math.abs(z) < 0.01) {
+        // Wierzchołek na płaszczyźnie głównej
+        x_unfolded = x;
+        y_unfolded = y;
+      } else {
+        // Wierzchołek w rowku (zagięty)
+        x_unfolded = Math.sign(x) * (hw + eOffset + bw);
+        y_unfolded = Math.sign(y) * (hh + eOffset + bw);
+      }
+      
+      const u = (x_unfolded + hw + eOffset + bw) / totalW;
+      const v = (y_unfolded + hh + eOffset + bw) / totalH;
+      uvs.push(u, v);
     }
+
+    // Definiujemy 10 trójkątów tworzących płachtę (geometria nieindeksowana)
+    
+    // 1. Główna część płótna (2 trójkąty)
+    // T1: v0, v1, v2
+    addVertex(-hw - eOffset, -hh - eOffset, 0);
+    addVertex( hw + eOffset, -hh - eOffset, 0);
+    addVertex( hw + eOffset,  hh + eOffset, 0);
+    // T2: v0, v2, v3
+    addVertex(-hw - eOffset, -hh - eOffset, 0);
+    addVertex( hw + eOffset,  hh + eOffset, 0);
+    addVertex(-hw - eOffset,  hh + eOffset, 0);
+
+    // 2. Dolny pas załamania (2 trójkąty)
+    // T1: v0, v4, v5
+    addVertex(-hw - eOffset, -hh - eOffset, 0);
+    addVertex(-hw - gxOffset, -hh - gxOffset, dz);
+    addVertex( hw + gxOffset, -hh - gxOffset, dz);
+    // T2: v0, v5, v1
+    addVertex(-hw - eOffset, -hh - eOffset, 0);
+    addVertex( hw + gxOffset, -hh - gxOffset, dz);
+    addVertex( hw + eOffset, -hh - eOffset, 0);
+
+    // 3. Prawy pas załamania (2 trójkąty)
+    // T1: v1, v5, v6
+    addVertex( hw + eOffset, -hh - eOffset, 0);
+    addVertex( hw + gxOffset, -hh - gxOffset, dz);
+    addVertex( hw + gxOffset,  hh + gxOffset, dz);
+    // T2: v1, v6, v2
+    addVertex( hw + eOffset, -hh - eOffset, 0);
+    addVertex( hw + gxOffset,  hh + gxOffset, dz);
+    addVertex( hw + eOffset,  hh + eOffset, 0);
+
+    // 4. Górny pas załamania (2 trójkąty)
+    // T1: v2, v6, v7
+    addVertex( hw + eOffset,  hh + eOffset, 0);
+    addVertex( hw + gxOffset,  hh + gxOffset, dz);
+    addVertex(-hw - gxOffset,  hh + gxOffset, dz);
+    // T2: v2, v7, v3
+    addVertex( hw + eOffset,  hh + eOffset, 0);
+    addVertex(-hw - gxOffset,  hh + gxOffset, dz);
+    addVertex(-hw - eOffset,  hh + eOffset, 0);
+
+    // 5. Lewy pas załamania (2 trójkąty)
+    // T1: v3, v7, v4
+    addVertex(-hw - eOffset,  hh + eOffset, 0);
+    addVertex(-hw - gxOffset,  hh + gxOffset, dz);
+    addVertex(-hw - gxOffset, -hh - gxOffset, dz);
+    // T2: v3, v4, v0
+    addVertex(-hw - eOffset,  hh + eOffset, 0);
+    addVertex(-hw - gxOffset, -hh - gxOffset, dz);
+    addVertex(-hw - eOffset, -hh - eOffset, 0);
 
     geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
     geom.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
-    geom.setIndex(indices);
     geom.computeVertexNormals();
     return geom;
   }
@@ -2598,55 +2709,55 @@ function drawCTFScene(config) {
   // --- TKANINY REKLAMOWE (6 płacht od rowka do rowka z zagięciem) ---
   const printOption = config.print || 'all_sides';
   if (printOption !== 'no_print') {
-    // 1. Przód (Z = -hd - fOffset)
+    // 1. Przód (Z = -hd - cOffset)
     const frontGeom = createFabricGeometry(W, H);
     const frontMat = createFabricMaterial(config.textureFront, false);
     const frontMesh = new THREE.Mesh(frontGeom, frontMat);
-    frontMesh.position.set(0, elevY + hh, -hd - fOffset);
+    frontMesh.position.set(0, elevY + hh, -hd - cOffset);
     frontMesh.rotation.y = Math.PI;
     frontMesh.userData = { isKasetonPrint: true, side: 'front' };
     kGroup.add(frontMesh);
 
-    // 2. Tył (Z = hd + fOffset)
+    // 2. Tył (Z = hd + cOffset)
     const backGeom = createFabricGeometry(W, H);
     const backMat = createFabricMaterial(config.textureBack, !config.textureBack);
     const backMesh = new THREE.Mesh(backGeom, backMat);
-    backMesh.position.set(0, elevY + hh, hd + fOffset);
+    backMesh.position.set(0, elevY + hh, hd + cOffset);
     backMesh.userData = { isKasetonPrint: true, side: 'back' };
     kGroup.add(backMesh);
 
-    // 3. Lewo (X = -hw - fOffset)
+    // 3. Lewo (X = -hw - cOffset)
     const leftGeom = createFabricGeometry(D, H);
     const leftMat = createFabricMaterial(null, true);
     const leftMesh = new THREE.Mesh(leftGeom, leftMat);
-    leftMesh.position.set(-hw - fOffset, elevY + hh, 0);
+    leftMesh.position.set(-hw - cOffset, elevY + hh, 0);
     leftMesh.rotation.y = -Math.PI / 2;
     leftMesh.userData = { isKasetonPrint: true, side: 'left' };
     kGroup.add(leftMesh);
 
-    // 4. Prawo (X = hw + fOffset)
+    // 4. Prawo (X = hw + cOffset)
     const rightGeom = createFabricGeometry(D, H);
     const rightMat = createFabricMaterial(null, true);
     const rightMesh = new THREE.Mesh(rightGeom, rightMat);
-    rightMesh.position.set(hw + fOffset, elevY + hh, 0);
+    rightMesh.position.set(hw + cOffset, elevY + hh, 0);
     rightMesh.rotation.y = Math.PI / 2;
     rightMesh.userData = { isKasetonPrint: true, side: 'right' };
     kGroup.add(rightMesh);
 
-    // 5. Góra (Y = H + fOffset)
+    // 5. Góra (Y = H + cOffset)
     const topFabGeom = createFabricGeometry(W, D);
     const topFabMat = createFabricMaterial(null, true);
     const topFabMesh = new THREE.Mesh(topFabGeom, topFabMat);
-    topFabMesh.position.set(0, elevY + H + fOffset, 0);
+    topFabMesh.position.set(0, elevY + H + cOffset, 0);
     topFabMesh.rotation.x = -Math.PI / 2;
     topFabMesh.userData = { isKasetonPrint: true, side: 'top' };
     kGroup.add(topFabMesh);
 
-    // 6. Dół (Y = -fOffset)
+    // 6. Dół (Y = -cOffset)
     const bottomFabGeom = createFabricGeometry(W, D);
     const bottomFabMat = createFabricMaterial(null, true);
     const bottomFabMesh = new THREE.Mesh(bottomFabGeom, bottomFabMat);
-    bottomFabMesh.position.set(0, elevY - fOffset, 0);
+    bottomFabMesh.position.set(0, elevY - cOffset, 0);
     bottomFabMesh.rotation.x = Math.PI / 2;
     bottomFabMesh.userData = { isKasetonPrint: true, side: 'bottom' };
     kGroup.add(bottomFabMesh);
@@ -2683,9 +2794,9 @@ function drawCTFScene(config) {
       });
     }
     if (topMat) {
-      const topGeom = new THREE.BoxGeometry(W + 2 * fOffset, 1, D + 2 * fOffset);
+      const topGeom = new THREE.BoxGeometry(W + 2 * eOffset, 1, D + 2 * eOffset);
       const topMesh = new THREE.Mesh(topGeom, topMat);
-      topMesh.position.set(0, elevY + H + fOffset + 0.5, 0);
+      topMesh.position.set(0, elevY + H + cOffset + 0.5, 0);
       kGroup.add(topMesh);
 
       // Krawędzie blatu

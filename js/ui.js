@@ -388,6 +388,10 @@ function refreshManualPanel() {
                 hasNoPrice = false;
             }
 
+            if (plnMargin > 0 || clientPrice > 0) {
+                hasNoPrice = false;
+            }
+
             let actionHtml = '';
             let itemDataJson = JSON.stringify({
                 name: p.name,
@@ -491,6 +495,10 @@ function refreshManualPanel() {
             if (window.customPriceOverrides && window.customPriceOverrides[item.name] !== undefined) {
                 lineClientPrice = (window.customPriceOverrides[item.name] * ratePLN) * item.qty;
                 plnMargin = (window.customPriceOverrides[item.name] * ratePLN) / multiplier;
+                itemHasNoPrice = false;
+            }
+
+            if (plnMargin > 0 || lineClientPrice > 0) {
                 itemHasNoPrice = false;
             }
 

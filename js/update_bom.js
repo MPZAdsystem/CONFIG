@@ -1,134 +1,220 @@
-const fs = require('fs');
-const path = require('path');
+# PowerShell replacement for update_bom.js
+$ErrorActionPreference = "Stop"
 
-const bomPath = path.join(__dirname, 'bom.js');
-const csvPath = path.join(__dirname, 'product.csv');
-
-function autoUpdateBom() {
-  console.log("--> Uruchamiam pancerny procesor bazy danych (Anchor-Based Engine)...");
-
-  if (!fs.existsSync(bomPath) || !fs.existsSync(csvPath)) {
-    console.error("❌ Błąd: Upewnij się, że pliki bom.js oraz product.csv znajdują się w tym samym folderze co ten skrypt!");
-    return;
-  }
-
-  // Wczytanie zawartości plików
-  let bomContent = fs.readFileSync(bomPath, 'utf-8');
-  const csvContent = fs.readFileSync(csvPath, 'utf-8');
-
-  // Lokalizujemy początek bazy danych
-  const startRegex = /const\s+KASETON_PRICES\s*=\s*\{/;
-  const startMatch = bomContent.match(startRegex);
-
-  if (!startMatch) {
-    console.error("❌ Błąd: Nie udało się zlokalizować początku struktury KASETON_PRICES = { w pliku bom.js!");
-    return;
-  }
-
-  // ⚓ KOTWICA: Szukamy funkcji rdzeniowej, która zawsze występuje tuż pod bazą danych
-  const anchorText = 'function calculateWydrukArea';
-  const anchorIndex = bomContent.indexOf(anchorText);
-
-  if (anchorIndex === -1) {
-    console.error("❌ Błąd: Nie udało się zlokalizować funkcji kotwicy 'function calculateWydrukArea' w pliku bom.js!");
-    return;
-  }
-
-  // Cofamy się od kotwicy, aby znaleźć ostatni nawias zamykający słownik
-  const endIndex = bomContent.lastIndexOf('}', anchorIndex);
-  if (endIndex === -1 || endIndex < startMatch.index) {
-    console.error("❌ Błąd: Rozjazd struktury klamer w pliku bom.js!");
-    return;
-  }
-  
-  // Wyciągamy bezpiecznie surowy środek bazy danych
-  const objectInnerText = bomContent.substring(startMatch.index + startMatch[0].length, endIndex);
-
-  // Dynamiczne i bezpieczne sparowanie starego obiektu JS do pamięci RAM
-  let KASETON_PRICES;
-  try {
-    KASETON_PRICES = new Function(`return { ${objectInnerText} };`)();
-  } catch (e) {
-    console.error("❌ Błąd wewnętrznego parsowania bazy danych. Sprawdź, czy w bom.js nie ma błędów składni:", e.message);
-    return;
-  }
-
-  // Przetwarzanie arkusza CSV
-  const lines = csvContent.split(/\r?\n/);
-  let updatedCount = 0;
-  let addedCount = 0;
-
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-
-    // Rozbicie średnikami i oczyszczenie z cudzysłowów
-    const columns = line.split(';').map(col => col.replace(/^"|"$/g, '').trim());
-    if (columns.length < 34) continue;
-
-    const csvId = parseInt(columns[0], 10);
-    const csvName = columns[3];
-    const csvCostPrice = parseFloat(columns[32]) || 0; 
-    const csvCostMatPrice = parseFloat(columns[33]) || 0; 
-
-    if (isNaN(csvId)) continue;
-
-    // Szukanie powiązania po ID (intranetId)
-    let matchedKey = null;
-    for (const key in KASETON_PRICES) {
-      if (KASETON_PRICES[key].intranetId === csvId) {
-        matchedKey = key;
-        break;
-      }
-    }
-
-    // Szukanie powiązania po nazwie produktu
-    if (!matchedKey && KASETON_PRICES[csvName]) {
-      matchedKey = csvName;
-    }
-
-    if (matchedKey) {
-      // AKTUALIZACJA: Pozycja istnieje -> uzupełniamy tylko brakujące (zerowe) ceny
-      const item = KASETON_PRICES[matchedKey];
-      if (item.plnPrice === 0 || item.plnMargin === 0) {
-        if (item.plnMargin === 0) item.plnMargin = csvCostMatPrice;
-        if (item.plnPrice === 0) {
-          item.plnPrice = csvCostPrice > 0 ? csvCostPrice : parseFloat((csvCostMatPrice * 2.8).toFixed(3));
-        }
-        updatedCount++;
-      }
-    } else {
-      // NOWOŚĆ: Pozycja nie istnieje -> tworzymy nowy rekord z cennika ERP
-      const defaultSalesPrice = csvCostPrice > 0 ? csvCostPrice : parseFloat((csvCostMatPrice * 2.8).toFixed(3));
-      KASETON_PRICES[csvName] = {
-        plnPrice: defaultSalesPrice,
-        plnMargin: csvCostMatPrice,
-        intranetId: csvId,
-        category: "nowo_dodane"
-      };
-      addedCount++;
-    }
-  }
-
-  // Budowanie nowego, zaktualizowanego stringa tekstowego dla pliku bom.js
-  let newObjectStr = "const KASETON_PRICES = {\n";
-  for (const key in KASETON_PRICES) {
-    const item = KASETON_PRICES[key];
-    const safeKey = key.includes('"') || key.includes("'") || key.includes(' ') || key.includes('-') ? JSON.stringify(key) : `"${key}"`;
-    newObjectStr += `  ${safeKey}: { plnPrice: ${item.plnPrice}, plnMargin: ${item.plnMargin}, intranetId: ${item.intranetId}, category: ${JSON.stringify(item.category || "nowo_dodane")}${item.noPrice ? ", noPrice: true" : ""} },\n`;
-  }
-  newObjectStr += "};\nwindow.KASETON_PRICES = KASETON_PRICES;\n\n";
-
-  // Scalanie pliku (zastępujemy stary blok nowym od początku deklaracji do samej kotwicy)
-  const finalBomContent = bomContent.substring(0, startMatch.index) + newObjectStr + bomContent.substring(anchorIndex);
-
-  // Zapis do bezpiecznego pliku wynikowego
-  fs.writeFileSync(path.join(__dirname, 'bom_updated.js'), finalBomContent, 'utf-8');
-
-  console.log(`\n🎉 [PROCES ZAKOŃCZONY SUKCESEM]`);
-  console.log(`- Uzupełniono zerowe ceny w: ${updatedCount} istniejących pozycjach.`);
-  console.log(`- Dopisano zupełnie nowych rekordów z CSV: ${addedCount}`);
-  console.log(`- Kompletny, w pełni zaktualizowany plik zapisano jako: bom_updated.js`);
+function Unescape-JsonString {
+    param([string]$str)
+    if ($null -eq $str) { return "" }
+    # Resolve unicode escape sequences like \u0119 to actual characters
+    $unescaped = [regex]::Replace($str, '\\u([0-9a-fA-F]{4})', {
+        param($match)
+        [char][int]("0x" + $match.Groups[1].Value)
+    })
+    return $unescaped
 }
 
-autoUpdateBom();
+function Format-Double {
+    param([double]$val)
+    return $val.ToString("G", [System.Globalization.CultureInfo]::InvariantCulture)
+}
+
+function Safe-ParseDouble {
+    param([string]$str)
+    if ($null -eq $str) { return 0.0 }
+    $str = $str.Trim().Replace(',', '.')
+    $val = 0.0
+    if ([double]::TryParse($str, [System.Globalization.NumberStyles]::Any, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$val)) {
+        return $val
+    }
+    return 0.0
+}
+
+function Run-UpdateBom {
+    Write-Host "--> Uruchamiam pancerny procesor bazy danych (Anchor-Based Engine)..."
+    
+    # Standard paths matching the workspace
+    $bomPath = "c:\Users\Telarvin\Downloads\CONFIG-main (1)\CONFIG-main\js\bom.js"
+    $csvPath = "c:\Users\Telarvin\Downloads\CONFIG-main (1)\CONFIG-main\js\product.csv"
+    $outPath = "c:\Users\Telarvin\Downloads\CONFIG-main (1)\CONFIG-main\js\bom_updated.js"
+    
+    if (!(Test-Path $bomPath) -or !(Test-Path $csvPath)) {
+        Write-Error "❌ Błąd: Upewnij się, że pliki bom.js oraz product.csv znajdują się w folderze js!"
+        return
+    }
+    
+    $bomContent = [System.IO.File]::ReadAllText($bomPath, [System.Text.Encoding]::UTF8)
+    $csvContent = [System.IO.File]::ReadAllText($csvPath, [System.Text.Encoding]::UTF8)
+    
+    # Locate KASETON_PRICES start
+    $startRegex = [regex]'const\s+KASETON_PRICES\s*=\s*\{'
+    $startMatch = $startRegex.Match($bomContent)
+    if (!$startMatch.Success) {
+        Write-Error "❌ Błąd: Nie udało się zlokalizować początku struktury KASETON_PRICES = { w pliku bom.js!"
+        return
+    }
+    
+    # Locate anchor
+    $anchorText = "function calculateWydrukArea"
+    $anchorIndex = $bomContent.IndexOf($anchorText)
+    if ($anchorIndex -eq -1) {
+        Write-Error "❌ Błąd: Nie udało się zlokalizować funkcji kotwicy 'function calculateWydrukArea' w pliku bom.js!"
+        return
+    }
+    
+    # Locate the closing brace before the anchor
+    $endIndex = $bomContent.LastIndexOf("}", $anchorIndex)
+    if ($endIndex -eq -1 -or $endIndex -lt $startMatch.Index) {
+        Write-Error "❌ Błąd: Rozjazd struktury klamer w pliku bom.js!"
+        return
+    }
+    
+    $startIndex = $startMatch.Index + $startMatch.Length
+    $objectInnerText = $bomContent.Substring($startIndex, $endIndex - $startIndex)
+    
+    # Parse KASETON_PRICES into an ordered hashtable
+    $prices = [ordered]@{}
+    $lines = $objectInnerText -split "`r?`n"
+    
+    foreach ($line in $lines) {
+        $trimmed = $line.Trim()
+        if (!$trimmed) { continue }
+        if ($trimmed -eq "};") { continue }
+        
+        # Regex to capture the key and body
+        if ($trimmed -match '^\s*(.*?)\s*:\s*\{\s*(.*)\s*\},?$') {
+            $rawKey = $Matches[1].Trim()
+            $body = $Matches[2].Trim()
+            
+            # Resolve key quotes and escapes
+            $key = $rawKey
+            if ($key.StartsWith('"') -and $key.EndsWith('"')) {
+                $key = $key.Substring(1, $key.Length - 2)
+                $key = $key -replace '\\"', '"'
+            } elseif ($key.StartsWith("'") -and $key.EndsWith("'")) {
+                $key = $key.Substring(1, $key.Length - 2)
+                $key = $key -replace "\\'", "'"
+            }
+            
+            # Unescape unicode sequences in the key
+            $key = Unescape-JsonString $key
+            
+            # Extract attributes from body
+            $plnPrice = 0.0
+            $plnMargin = 0.0
+            $intranetId = $null
+            $category = "nowo_dodane"
+            $noPrice = $false
+            
+            if ($body -match 'plnPrice:\s*([0-9.]+)') { $plnPrice = [double]$Matches[1] }
+            if ($body -match 'plnMargin:\s*([0-9.]+)') { $plnMargin = [double]$Matches[1] }
+            if ($body -match 'intranetId:\s*([0-9]+)') { $intranetId = [int]$Matches[1] }
+            # Match category with possible unicode escape sequences
+            if ($body -match 'category:\s*"([^"]+)"') { $category = Unescape-JsonString $Matches[1] }
+            if ($body -match 'noPrice:\s*true') { $noPrice = $true }
+            
+            $prices[$key] = [ordered]@{
+                plnPrice = $plnPrice
+                plnMargin = $plnMargin
+                intranetId = $intranetId
+                category = $category
+                noPrice = $noPrice
+            }
+        }
+    }
+    
+    # Process product.csv
+    $csvLines = $csvContent -split "`r?`n"
+    $updatedCount = 0
+    $addedCount = 0
+    
+    # Skip header line 0
+    for ($i = 1; $i -lt $csvLines.Length; $i++) {
+        $line = $csvLines[$i].Trim()
+        if (!$line) { continue }
+        
+        $columns = $line.Split(';') | ForEach-Object { $_.Trim().Trim('"') }
+        if ($columns.Length -lt 34) { continue }
+        
+        $csvId = 0
+        if (![int]::TryParse($columns[0], [ref]$csvId)) { continue }
+        $csvName = $columns[3]
+        $csvCostPrice = Safe-ParseDouble $columns[32]
+        $csvCostMatPrice = Safe-ParseDouble $columns[33]
+        
+        # Search by ID
+        $matchedKey = $null
+        foreach ($k in $prices.Keys) {
+            if ($prices[$k].intranetId -eq $csvId) {
+                $matchedKey = $k
+                break
+            }
+        }
+        
+        # Search by product name
+        if ($null -eq $matchedKey -and $prices.Contains($csvName)) {
+            $matchedKey = $csvName
+        }
+        
+        if ($null -ne $matchedKey) {
+            # Update existing
+            $item = $prices[$matchedKey]
+            $updated = $false
+            if ($item.plnMargin -eq 0) {
+                $item.plnMargin = $csvCostMatPrice
+                $updated = $true
+            }
+            if ($item.plnPrice -eq 0) {
+                if ($csvCostPrice -gt 0) {
+                    $item.plnPrice = $csvCostPrice
+                } else {
+                    $item.plnPrice = [Math]::Round($csvCostMatPrice * 2.8, 3)
+                }
+                $updated = $true
+            }
+            if ($updated) {
+                $updatedCount++
+            }
+        } else {
+            # Create new record
+            $defaultSalesPrice = if ($csvCostPrice -gt 0) { $csvCostPrice } else { [Math]::Round($csvCostMatPrice * 2.8, 3) }
+            $prices[$csvName] = [ordered]@{
+                plnPrice = $defaultSalesPrice
+                plnMargin = $csvCostMatPrice
+                intranetId = $csvId
+                category = "nowo_dodane"
+                noPrice = $false
+            }
+            $addedCount++
+        }
+    }
+    
+    # Rebuild KASETON_PRICES string
+    $newObjectStr = "const KASETON_PRICES = {`n"
+    foreach ($key in $prices.Keys) {
+        $item = $prices[$key]
+        
+        # Format key safely
+        $safeKey = ConvertTo-Json $key -Compress
+        $plnPriceStr = Format-Double $item.plnPrice
+        $plnMarginStr = Format-Double $item.plnMargin
+        $intranetIdStr = if ($null -eq $item.intranetId) { "null" } else { $item.intranetId.ToString() }
+        $categoryStr = ConvertTo-Json $item.category -Compress
+        $noPriceStr = if ($item.noPrice) { ", noPrice: true" } else { "" }
+        
+        # Escape colon parsing error by concatenation
+        $newObjectStr += "  " + $safeKey + ": { plnPrice: " + $plnPriceStr + ", plnMargin: " + $plnMarginStr + ", intranetId: " + $intranetIdStr + ", category: " + $categoryStr + $noPriceStr + " },`n"
+    }
+    $newObjectStr += "};`nwindow.KASETON_PRICES = KASETON_PRICES;`n`n"
+    
+    $finalBomContent = $bomContent.Substring(0, $startMatch.Index) + $newObjectStr + $bomContent.Substring($anchorIndex)
+    
+    # Write output as UTF-8 without BOM (standard web JS)
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($outPath, $finalBomContent, $utf8NoBom)
+    
+    Write-Host "`n🎉 [PROCES ZAKOŃCZONY SUKCESEM]"
+    Write-Host "- Uzupełniono zerowe ceny w: $updatedCount istniejących pozycjach."
+    Write-Host "- Dopisano zupełnie nowych rekordów z CSV: $addedCount"
+    Write-Host "- Kompletny, w pełni zaktualizowany plik zapisano jako: bom_updated.js"
+}
+
+Run-UpdateBom
