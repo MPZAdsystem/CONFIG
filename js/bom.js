@@ -1,52 +1,52 @@
- function addItemToBom(name, qty, unitPrice, counts) {
- if (!counts[name]) counts[name] = { qty: 0, total: 0, unitPrice: unitPrice || 0 };
- counts[name].qty += qty;
- counts[name].total += (qty * (unitPrice || 0));
- }
+function addItemToBom(name, qty, unitPrice, counts) {
+  if (!counts[name]) counts[name] = { qty: 0, total: 0, unitPrice: unitPrice || 0 };
+  counts[name].qty += qty;
+  counts[name].total += (qty * (unitPrice || 0));
+}
 
- function removePolishAccents(str) {
- const map = { 'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z', 'Ą': 'A', 'Ć': 'C', 'Ę': 'E', 'Ł': 'L', 'Ń': 'N', 'Ó': 'O', 'Ś': 'S', 'Ź': 'Z', 'Ż': 'Z' };
- return str.replace(/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g, match => map[match]);
- }
+function removePolishAccents(str) {
+  const map = { 'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z', 'Ą': 'A', 'Ć': 'C', 'Ę': 'E', 'Ł': 'L', 'Ń': 'N', 'Ó': 'O', 'Ś': 'S', 'Ź': 'Z', 'Ż': 'Z' };
+  return str.replace(/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g, match => map[match]);
+}
 
- function generateKasetonBOM() {
- const config = window.currentKasetonConfig;
- if (!config) return;
+function generateKasetonBOM() {
+  const config = window.currentKasetonConfig;
+  if (!config) return;
 
- const W = parseFloat(config.width) || 120;
- const H = parseFloat(config.depth) || 200;
- const sys = config.system || 'LMD';
- const isLedSys = ['LMD', 'LMS', 'LMSM', 'CTF_LED', 'LCD_LMD'].includes(sys);
+  const W = parseFloat(config.width) || 120;
+  const H = parseFloat(config.depth) || 200;
+  const sys = config.system || 'LMD';
+  const isLedSys = ['LMD', 'LMS', 'LMSM', 'CTF_LED', 'LCD_LMD'].includes(sys);
 
- const bomItems = [];
+  const bomItems = [];
 
   if (sys === 'CTF') {
     const D = parseFloat(config.height3D) || 120; // Głębokość 3D
     const wMeters = W / 100;
     const hMeters = H / 100;
     const dMeters = D / 100;
-    
+
     // 12 profili CTF (4 szerokości, 4 wysokości, 4 głębokości)
     const totalProfileMeters = 4 * wMeters + 4 * hMeters + 4 * dMeters;
     bomItems.push({ name: "profil CTF", qty: parseFloat(totalProfileMeters.toFixed(2)), unit: "mb" });
-    
+
     // 8 łączników narożnych
     bomItems.push({ name: "adFrame CTF Plastic connector", qty: 8, unit: "szt" });
-    
+
     // Blat górny
     const topPanel = config.topPanel || 'none';
     if (topPanel !== 'none') {
       const topPanelName = topPanel === 'mdf' ? 'blat MDF CTF' : (topPanel === 'plexi' ? 'blat PLEXI CTF' : 'blat poliwęglan CTF');
       bomItems.push({ name: topPanelName, qty: 1, unit: "szt" });
     }
-    
+
     // Montaż (Wolnostojący / Podwieszany)
     if (config.usage === 'freestanding') {
       bomItems.push({ name: "stopa CTF", qty: 4, unit: "szt" });
     } else if (config.usage === 'suspended') {
       bomItems.push({ name: "adFrame CTF - zestaw do podwieszenia 2m (4 PKT) do MO", qty: 1, unit: "szt" });
     }
-    
+
     // Wydruki (tkaniny)
     const printOption = config.print || 'all_sides';
     if (printOption !== 'no_print') {
@@ -65,11 +65,11 @@
         bomItems.push({ name: `Wydruk adFrame CTF Blockout ${W}x${D}`, qty: 2, unit: "szt" }); // góra + dół
       }
     }
-    
+
     // Save carton info for packaging/nesting engine
     config.cartonName = "Karton CTF - 120x60x40cm";
     config.cartonQty = 1;
-    
+
     // Integrate manual items
     if (typeof manualItems !== 'undefined') {
       for (let key in manualItems) {
@@ -88,37 +88,37 @@
         }
       }
     }
-    
+
     finishKasetonBOM(bomItems, W, H, sys, config);
     return;
   }
 
- if (sys === 'LMSM') {
+  if (sys === 'LMSM') {
     const wMeters = W / 100;
     const hMeters = H / 100;
     const perimeter = 2 * (wMeters + hMeters);
-    
+
     bomItems.push({ name: "profil LMSM poziomy (ALU-060-SLIM)", qty: 2, length: W - 0.2, unit: "szt" });
     bomItems.push({ name: "profil LMSM pionowy (ALU-060-SLIM)", qty: 2, length: H - 0.2, unit: "szt" });
     bomItems.push({ name: "Łącznik narożny wsuwany L-Slim (SL-06)", qty: 4, unit: "szt" });
     bomItems.push({ name: "Mikro-keder silikonowy 9x2mm (KEDER-9X2)", qty: parseFloat(perimeter.toFixed(2)), unit: "mb" });
-    
+
     // Solver doboru oświetlenia krawędziowego wysokiej gęstości
     const totalLedWattage = perimeter * 22.0; // 22W na metr bieżący dla wersji Slim
     const driverRequiredPower = totalLedWattage * 1.25; // Współczynnik bezpieczeństwa 25%
-    
+
     bomItems.push({
-        name: "Taśma LED obwodowa high-density (LED-SLIM-24V)",
-        qty: Math.ceil(perimeter),
-        unit: "mb"
+      name: "Taśma LED obwodowa high-density (LED-SLIM-24V)",
+      qty: Math.ceil(perimeter),
+      unit: "mb"
     });
-    
+
     // Dobór zasilacza wąskoprofilowego z bazy danych ERP
     const driverSku = driverRequiredPower <= 60 ? "PSU-SLIM-60W" : (driverRequiredPower <= 150 ? "PSU-SLIM-150W" : "PSU-SLIM-240W");
     bomItems.push({
-        name: driverSku + " Zasilacz impulsowy wąskoprofilowy IP20",
-        qty: 1,
-        unit: "szt"
+      name: driverSku + " Zasilacz impulsowy wąskoprofilowy IP20",
+      qty: 1,
+      unit: "szt"
     });
 
     bomItems.push({ name: "Karton BOX-SLIM (65x10x10cm)", qty: 1, unit: "szt" });
@@ -130,334 +130,366 @@
 
     // Integrate manual items to BOM
     if (typeof manualItems !== 'undefined') {
-        for (let key in manualItems) {
-            let item = manualItems[key];
-            if (item && typeof item === 'object' && item.qty > 0) {
-                bomItems.push({
-                    name: item.name,
-                    qty: item.qty,
-                    unit: 'szt',
-                    intranetId: item.intranetId,
-                    isManual: true,
-                    plnMargin: item.plnMargin,
-                    multiplier: item.multiplier || 2.8,
-                    plnPrice: item.plnMargin * (item.multiplier || 2.8)
-                });
-            }
+      for (let key in manualItems) {
+        let item = manualItems[key];
+        if (item && typeof item === 'object' && item.qty > 0) {
+          bomItems.push({
+            name: item.name,
+            qty: item.qty,
+            unit: 'szt',
+            intranetId: item.intranetId,
+            isManual: true,
+            plnMargin: item.plnMargin,
+            multiplier: item.multiplier || 2.8,
+            plnPrice: item.plnMargin * (item.multiplier || 2.8)
+          });
         }
+      }
     }
 
     finishKasetonBOM(bomItems, W, H, sys, config);
     return;
   }
 
- // 1. PROFIL - suma długości boków w metrach (nazwa zależna od systemu)
- const totalProfileMeters = (2 * W + 2 * H) / 100;
- const profileName = sys === 'LMS' ? 'profil LMS' : 'profil LMD odchudzony';
- bomItems.push({ name: profileName, qty: totalProfileMeters.toFixed(2), unit: 'mb' });
+  // 1. PROFIL - suma długości boków w metrach (nazwa zależna od systemu)
+  const totalProfileMeters = (2 * W + 2 * H) / 100;
+  const profileName = sys === 'LMS' ? 'profil LMS' : 'profil LMD odchudzony';
+  bomItems.push({ name: profileName, qty: totalProfileMeters.toFixed(2), unit: 'mb' });
 
- // 2. NAROŻNIKI (nazwa zależna od systemu)
- const cornerName = sys === 'LMS' ? 'adFrame LMS narożnik wzmacniany' : 'adFrame LMD narożnik wzmacniany';
- bomItems.push({ name: cornerName, qty: 8, unit: 'szt' });
+  // 2. NAROŻNIKI (nazwa zależna od systemu)
+  const cornerName = sys === 'LMS' ? 'adFrame LMS narożnik wzmacniany' : 'adFrame LMD narożnik wzmacniany';
+  bomItems.push({ name: cornerName, qty: 8, unit: 'szt' });
 
- // 3. LED STRIPS
- if (isLedSys) {
- const ledOption = config.light || 'power_long';
- const isPower = ledOption.startsWith('power');
+  // 3. LED STRIPS
+  if (isLedSys) {
+    const ledOption = config.light || 'power_long';
+    const isPower = ledOption.startsWith('power');
 
- const nameMap = isPower ? {
- 20: 'Oświetlenie AdframeLED POWER LED 20cm 9W ver2',
- 24: 'Oświetlenie AdframeLED POWER LED 24cm 11W ver2',
- 30: 'Oświetlenie AdframeLED POWER LED 30cm 13W ver2',
- 50: 'Oświetlenie AdframeLED POWER LED 50cm 22W ver2'
- } : {
- 20: 'Oświetlenie AdframeLED NORMAL LED 20cm 6,5W ver2',
- 24: 'Oświetlenie AdframeLED NORMAL LED 24cm 8W ver2',
- 30: 'Oświetlenie AdframeLED NORMAL LED 30cm 10W ver2',
- 50: 'Oświetlenie AdframeLED NORMAL LED 50cm 16W ver2'
- };
+    const nameMap = isPower ? {
+      20: 'Oświetlenie AdframeLED POWER LED 20cm 9W ver2',
+      24: 'Oświetlenie AdframeLED POWER LED 24cm 11W ver2',
+      30: 'Oświetlenie AdframeLED POWER LED 30cm 13W ver2',
+      50: 'Oświetlenie AdframeLED POWER LED 50cm 22W ver2'
+    } : {
+      20: 'Oświetlenie AdframeLED NORMAL LED 20cm 6,5W ver2',
+      24: 'Oświetlenie AdframeLED NORMAL LED 24cm 8W ver2',
+      30: 'Oświetlenie AdframeLED NORMAL LED 30cm 10W ver2',
+      50: 'Oświetlenie AdframeLED NORMAL LED 50cm 16W ver2'
+    };
 
- const drawBottom = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
- const drawTop = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
- const drawLeft = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
- const drawRight = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
+    const drawBottom = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
+    const drawTop = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
+    const drawLeft = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
+    const drawRight = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
 
- function bomSegments(profileLength, isHoriz) {
- let n = 1;
- if (isHoriz) {
- if (config.cut && config.cut.includes('half_w')) n = 2;
- else if (config.cut && config.cut.includes('3w')) n = 3;
- else if (config.cut && config.cut.includes('4w')) n = 4;
- else if (config.cut && config.cut.includes('5w')) n = 5;
- } else {
- if (config.cut && config.cut.includes('half_h')) n = 2;
- else if (config.cut && config.cut.includes('3h')) n = 3;
- else if (config.cut && config.cut.includes('4h')) n = 4;
- else if (config.cut && config.cut.includes('5h')) n = 5;
- }
- if (config.cut && config.cut.startsWith('auto')) { const ml = config.cut === 'auto_dedicated' ? 300 : (config.cut === 'auto_courier_150' ? 150 : 200); if (profileLength > ml) n = Math.ceil(profileLength / ml); }
- const avail = profileLength - 10 - (n - 1) * 10;
- if (avail <= 0) return [];
- const segs = [];
- for (let i = 0; i < n; i++) segs.push(avail / n);
- return segs;
- }
-
- function bomLedCombo(maxLen) {
- const sizes = [50, 30, 24, 20];
- let best = [], bestSum = 0;
- function go(idx, combo, sum) {
- if (sum > maxLen) return;
- if (sum > bestSum || (sum === bestSum && combo.length < best.length)) {
- bestSum = sum; best = [...combo];
- }
- for (let i = idx; i < sizes.length; i++) {
- combo.push(sizes[i]);
- go(i, combo, sum + sizes[i]);
- combo.pop();
- }
- }
- go(0, [], 0);
- return best;
- }
-
- const ledCounts = { 20: 0, 24: 0, 30: 0, 50: 0 };
- function countProfile(profLen, isHoriz) {
- bomSegments(profLen, isHoriz).forEach(segLen => {
- bomLedCombo(segLen).forEach(size => { ledCounts[size]++; });
- });
- }
- if (drawBottom) countProfile(W, true);
- if (drawTop) countProfile(W, true);
- if (drawLeft) countProfile(H, false);
- if (drawRight) countProfile(H, false);
-
- [50, 30, 24, 20].forEach(size => {
-  if (ledCounts[size] > 0) {
-  bomItems.push({ name: nameMap[size], qty: ledCounts[size], unit: 'szt' });
-  }
-  });
-
-  // --- target systems check: LMD, LMS, LMSM, LCD_LMD ---
-  const isTargetLedSys = ['LMD', 'LMS', 'LMSM', 'LCD_LMD'].includes(sys);
-  if (isTargetLedSys) {
-    // 1. Connection with armed profiles (each vertical support has 2 ends; each horizontal has 2 ends)
-    const cutsW = config.numCutsW || 0;
-    const cutsH = config.numCutsH || 0;
-    let totalConn = 0;
-    if (drawTop) totalConn += cutsW;
-    if (drawBottom) totalConn += cutsW;
-    if (drawLeft) totalConn += cutsH;
-    if (drawRight) totalConn += cutsH;
-
-    if (totalConn > 0) {
-      bomItems.push({ name: 'złączka LED - Jack 3,5mm 10cm męski', qty: totalConn, unit: 'szt' });
-      bomItems.push({ name: 'złączka LED - Jack 3,5mm 10cm żeński', qty: totalConn, unit: 'szt' });
+    function bomSegments(profileLength, isHoriz) {
+      let n = 1;
+      if (isHoriz) {
+        if (config.cut && config.cut.includes('half_w')) n = 2;
+        else if (config.cut && config.cut.includes('3w')) n = 3;
+        else if (config.cut && config.cut.includes('4w')) n = 4;
+        else if (config.cut && config.cut.includes('5w')) n = 5;
+      } else {
+        if (config.cut && config.cut.includes('half_h')) n = 2;
+        else if (config.cut && config.cut.includes('3h')) n = 3;
+        else if (config.cut && config.cut.includes('4h')) n = 4;
+        else if (config.cut && config.cut.includes('5h')) n = 5;
+      }
+      if (config.cut && config.cut.startsWith('auto')) { const ml = config.cut === 'auto_dedicated' ? 300 : (config.cut === 'auto_courier_150' ? 150 : 200); if (profileLength > ml) n = Math.ceil(profileLength / ml); }
+      const avail = profileLength - 10 - (n - 1) * 10;
+      if (avail <= 0) return [];
+      const segs = [];
+      for (let i = 0; i < n; i++) segs.push(avail / n);
+      return segs;
     }
 
-    // 2. Opposite armed profiles only (exactly 2 out of 4)
-    const isOppositeArmed = (drawTop && drawBottom && !drawLeft && !drawRight) || (drawLeft && drawRight && !drawTop && !drawBottom);
-    if (isOppositeArmed) {
-      const unarmedLen = (drawTop && drawBottom) ? H : W;
-      const targetLen = unarmedLen - 38;
-      const remainingLen = targetLen - 50;
+    function bomLedCombo(maxLen) {
+      const sizes = [50, 30, 24, 20];
+      let best = [], bestSum = 0;
+      function go(idx, combo, sum) {
+        if (sum > maxLen) return;
+        if (sum > bestSum || (sum === bestSum && combo.length < best.length)) {
+          bestSum = sum; best = [...combo];
+        }
+        for (let i = idx; i < sizes.length; i++) {
+          combo.push(sizes[i]);
+          go(i, combo, sum + sizes[i]);
+          combo.pop();
+        }
+      }
+      go(0, [], 0);
+      return best;
+    }
 
-      // Add 50cm female connector
-      bomItems.push({ name: 'złączka LED - Jack 3,5mm 50cm żeński', qty: 1, unit: 'szt' });
+    const ledCounts = { 20: 0, 24: 0, 30: 0, 50: 0 };
+    function countProfile(profLen, isHoriz) {
+      bomSegments(profLen, isHoriz).forEach(segLen => {
+        bomLedCombo(segLen).forEach(size => { ledCounts[size]++; });
+      });
+    }
+    if (drawBottom) countProfile(W, true);
+    if (drawTop) countProfile(W, true);
+    if (drawLeft) countProfile(H, false);
+    if (drawRight) countProfile(H, false);
 
-      // Add extensions if remaining length is positive
-      if (remainingLen > 0) {
-        function getExtensionsForLength(len) {
-          if (len <= 0) return [];
-          const sizes = [100, 150, 200];
-          let bestCombo = null;
-          let bestSum = Infinity;
+    [50, 30, 24, 20].forEach(size => {
+      if (ledCounts[size] > 0) {
+        bomItems.push({ name: nameMap[size], qty: ledCounts[size], unit: 'szt' });
+      }
+    });
 
-          function search(currentCombo, currentSum) {
-            if (currentSum >= len) {
-              if (currentSum < bestSum || (currentSum === bestSum && currentCombo.length < bestCombo.length)) {
-                bestSum = currentSum;
-                bestCombo = [...currentCombo];
+    // --- target systems check: LMD, LMS, LMSM, LCD_LMD ---
+    const isTargetLedSys = ['LMD', 'LMS', 'LMSM', 'LCD_LMD'].includes(sys);
+    if (isTargetLedSys) {
+      // 1. Connection with armed profiles (each vertical support has 2 ends; each horizontal has 2 ends)
+      const cutsW = config.numCutsW || 0;
+      const cutsH = config.numCutsH || 0;
+      let totalConn = 0;
+      if (drawTop) totalConn += cutsW;
+      if (drawBottom) totalConn += cutsW;
+      if (drawLeft) totalConn += cutsH;
+      if (drawRight) totalConn += cutsH;
+
+      if (totalConn > 0) {
+        bomItems.push({ name: 'złączka LED - Jack 3,5mm 10cm męski', qty: totalConn, unit: 'szt' });
+        bomItems.push({ name: 'złączka LED - Jack 3,5mm 10cm żeński', qty: totalConn, unit: 'szt' });
+      }
+
+      // 2. Opposite armed profiles only (exactly 2 out of 4)
+      const isOppositeArmed = (drawTop && drawBottom && !drawLeft && !drawRight) || (drawLeft && drawRight && !drawTop && !drawBottom);
+      if (isOppositeArmed) {
+        const unarmedLen = (drawTop && drawBottom) ? H : W;
+        const targetLen = unarmedLen - 38;
+        const remainingLen = targetLen - 50;
+
+        // Add 50cm female connector
+        bomItems.push({ name: 'złączka LED - Jack 3,5mm 50cm żeński', qty: 1, unit: 'szt' });
+
+        // Add extensions if remaining length is positive
+        if (remainingLen > 0) {
+          function getExtensionsForLength(len) {
+            if (len <= 0) return [];
+            const sizes = [100, 150, 200];
+            let bestCombo = null;
+            let bestSum = Infinity;
+
+            function search(currentCombo, currentSum) {
+              if (currentSum >= len) {
+                if (currentSum < bestSum || (currentSum === bestSum && currentCombo.length < bestCombo.length)) {
+                  bestSum = currentSum;
+                  bestCombo = [...currentCombo];
+                }
+                return;
               }
-              return;
-            }
-            if (currentSum >= len + 200) return;
+              if (currentSum >= len + 200) return;
 
-            for (let size of sizes) {
-              currentCombo.push(size);
-              search(currentCombo, currentSum + size);
-              currentCombo.pop();
+              for (let size of sizes) {
+                currentCombo.push(size);
+                search(currentCombo, currentSum + size);
+                currentCombo.pop();
+              }
             }
+            search([], 0);
+            return bestCombo || [];
           }
-          search([], 0);
-          return bestCombo || [];
+
+          const extCombo = getExtensionsForLength(remainingLen);
+          const extCounts = { 100: 0, 150: 0, 200: 0 };
+          extCombo.forEach(size => { extCounts[size]++; });
+
+          if (extCounts[100] > 0) {
+            bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 100cm', qty: extCounts[100], unit: 'szt' });
+          }
+          if (extCounts[150] > 0) {
+            bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 150cm', qty: extCounts[150], unit: 'szt' });
+          }
+          if (extCounts[200] > 0) {
+            bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 200cm', qty: extCounts[200], unit: 'szt' });
+          }
         }
 
-        const extCombo = getExtensionsForLength(remainingLen);
-        const extCounts = { 100: 0, 150: 0, 200: 0 };
-        extCombo.forEach(size => { extCounts[size]++; });
-
-        if (extCounts[100] > 0) {
-          bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 100cm', qty: extCounts[100], unit: 'szt' });
-        }
-        if (extCounts[150] > 0) {
-          bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 150cm', qty: extCounts[150], unit: 'szt' });
-        }
-        if (extCounts[200] > 0) {
-          bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 200cm', qty: extCounts[200], unit: 'szt' });
-        }
       }
     }
   }
- }
 
- // 4. POWER SUPPLY
- if (config.psuCombo && config.psuCombo.length > 0) {
- const psuCounts = {};
- config.psuCombo.forEach(p => { psuCounts[p] = (psuCounts[p] || 0) + 1; });
- for (let p in psuCounts) {
- bomItems.push({ name: p, qty: psuCounts[p], unit: 'szt' });
- }
- }
+  if (config.psuCombo && config.psuCombo.length > 0) {
+    const psuCounts = {};
+    config.psuCombo.forEach(p => { psuCounts[p] = (psuCounts[p] || 0) + 1; });
+    for (let p in psuCounts) {
+      bomItems.push({ name: p, qty: psuCounts[p], unit: 'szt' });
+    }
+  }
 
- // 5. SUPPORTY I ŁĄCZNIKI
- const numCutsW = config.numCutsW || 0;
- const numCutsH = config.numCutsH || 0;
- const suppLen = config.totalSupportLengthM || 0;
+  // 4b. DYNAMICZNA LOGIKA DOBORU KABLI ZASILAJĄCYCH (ID: 17392)
+  if (['LMD', 'LMS', 'LMSM'].includes(sys)) {
+    const psuCount = config.psuCombo ? config.psuCombo.length : 0;
+    const psuType = config.power || 'internal'; // Fallback do zasilacza wewnętrznego
 
- if (suppLen > 0) {
- bomItems.push({ name: 'profil support light', qty: suppLen.toFixed(2), unit: 'mb' });
- }
+    // Bezpiecznik: logika wykonuje się TYLKO, gdy zasilacz NIE JEST zewnętrzny
+    if (psuCount > 0 && psuType !== 'external') {
+      const ledOption = config.light || 'power_around';
+      const drawHorizontal = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
+      const drawVertical = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
 
- const zamki = (numCutsW * 2) + (numCutsH * 2);
- if (zamki > 0) {
- bomItems.push({ name: 'adFrame support zamek', qty: zamki, unit: 'szt' });
- }
+      // Wyznaczenie najdłuższego profilu, na którym fizycznie montowane są taśmy LED
+      let maxLedProfileLen = 0;
+      if (drawHorizontal) maxLedProfileLen = Math.max(maxLedProfileLen, W);
+      if (drawVertical) maxLedProfileLen = Math.max(maxLedProfileLen, H);
 
- const crossConns = numCutsW * numCutsH;
- if (crossConns > 0) {
- bomItems.push({ name: 'adFrame support 180° łącznik', qty: crossConns * 2, unit: 'szt' });
- }
+      let cableQty = 0;
+      if (psuCount === 1) {
+        cableQty = 1;
+      } else if (psuCount > 1) {
+        if (maxLedProfileLen < 400) {
+          cableQty = 1;
+        } else {
+          cableQty = 2;
+        }
+      }
 
- const totalCuts = numCutsW + numCutsH;
- if (totalCuts > 0) {
- bomItems.push({ name: 'adFrame LMD łącznik 180° długi', qty: totalCuts * 2, unit: 'szt' });
- }
+      if (cableQty > 0) {
+        bomItems.push({ name: 'Kabel zasilający do zasilacza wew / adFrame Quick', qty: cableQty, unit: 'szt' });
+      }
+    }
+  }
+  // 5. SUPPORTY I ŁĄCZNIKI
+  const numCutsW = config.numCutsW || 0;
+  const numCutsH = config.numCutsH || 0;
+  const suppLen = config.totalSupportLengthM || 0;
 
- if (config.usage === 'freestanding') {
- let numFeet = 2;
- if (numCutsW > 0) {
- numFeet += numCutsW;
- } else if (W >= 200) {
- numFeet += 1;
- }
- bomItems.push({ name: 'adFrame stopa LMD/LMS', qty: numFeet, unit: 'szt' });
- }
+  if (suppLen > 0) {
+    bomItems.push({ name: 'profil support light', qty: suppLen.toFixed(2), unit: 'mb' });
+  }
 
- // 6b. PODWIESZENIE
- if (config.usage === 'suspended' && config.numSuspensionSets > 0) {
- bomItems.push({ name: 'adFrame - zestaw do podwieszenia \u22122mm', qty: config.numSuspensionSets, unit: 'szt' });
- }
+  const zamki = (numCutsW * 2) + (numCutsH * 2);
+  if (zamki > 0) {
+    bomItems.push({ name: 'adFrame support zamek', qty: zamki, unit: 'szt' });
+  }
 
- // 6. WYDRUKI
- const printOption = config.print || (sys === 'LMS' ? 'backlit_white' : 'single');
- if (printOption !== 'no_print') {
- if (printOption === 'single') {
- // LMD default: front print + white blockout back
- bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 1, unit: 'szt' });
- bomItems.push({ name: `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU ${W}x${H}`, qty: 1, unit: 'szt' });
- } else if (printOption === 'double') {
- bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 2, unit: 'szt' });
- } else if (printOption === 'front_blockout' || printOption === 'front_blockout_2') {
- bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 1, unit: 'szt' });
- bomItems.push({ name: `Wydruk adFrame Blockout ${W}x${H}`, qty: 1, unit: 'szt' });
- } else if (printOption === 'back_blockout') {
- bomItems.push({ name: `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU ${W}x${H}`, qty: 1, unit: 'szt' });
- } else if (printOption === 'backlit_white') {
- // LMS: front backlit + white back
- bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 1, unit: 'szt' });
- bomItems.push({ name: `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU ${W}x${H}`, qty: 1, unit: 'szt' });
- } else if (printOption === 'backlit_blockout') {
- // LMS: front backlit + color blockout back
- bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 1, unit: 'szt' });
- bomItems.push({ name: `Wydruk adFrame Blockout ${W}x${H}`, qty: 1, unit: 'szt' });
- } else if (printOption === 'back_white') {
- // LMS: only white back
- bomItems.push({ name: `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU ${W}x${H}`, qty: 1, unit: 'szt' });
- }
- }
+  const crossConns = numCutsW * numCutsH;
+  if (crossConns > 0) {
+    bomItems.push({ name: 'adFrame support 180° łącznik', qty: crossConns * 2, unit: 'szt' });
+  }
 
- // ==================== NEW LOGIC & DATABASE INTEGRATION ====================
+  const totalCuts = numCutsW + numCutsH;
+  if (totalCuts > 0) {
+    bomItems.push({ name: 'adFrame LMD łącznik 180° długi', qty: totalCuts * 2, unit: 'szt' });
+  }
 
- // 7. NEW ALWAYS-ON ITEMS
- bomItems.push({ name: 'adFrame imbus 2,5mm', qty: 1, unit: 'szt' });
- bomItems.push({ name: 'adFrame imbus 4mm', qty: 1, unit: 'szt' });
+  if (config.usage === 'freestanding') {
+    let numFeet = 2;
+    if (numCutsW > 0) {
+      numFeet += numCutsW;
+    } else if (W >= 200) {
+      numFeet += 1;
+    }
+    bomItems.push({ name: 'adFrame stopa LMD/LMS', qty: numFeet, unit: 'szt' });
+  }
 
- // 8. DYNAMIC CARTON & FOAM LOGIC
- let maxSegmentLen = Math.max(W / (numCutsW + 1), H / (numCutsH + 1));
- let isSplit = false;
- if (maxSegmentLen > 200) {
- maxSegmentLen = maxSegmentLen / 2;
- isSplit = true;
- }
+  // 6b. PODWIESZENIE
+  if (config.usage === 'suspended' && config.numSuspensionSets > 0) {
+    bomItems.push({ name: 'adFrame - zestaw do podwieszenia \u22122mm', qty: config.numSuspensionSets, unit: 'szt' });
+  }
 
- const requiredCartonLength = maxSegmentLen + 10;
- let cartonName = 'Karton LMD/LMS/DTF - 210x16x33cm'; // Default fallback
- if (requiredCartonLength <= 110) {
- cartonName = 'Karton LMD/LMS - 110x16x33cm';
- } else if (requiredCartonLength <= 135) {
- cartonName = 'Karton LMD/LMS - 135x16x33cm';
- } else if (requiredCartonLength <= 160) {
- cartonName = 'Karton LMD/LMS - 160x16x33cm';
- } else if (requiredCartonLength <= 210) {
- cartonName = 'Karton LMD/LMS/DTF - 210x16x33cm';
- }
+  // 6. WYDRUKI
+  const printOption = config.print || (sys === 'LMS' ? 'backlit_white' : 'single');
+  if (printOption !== 'no_print') {
+    if (printOption === 'single') {
+      // LMD default: front print + white blockout back
+      bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 1, unit: 'szt' });
+      bomItems.push({ name: `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU ${W}x${H}`, qty: 1, unit: 'szt' });
+    } else if (printOption === 'double') {
+      bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 2, unit: 'szt' });
+    } else if (printOption === 'front_blockout' || printOption === 'front_blockout_2') {
+      bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 1, unit: 'szt' });
+      bomItems.push({ name: `Wydruk adFrame Blockout ${W}x${H}`, qty: 1, unit: 'szt' });
+    } else if (printOption === 'back_blockout') {
+      bomItems.push({ name: `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU ${W}x${H}`, qty: 1, unit: 'szt' });
+    } else if (printOption === 'backlit_white') {
+      // LMS: front backlit + white back
+      bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 1, unit: 'szt' });
+      bomItems.push({ name: `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU ${W}x${H}`, qty: 1, unit: 'szt' });
+    } else if (printOption === 'backlit_blockout') {
+      // LMS: front backlit + color blockout back
+      bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 1, unit: 'szt' });
+      bomItems.push({ name: `Wydruk adFrame Blockout ${W}x${H}`, qty: 1, unit: 'szt' });
+    } else if (printOption === 'back_white') {
+      // LMS: only white back
+      bomItems.push({ name: `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU ${W}x${H}`, qty: 1, unit: 'szt' });
+    }
+  }
 
- const totalPieces = 2 * (numCutsW + 1) + 2 * (numCutsH + 1);
- let baseCartons = 1;
- if (totalCuts > 4) {
- baseCartons = Math.ceil(totalPieces / 8);
- }
+  // ==================== NEW LOGIC & DATABASE INTEGRATION ====================
 
- const finalCartonQty = isSplit ? baseCartons * 2 : baseCartons;
- const foamQty = finalCartonQty * 4;
+  // 7. NEW ALWAYS-ON ITEMS
+  bomItems.push({ name: 'adFrame imbus 2,5mm', qty: 1, unit: 'szt' });
+  bomItems.push({ name: 'adFrame imbus 4mm', qty: 1, unit: 'szt' });
 
- bomItems.push({ name: cartonName, qty: finalCartonQty, unit: 'szt' });
- bomItems.push({ name: 'adFrame LMD pianka ochronna', qty: foamQty, unit: 'szt' });
+  // 8. DYNAMIC CARTON & FOAM LOGIC
+  let maxSegmentLen = Math.max(W / (numCutsW + 1), H / (numCutsH + 1));
+  let isSplit = false;
+  if (maxSegmentLen > 200) {
+    maxSegmentLen = maxSegmentLen / 2;
+    isSplit = true;
+  }
 
- // Save carton info to config for Spakuj/Rozpakuj feature
- config.cartonName = cartonName;
- config.cartonQty = finalCartonQty;
+  const requiredCartonLength = maxSegmentLen + 10;
+  let cartonName = 'Karton LMD/LMS/DTF - 210x16x33cm'; // Default fallback
+  if (requiredCartonLength <= 110) {
+    cartonName = 'Karton LMD/LMS - 110x16x33cm';
+  } else if (requiredCartonLength <= 135) {
+    cartonName = 'Karton LMD/LMS - 135x16x33cm';
+  } else if (requiredCartonLength <= 160) {
+    cartonName = 'Karton LMD/LMS - 160x16x33cm';
+  } else if (requiredCartonLength <= 210) {
+    cartonName = 'Karton LMD/LMS/DTF - 210x16x33cm';
+  }
 
- // Integrate manual items to BOM
- if (typeof manualItems !== 'undefined') {
-     for (let key in manualItems) {
-         let item = manualItems[key];
-         if (item && typeof item === 'object' && item.qty > 0) {
-             bomItems.push({
-                 name: item.name,
-                 qty: item.qty,
-                 unit: 'szt',
-                 intranetId: item.intranetId,
-                 isManual: true,
-                 plnMargin: item.plnMargin,
-                 multiplier: item.multiplier || 2.8,
-                 plnPrice: item.plnMargin * (item.multiplier || 2.8)
-             });
-         } else if (item && typeof item === 'number' && item > 0 && typeof DB !== 'undefined' && DB[key]) {
-             bomItems.push({
-                 name: DB[key].name,
-                 qty: item,
-                 unit: 'szt',
-                 isManual: true,
-                 plnPrice: DB[key].price * (window.KURS_PLN_DYNAMIC || 4.20),
-                 plnMargin: (DB[key].price * (window.KURS_PLN_DYNAMIC || 4.20)) / 2.8
-             });
-         }
-     }
- }
+  const totalPieces = 2 * (numCutsW + 1) + 2 * (numCutsH + 1);
+  let baseCartons = 1;
+  if (totalCuts > 4) {
+    baseCartons = Math.ceil(totalPieces / 8);
+  }
 
- finishKasetonBOM(bomItems, W, H, sys, config);
+  const finalCartonQty = isSplit ? baseCartons * 2 : baseCartons;
+  const foamQty = finalCartonQty * 4;
+
+  bomItems.push({ name: cartonName, qty: finalCartonQty, unit: 'szt' });
+  bomItems.push({ name: 'adFrame LMD pianka ochronna', qty: foamQty, unit: 'szt' });
+
+  // Save carton info to config for Spakuj/Rozpakuj feature
+  config.cartonName = cartonName;
+  config.cartonQty = finalCartonQty;
+
+  // Integrate manual items to BOM
+  if (typeof manualItems !== 'undefined') {
+    for (let key in manualItems) {
+      let item = manualItems[key];
+      if (item && typeof item === 'object' && item.qty > 0) {
+        bomItems.push({
+          name: item.name,
+          qty: item.qty,
+          unit: 'szt',
+          intranetId: item.intranetId,
+          isManual: true,
+          plnMargin: item.plnMargin,
+          multiplier: item.multiplier || 2.8,
+          plnPrice: item.plnMargin * (item.multiplier || 2.8)
+        });
+      } else if (item && typeof item === 'number' && item > 0 && typeof DB !== 'undefined' && DB[key]) {
+        bomItems.push({
+          name: DB[key].name,
+          qty: item,
+          unit: 'szt',
+          isManual: true,
+          plnPrice: DB[key].price * (window.KURS_PLN_DYNAMIC || 4.20),
+          plnMargin: (DB[key].price * (window.KURS_PLN_DYNAMIC || 4.20)) / 2.8
+        });
+      }
+    }
+  }
+
+  finishKasetonBOM(bomItems, W, H, sys, config);
 }
 
 // 9. DATABASE & CURRENCY LOGIC
@@ -5334,7 +5366,7 @@ window.calculateWydrukArea = calculateWydrukArea;
 
 window.customPriceOverrides = window.customPriceOverrides || {};
 
-window.overrideBomPrice = function(itemName, newPriceEUR) {
+window.overrideBomPrice = function (itemName, newPriceEUR) {
   window.customPriceOverrides = window.customPriceOverrides || {};
   const priceVal = parseFloat(newPriceEUR);
   if (!isNaN(priceVal)) {
@@ -5433,12 +5465,17 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
     totalEUR += item.price * parseFloat(item.qty);
   });
 
-  // Update global pricing metrics
-  globalTotalEUR = totalEUR;
-  globalTotalPLN = totalEUR * ratePLN;
+  // 🛠️ AKTUALIZACJA: Pobranie zniżki i obliczenie finalnej wartości EUR po rabacie
+  const discountInputEl = document.getElementById('discountInput');
+  const discount = discountInputEl ? (parseFloat(discountInputEl.value) || 0) : 0;
+  const finalEUR = totalEUR * (1 - discount / 100);
+
+  // Update global pricing metrics z uwzględnieniem rabatu
+  globalTotalEUR = finalEUR;
+  globalTotalPLN = finalEUR * ratePLN;
 
   const finalPLN = globalTotalPLN;
-  const finalUSD = totalEUR * rateUSD;
+  const finalUSD = finalEUR * rateUSD;
 
   document.getElementById('valPLN').innerHTML = `<b>${Math.round(finalPLN).toLocaleString()} PLN</b>`;
   document.getElementById('valUSD').innerHTML = `<b>${Math.round(finalUSD).toLocaleString()} $</b>`;
@@ -5451,7 +5488,7 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
     const q = item.qty;
     const u = item.unit ? (' ' + item.unit) : 'x';
     const lineTotal = item.price * parseFloat(q);
-    
+
     // Style check for missing price
     let inputStyle = 'width: 65px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid #444; border-radius: 4px; padding: 2px 4px; text-align: right; font-family: inherit; font-size: 11px;';
     let warningHtml = '';
@@ -5460,7 +5497,7 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
       warningHtml = '<span style="color: #ff3333; font-weight: bold; margin-left: 5px; font-size: 10px;">[Brak ceny!]</span>';
     }
 
-    const escapedName = item.name.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+    const escapedName = item.name.replace(/\x27/g, "\\\x27").replace(/\x22/g, "&quot;");
 
     html += '<div class="bom-item" style="align-items: center; gap: 5px;' + (item.hasNoPrice ? ' background: rgba(255,0,0,0.1); border-radius: 4px; padding: 2px;' : '') + '">';
     html += '<span style="flex-grow: 1; text-align: left;">' + q + u + ' ' + item.name + warningHtml + '</span>';
@@ -5471,74 +5508,75 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
   });
 
   document.getElementById('bomList').innerHTML = html;
-  document.getElementById('totalPrice').innerText = Math.round(totalEUR).toLocaleString() + ' \u20ac';
+  // 🛠️ AKTUALIZACJA: Przypisanie zrabatowanej ceny do końcowego pola tekstowego EUR
+  document.getElementById('totalPrice').innerText = Math.round(finalEUR).toLocaleString() + ' \u20ac';
   document.getElementById('totalPower').innerText = '\u26a1 Moc: ' + Math.round(config.totalPowerW || 0) + ' W';
   window.lastGeneratedBOM = bomItems;
 }
 
- function calculateKasetonWeight(config) {
- const sys = config.system || 'LMD';
- const W = parseFloat(config.width) || 120;
- const H = parseFloat(config.depth) || 200;
- const wt = KASETON_WEIGHT_DATA[sys] || KASETON_WEIGHT_DATA.LMD;
- if (wt && typeof wt.getWeight === 'function') {
-   return wt.getWeight(W / 100, H / 100);
- }
- let total = 0;
+function calculateKasetonWeight(config) {
+  const sys = config.system || 'LMD';
+  const W = parseFloat(config.width) || 120;
+  const H = parseFloat(config.depth) || 200;
+  const wt = KASETON_WEIGHT_DATA[sys] || KASETON_WEIGHT_DATA.LMD;
+  if (wt && typeof wt.getWeight === 'function') {
+    return wt.getWeight(W / 100, H / 100);
+  }
+  let total = 0;
 
- // Profile
- const profileM = (2 * W + 2 * H) / 100;
- total += profileM * wt.profile;
+  // Profile
+  const profileM = (2 * W + 2 * H) / 100;
+  total += profileM * wt.profile;
 
- // Support
- total += (config.totalSupportLengthM || 0) * wt.support;
+  // Support
+  total += (config.totalSupportLengthM || 0) * wt.support;
 
- // Accessories (1 set)
- total += wt.accessories;
+  // Accessories (1 set)
+  total += wt.accessories;
 
- // LED (approximate total LED = profile length)
- total += profileM * wt.led;
+  // LED (approximate total LED = profile length)
+  total += profileM * wt.led;
 
- // Feet
- if (config.usage === 'freestanding' && wt.feet > 0) {
- const nCW = config.numCutsW || 0;
- let nFeet = 2;
- if (nCW > 0) nFeet += nCW;
- else if (W >= 200) nFeet += 1;
- total += nFeet * wt.feet;
- }
+  // Feet
+  if (config.usage === 'freestanding' && wt.feet > 0) {
+    const nCW = config.numCutsW || 0;
+    let nFeet = 2;
+    if (nCW > 0) nFeet += nCW;
+    else if (W >= 200) nFeet += 1;
+    total += nFeet * wt.feet;
+  }
 
- // PSUs
- if (config.psuCombo && config.psuCombo.length > 0) {
- config.psuCombo.forEach(p => { total += KASETON_PSU_WEIGHTS[p] || 0.3; });
- total += config.psuCombo.length * 0.1; // cables
- }
+  // PSUs
+  if (config.psuCombo && config.psuCombo.length > 0) {
+    config.psuCombo.forEach(p => { total += KASETON_PSU_WEIGHTS[p] || 0.3; });
+    total += config.psuCombo.length * 0.1; // cables
+  }
 
- // Cartons
- const cName = config.cartonName || 'Karton LMD/LMS/DTF - 210x16x33cm';
- const cQty = config.cartonQty || 1;
- total += (KASETON_CARTON_WEIGHTS[cName] || 2.0) * cQty;
+  // Cartons
+  const cName = config.cartonName || 'Karton LMD/LMS/DTF - 210x16x33cm';
+  const cQty = config.cartonQty || 1;
+  total += (KASETON_CARTON_WEIGHTS[cName] || 2.0) * cQty;
 
- // Foam
- total += cQty * 4 * 0.05; // ~50g per foam piece
+  // Foam
+  total += cQty * 4 * 0.05; // ~50g per foam piece
 
- // Prints
- const areaM2 = (W * H) / 10000;
- const printOpt = config.print || 'single';
- if (printOpt !== 'no_print') {
- if (printOpt === 'single') {
- total += areaM2 * KASETON_PRINT_WEIGHTS.led;
- total += areaM2 * KASETON_PRINT_WEIGHTS.blockout;
- } else if (printOpt === 'double') {
- total += areaM2 * KASETON_PRINT_WEIGHTS.led * 2;
- } else if (printOpt.includes('blockout')) {
- total += areaM2 * KASETON_PRINT_WEIGHTS.led;
- total += areaM2 * KASETON_PRINT_WEIGHTS.blockout;
- }
- }
+  // Prints
+  const areaM2 = (W * H) / 10000;
+  const printOpt = config.print || 'single';
+  if (printOpt !== 'no_print') {
+    if (printOpt === 'single') {
+      total += areaM2 * KASETON_PRINT_WEIGHTS.led;
+      total += areaM2 * KASETON_PRINT_WEIGHTS.blockout;
+    } else if (printOpt === 'double') {
+      total += areaM2 * KASETON_PRINT_WEIGHTS.led * 2;
+    } else if (printOpt.includes('blockout')) {
+      total += areaM2 * KASETON_PRINT_WEIGHTS.led;
+      total += areaM2 * KASETON_PRINT_WEIGHTS.blockout;
+    }
+  }
 
- // Allen keys + misc hardware
- total += 0.15;
+  // Allen keys + misc hardware
+  total += 0.15;
 
- return total;
- }
+  return total;
+}
