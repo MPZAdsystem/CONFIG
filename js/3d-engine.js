@@ -2163,7 +2163,7 @@ function render() {
         if (!intranetId && typeof DB !== 'undefined') {
           for (let key in DB) {
             if (DB[key].name === name) {
-              intranetId = DB[key].catNo || DB[key].intranetId || null;
+              intranetId = DB[key].intranetId || DB[key].catNo || null;
               break;
             }
           }

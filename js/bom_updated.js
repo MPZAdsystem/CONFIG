@@ -21,206 +21,54 @@ function generateKasetonBOM() {
   const bomItems = [];
 
   if (sys === 'CTF') {
-    const D = parseFloat(config.height3D) || 120; // Głębokość przestrzenna ramy 3D
+    const D = parseFloat(config.height3D) || 120; // Głębokość 3D
     const wMeters = W / 100;
     const hMeters = H / 100;
     const dMeters = D / 100;
 
-    // 1. Indeks nadrzędny całego zestawu kasetonu (bez ceny, spięty z ID 18337)
-    bomItems.push({ name: "adFrame CTF", qty: 1, unit: "szt", intranetId: 18337, forceZeroPrice: true });
-
-    // 2. 12 profili głównych CTF (4x szerokość, 4x wysokość, 4x głębokość)
+    // 12 profili CTF (4 szerokości, 4 wysokości, 4 głębokości)
     const totalProfileMeters = 4 * wMeters + 4 * hMeters + 4 * dMeters;
-    bomItems.push({ name: "profil CTF", qty: parseFloat(totalProfileMeters.toFixed(2)), unit: "mb", intranetId: 12099 });
+    bomItems.push({ name: "profil CTF", qty: parseFloat(totalProfileMeters.toFixed(2)), unit: "mb" });
 
-    // 3. 8 łączników narożnych ramy zewnętrznej sześcianu
-    bomItems.push({ name: "adFrame CTF Plastic connector", qty: 8, unit: "szt", intranetId: 12090 });
+    // 8 łączników narożnych
+    bomItems.push({ name: "adFrame CTF Plastic connector", qty: 8, unit: "szt" });
 
-    // 4. Układ wzmocnień (Supporty) oraz łączniki wewnętrzne rurek
-    const ctfSuppLen = config.totalSupportLengthM || 0;
-    if (ctfSuppLen > 0) {
-      bomItems.push({ name: 'profil support light', qty: parseFloat(ctfSuppLen.toFixed(2)), unit: 'mb', intranetId: 11951 });
-
-      // Odtworzenie siatki podziałów ramy celem precyzyjnego wyliczenia spinek supportu
-      let numSegmentsW = 1, numSegmentsH = 1;
-      if (config.cut && config.cut.includes('half_w')) numSegmentsW = 2;
-      else if (config.cut && config.cut.includes('3w')) numSegmentsW = 3;
-      else if (config.cut && config.cut.includes('4w')) numSegmentsW = 4;
-      else if (config.cut && config.cut.includes('5w')) numSegmentsW = 5;
-
-      if (config.cut && config.cut.includes('half_h')) numSegmentsH = 2;
-      else if (config.cut && config.cut.includes('3h')) numSegmentsH = 3;
-      else if (config.cut && config.cut.includes('4h')) numSegmentsH = 4;
-      else if (config.cut && config.cut.includes('5h')) numSegmentsH = 5;
-
-      if (config.cut && config.cut.startsWith('auto')) {
-        const maxLen = config.cut === 'auto_dedicated' ? 300 : (config.cut === 'auto_courier_150' ? 150 : 200);
-        if (W > maxLen) numSegmentsW = Math.ceil(W / maxLen);
-        if (H > maxLen) numSegmentsH = Math.ceil(H / maxLen);
-      }
-
-      const numCutsW = numSegmentsW - 1;
-      const numCutsH = numSegmentsH - 1;
-      const numCutsZ = D > 200 ? 1 : 0;
-
-      // Solver zliczający spinki rurek (adFrame CTF support bar connector)
-      let supportConnectorsQty = (numCutsW * 4) + (numCutsH * 4) + (numCutsZ * 4);
-      if (numCutsW > 0 && numCutsH > 0) {
-        supportConnectorsQty += (numCutsW * numCutsH * 2); // Punkty krzyżowe wewnętrzne
-      }
-
-      // Bezpiecznik dla dużych gabarytów bez wymuszonych cięć kurierskich (stabilizacja ramy)
-      if (supportConnectorsQty === 0 && (W > 200 || H > 200 || D > 200)) {
-        supportConnectorsQty = 8;
-      }
-
-      if (supportConnectorsQty > 0) {
-        bomItems.push({ name: "adFrame CTF support bar connector", qty: supportConnectorsQty, unit: "szt", intranetId: 12077 });
-      }
-    }
-
-    // 5. Blat CTF (Zaciągany z ID 16443, wyliczany z bazy wyjściowej, opis XML w milimetrach -45mm)
+    // Blat górny
     const topPanel = config.topPanel || 'none';
     if (topPanel !== 'none') {
-      const topPanelAreaM2 = (W * D) / 10000;
-      const topPanelPlnPrice = topPanelAreaM2 * 400; // 400 PLN za m2
-      const topPanelPlnMargin = topPanelPlnPrice / 2.8;
-
-      // Formatowanie opisu dla XML handlowego (zamiana cm -> mm i odjęcie 45mm luzu technologicznego)
-      const blatDescription = `${Math.round(W * 10 - 45)}x${Math.round(D * 10 - 45)} mm`;
-
-      bomItems.push({
-        name: "Blat CTF",
-        qty: 1,
-        unit: "szt",
-        intranetId: 16443,
-        customPlnPrice: topPanelPlnPrice,
-        customPlnMargin: topPanelPlnMargin,
-        description: blatDescription // Parametr zaczytywany przez Wasz generator eksportu XML
-      });
+      const topPanelName = topPanel === 'mdf' ? 'blat MDF CTF' : (topPanel === 'plexi' ? 'blat PLEXI CTF' : 'blat poliwęglan CTF');
+      bomItems.push({ name: topPanelName, qty: 1, unit: "szt" });
     }
 
-    // 6. Elementy montażowe / Zawiesia
+    // Montaż (Tylko podwieszenie - stopy wolnostojące zostały usunięte)
     if (config.usage === 'suspended') {
-      bomItems.push({ name: "adFrame CTF - zestaw do podwieszenia 2m (4 PKT) do MO", qty: 1, unit: "szt", intranetId: 17790 });
+      bomItems.push({ name: "adFrame CTF - zestaw do podwieszenia 2m (4 PKT) do MO", qty: 1, unit: "szt" });
     }
 
-    // 7. Kartony i pianki (Dobór matematyczny skopiowany 1:1 z algorytmu LMD)
-    let numCutsW = 0, numCutsH = 0;
-    if (config.cut && config.cut.includes('half_w')) numCutsW = 1;
-    else if (config.cut && config.cut.includes('3w')) numCutsW = 2;
-    else if (config.cut && config.cut.includes('4w')) numCutsW = 3;
-    else if (config.cut && config.cut.includes('5w')) numCutsW = 4;
-
-    if (config.cut && config.cut.includes('half_h')) numCutsH = 1;
-    else if (config.cut && config.cut.includes('3h')) numCutsH = 2;
-    else if (config.cut && config.cut.includes('4h')) numCutsH = 3;
-    else if (config.cut && config.cut.includes('5h')) numCutsH = 4;
-
-    if (config.cut && config.cut.startsWith('auto')) {
-      const maxLen = config.cut === 'auto_dedicated' ? 300 : (config.cut === 'auto_courier_150' ? 150 : 200);
-      if (W > maxLen) numCutsW = Math.ceil(W / maxLen) - 1;
-      if (H > maxLen) numCutsH = Math.ceil(H / maxLen) - 1;
-    }
-
-    let maxSegmentLen = Math.max(W / (numCutsW + 1), H / (numCutsH + 1));
-    let isSplit = false;
-    if (maxSegmentLen > 200) {
-      maxSegmentLen = maxSegmentLen / 2;
-      isSplit = true;
-    }
-
-    const requiredCartonLength = maxSegmentLen + 10;
-    let cartonName = 'Karton LMD/LMS/DTF - 210x16x33cm';
-    if (requiredCartonLength <= 110) cartonName = 'Karton LMD/LMS - 110x16x33cm';
-    else if (requiredCartonLength <= 135) cartonName = 'Karton LMD/LMS - 135x16x33cm';
-    else if (requiredCartonLength <= 160) cartonName = 'Karton LMD/LMS - 160x16x33cm';
-
-    const totalCuts = numCutsW + numCutsH;
-    const totalPieces = 2 * (numCutsW + 1) + 2 * (numCutsH + 1);
-    let baseCartons = 1;
-    if (totalCuts > 4) {
-      baseCartons = Math.ceil(totalPieces / 8);
-    }
-
-    const finalCartonQty = isSplit ? baseCartons * 2 : baseCartons;
-    const foamQty = finalCartonQty * 4;
-
-    bomItems.push({ name: cartonName, qty: finalCartonQty, unit: 'szt' });
-    bomItems.push({ name: 'adFrame LMD pianka ochronna', qty: foamQty, unit: 'szt' });
-    config.cartonName = cartonName;
-    config.cartonQty = finalCartonQty;
-
-    // 8. Rozbicie wydruków na pojedyncze pozycje (Dla ERP/DTP - unikalne pliki graficzne)
+    // Wydruki (tkaniny)
     const printOption = config.print || 'all_sides';
     if (printOption !== 'no_print') {
-      const facesTemp = [];
-
-      // Definiujemy każdą płaszczyznę bryły 3D od razu z jej fizyczną rolą/kierunkiem
       if (printOption === 'all_sides') {
-        facesTemp.push({ w: W, h: H, isBlockout: false, side: 'przód' });
-        facesTemp.push({ w: W, h: H, isBlockout: false, side: 'tył' });
-        facesTemp.push({ w: D, h: H, isBlockout: false, side: 'bok lewy' });
-        facesTemp.push({ w: D, h: H, isBlockout: false, side: 'bok prawy' });
-        facesTemp.push({ w: W, h: D, isBlockout: false, side: 'góra' });
-        facesTemp.push({ w: W, h: D, isBlockout: false, side: 'dół' });
+        bomItems.push({ name: `Wydruk adFrame CTF ${W}x${H}`, qty: 2, unit: "szt" });
+        bomItems.push({ name: `Wydruk adFrame CTF ${D}x${H}`, qty: 2, unit: "szt" });
+        bomItems.push({ name: `Wydruk adFrame CTF ${W}x${D}`, qty: 2, unit: "szt" }); // góra + dół
       } else if (printOption === 'front_back') {
-        facesTemp.push({ w: W, h: H, isBlockout: false, side: 'przód' });
-        facesTemp.push({ w: W, h: H, isBlockout: false, side: 'tył' });
-        facesTemp.push({ w: D, h: H, isBlockout: true, side: 'bok lewy' });
-        facesTemp.push({ w: D, h: H, isBlockout: true, side: 'bok prawy' });
-        facesTemp.push({ w: W, h: D, isBlockout: true, side: 'góra' });
-        facesTemp.push({ w: W, h: D, isBlockout: true, side: 'dół' });
+        bomItems.push({ name: `Wydruk adFrame CTF ${W}x${H}`, qty: 2, unit: "szt" });
+        bomItems.push({ name: `Wydruk adFrame CTF Blockout ${D}x${H}`, qty: 2, unit: "szt" });
+        bomItems.push({ name: `Wydruk adFrame CTF Blockout ${W}x${D}`, qty: 2, unit: "szt" }); // góra + dół
       } else if (printOption === 'single_front') {
-        facesTemp.push({ w: W, h: H, isBlockout: false, side: 'przód' });
-        facesTemp.push({ w: W, h: H, isBlockout: true, side: 'tył' });
-        facesTemp.push({ w: D, h: H, isBlockout: true, side: 'bok lewy' });
-        facesTemp.push({ w: D, h: H, isBlockout: true, side: 'bok prawy' });
-        facesTemp.push({ w: W, h: D, isBlockout: true, side: 'góra' });
-        facesTemp.push({ w: W, h: D, isBlockout: true, side: 'dół' });
+        bomItems.push({ name: `Wydruk adFrame CTF ${W}x${H}`, qty: 1, unit: "szt" });
+        bomItems.push({ name: `Wydruk adFrame CTF Blockout ${W}x${H}`, qty: 1, unit: "szt" });
+        bomItems.push({ name: `Wydruk adFrame CTF Blockout ${D}x${H}`, qty: 2, unit: "szt" });
+        bomItems.push({ name: `Wydruk adFrame CTF Blockout ${W}x${D}`, qty: 2, unit: "szt" }); // góra + dół
       }
-
-      const exactSizes = [
-        { w: 100, h: 100, id: 15140 }, { w: 50, h: 100, id: 15141 }, { w: 150, h: 150, id: 15142 },
-        { w: 100, h: 200, id: 15143 }, { w: 200, h: 200, id: 15144 }, { w: 100, h: 300, id: 15147 },
-        { w: 100, h: 245, id: 15146 }, { w: 30, h: 30, id: 15149 }, { w: 300, h: 300, id: 15148 },
-        { w: 120, h: 30, id: 15150 }, { w: 50, h: 50, id: 15153 }
-      ];
-
-      // Rezygnujemy z printAggregator - każda płaszczyzna ląduje w osobnym wierszu zestawienia
-      facesTemp.forEach(face => {
-        let nameKey = "";
-        let intranetId = null;
-
-        if (face.isBlockout) {
-          nameKey = `Wydruk adFrame Blockout ${face.w}x${face.h}`;
-          intranetId = 15267;
-        } else {
-          let match = exactSizes.find(function (s) {
-            return (s.w === face.w && s.h === face.h) || (s.w === face.h && s.h === face.w);
-          });
-
-          if (match) {
-            nameKey = `Wydruk adFrame CTF ${match.w}x${match.h}`;
-            intranetId = match.id;
-          } else {
-            nameKey = `Wydruk adFrame CTF`;
-            intranetId = 12161; // Ogólny fallback wskazany przez Ciebie
-          }
-        }
-
-        // Popychamy każdą krawędź bezpośrednio jako pojedynczy, spersonalizowany wiersz
-        bomItems.push({
-          name: nameKey,
-          qty: 1, // Sztywne wymuszenie pojedynczych sztuk
-          unit: "szt",
-          intranetId: intranetId,
-          description: `${face.w}x${face.h} cm (${face.side})` // Odróżnienie boków w cm
-        });
-      });
     }
 
-    // 9. Koszyk manualny
+    // Save carton info for packaging/nesting engine
+    config.cartonName = "Karton CTF - 120x60x40cm";
+    config.cartonQty = 1;
+
+    // Integrate manual items
     if (typeof manualItems !== 'undefined') {
       for (let key in manualItems) {
         let item = manualItems[key];

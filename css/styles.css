@@ -2360,3 +2360,215 @@
     margin-top: 2px;
     line-height: 1.3;
 }
+
+/* --- INTRANET BOM MODAL & TABLE STYLES --- */
+.intranet-bom-box {
+    background: #18191f;
+    border: 1px solid var(--highlight);
+    border-radius: 16px;
+    width: 1100px;
+    max-width: 95%;
+    height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 210, 255, 0.25);
+    overflow: hidden;
+    animation: modalAppear 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    font-family: 'Inter', 'Segoe UI', Roboto, sans-serif;
+    color: #f5f6fa;
+}
+
+.intranet-bom-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    background: #111216;
+    border-bottom: 1px solid #282a36;
+}
+
+.intranet-bom-body {
+    flex: 1;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.intranet-bom-table-container {
+    flex: 1;
+    overflow-y: auto;
+    border: 1px solid #282a36;
+    border-radius: 8px;
+    background: #111216;
+}
+
+.intranet-bom-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.intranet-bom-table th {
+    position: sticky;
+    top: 0;
+    background: #1e2029;
+    color: #8f95b2;
+    font-weight: 600;
+    text-align: left;
+    padding: 12px;
+    border-bottom: 2px solid #282a36;
+    z-index: 10;
+}
+
+.intranet-bom-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #20222a;
+    color: #e2e4f0;
+    vertical-align: middle;
+}
+
+.intranet-bom-table tr:hover {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.intranet-bom-table tr.parent-row {
+    background: rgba(0, 210, 255, 0.06);
+    border-left: 4px solid var(--highlight);
+}
+
+.intranet-bom-table tr.parent-row:hover {
+    background: rgba(0, 210, 255, 0.1);
+}
+
+.intranet-bom-table tr.child-row td:first-child {
+    padding-left: 24px;
+    color: #b0b5d0;
+}
+
+.intranet-bom-table tr.manual-row {
+    background: rgba(156, 39, 176, 0.04);
+}
+
+.intranet-bom-table tr.manual-row:hover {
+    background: rgba(156, 39, 176, 0.08);
+}
+
+.intranet-bom-table input,
+.intranet-bom-table textarea,
+.intranet-bom-table select {
+    width: 100%;
+    background: #20222a;
+    border: 1px solid #3c4052;
+    border-radius: 6px;
+    color: #fff;
+    padding: 6px 10px;
+    font-size: 12px;
+    outline: none;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+}
+
+.intranet-bom-table input:focus,
+.intranet-bom-table textarea:focus,
+.intranet-bom-table select:focus {
+    border-color: var(--highlight);
+    box-shadow: 0 0 0 3px rgba(0, 210, 255, 0.25);
+    background: #242731;
+}
+
+.intranet-bom-table input.row-qty {
+    text-align: center;
+}
+
+.intranet-bom-table input.row-price {
+    text-align: right;
+    font-weight: bold;
+    color: #2a75d3;
+}
+
+.intranet-bom-table select.row-vat {
+    text-align: center;
+}
+
+.intranet-bom-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    background: #111216;
+    border-top: 1px solid #282a36;
+}
+
+.btn-intranet-submit {
+    background: #0f9d58;
+    color: #fff;
+    border: 1px solid #0f9d58;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 14px;
+    transition: all 0.2s;
+    box-shadow: 0 4px 10px rgba(15, 157, 88, 0.3);
+}
+
+.btn-intranet-submit:hover {
+    background: #13b968;
+    border-color: #13b968;
+    box-shadow: 0 4px 15px rgba(19, 185, 104, 0.4);
+    transform: translateY(-1px);
+}
+
+.btn-intranet-cancel {
+    background: #333;
+    color: #fff;
+    border: 1px solid #444;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.btn-intranet-cancel:hover {
+    background: #444;
+    border-color: #555;
+}
+
+.btn-row-del {
+    background: none;
+    border: none;
+    color: #ff5555;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.btn-row-del:hover {
+    background: rgba(255, 85, 85, 0.15);
+}
+
+/* Drag-and-drop support for the Intranet BOM table */
+.intranet-bom-table tr[draggable="true"] {
+    cursor: grab;
+    user-select: none;
+}
+
+.intranet-bom-table tr[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+.intranet-bom-table tr.dragging {
+    opacity: 0.4;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.intranet-bom-table tr.drag-over {
+    background: rgba(0, 229, 255, 0.15) !important;
+    outline: 2px solid var(--highlight, #00d2ff);
+    outline-offset: -2px;
+}

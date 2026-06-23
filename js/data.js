@@ -6,41 +6,41 @@ const DB = {
 
     // --- SYSTEM SEGO ---
 
-    sego300x250: { name: "Moduł 300x250", labelEN: "Wall 300x250", catNo: "SEGO-LIG-BOX-300X250", type: "wall", length: 300, height: 250, price: 1341 },
+    sego300x250: { name: "Moduł 300x250", labelEN: "Wall 300x250", catNo: "SEGO-LIG-BOX-300X250", intranetId: 13694, type: "wall", length: 300, height: 250, price: 1341 },
 
-    sego200x250: { name: "Moduł 200x250", labelEN: "Wall 200x250", catNo: "SEGO-LIG-BOX-200X250", type: "wall", length: 200, height: 250, price: 1019 },
+    sego200x250: { name: "Moduł 200x250", labelEN: "Wall 200x250", catNo: "SEGO-LIG-BOX-200X250", intranetId: 18680, type: "wall", length: 200, height: 250, price: 1019 },
 
-    sego100x250: { name: "Moduł 100x250", labelEN: "Wall 100x250", catNo: "SEGO-LIG-BOX-100X250", type: "wall", length: 100, height: 250, price: 580 },
+    sego100x250: { name: "Moduł 100x250", labelEN: "Wall 100x250", catNo: "SEGO-LIG-BOX-100X250", intranetId: 13693, type: "wall", length: 100, height: 250, price: 580 },
 
-    sego85x250: { name: "Moduł 85x250", labelEN: "Wall 85x250", catNo: "SEGO-LIG-BOX-85X250", type: "wall", length: 85, height: 250, price: 512 },
+    sego85x250: { name: "Moduł 85x250", labelEN: "Wall 85x250", catNo: "SEGO-LIG-BOX-85X250", intranetId: 18347, type: "wall", length: 85, height: 250, price: 512 },
 
-    door100: { name: "SEGO Door 100 (H:250)", labelEN: "Door 100x250", catNo: "SEGO-DOOR-KIT-100X250", type: "wall", length: 100, height: 250, price: 191, color: "#00d2ff", isDoor: true },
+    door100: { name: "SEGO Door 100 (H:250)", labelEN: "Door 100x250", catNo: "SEGO-DOOR-KIT-100X250", intranetId: 17143, type: "wall", length: 100, height: 250, price: 191, color: "#00d2ff", isDoor: true },
 
-    sego300x300: { name: "Moduł 300x300", labelEN: "Wall 300x300", catNo: "SEGO-LIG-BOX-300X300", type: "wall", length: 300, height: 300, price: 1453, color: "var(--tall-color)" },
+    sego300x300: { name: "Moduł 300x300", labelEN: "Wall 300x300", catNo: "SEGO-LIG-BOX-300X300", intranetId: 18494, type: "wall", length: 300, height: 300, price: 1453, color: "var(--tall-color)" },
 
-    sego200x300: { name: "Moduł 200x300", labelEN: "Wall 200x300", catNo: "SEGO-LIG-BOX-200X300", type: "wall", length: 200, height: 300, price: 1107, color: "var(--tall-color)" },
+    sego200x300: { name: "Moduł 200x300", labelEN: "Wall 200x300", catNo: "SEGO-LIG-BOX-200X300", intranetId: 19727, type: "wall", length: 200, height: 300, price: 1107, color: "var(--tall-color)" },
 
-    sego100x300: { name: "Moduł 100x300", labelEN: "Wall 100x300", catNo: "SEGO-LIG-BOX-100X300", type: "wall", length: 100, height: 300, price: 644, color: "var(--tall-color)" },
+    sego100x300: { name: "Moduł 100x300", labelEN: "Wall 100x300", catNo: "SEGO-LIG-BOX-100X300", intranetId: 18493, type: "wall", length: 100, height: 300, price: 644, color: "var(--tall-color)" },
 
-    sego85x300: { name: "Moduł 85x300", labelEN: "Wall 85x300", catNo: "SEGO-LIG-BOX-85X300", type: "wall", length: 85, height: 300, price: 572, color: "var(--tall-color)" },
+    sego85x300: { name: "Moduł 85x300", labelEN: "Wall 85x300", catNo: "SEGO-LIG-BOX-85X300", intranetId: 18490, type: "wall", length: 85, height: 300, price: 572, color: "var(--tall-color)" },
 
-    tvPanel: { id: "tvPanel", name: "Panel TV", labelEN: "TV Mount", catNo: "SEGO-TV-PANEL", type: "accessory", price: 124, color: "#ffcc00", short: "TV" },
+    tvPanel: { id: "tvPanel", name: "Panel TV", labelEN: "TV Mount", catNo: "SEGO-TV-PANEL", intranetId: 13528, type: "accessory", price: 124, color: "#ffcc00", short: "TV" },
 
-    shelfKit: { id: "shelfKit", name: "Shelf Kit", labelEN: "Shelf Kit", catNo: "SEGO-SHELF-KIT", type: "accessory", price: 157, color: "#ff9900", short: "SH" },
+    shelfKit: { id: "shelfKit", name: "Shelf Kit", labelEN: "Shelf Kit", catNo: "SEGO-SHELF-KIT", intranetId: 13529, type: "accessory", price: 157, color: "#ff9900", short: "SH" },
 
     daszek: { id: "daszek", name: "Daszek", labelEN: "Roof Tunnel", catNo: "SEGO-ROOF-TUNNEL", type: "accessory", price: 0, color: "#cc00ff", short: "DSZ" },
 
-    clamp: { name: "Łącznik prosty (Clamp)", catNo: "SEGO-LAC-PRO", price: 7 },
+    clamp: { name: "Łącznik prosty (Clamp)", catNo: "SEGO-LAC-PRO", intranetId: 13530, price: 7 },
 
-    wewzew: { name: "Łącznik kątowy (wew/zew)", catNo: "SEGO-LAC-WEW-ZEW", price: 3 },
+    wewzew: { name: "Łącznik kątowy (wew/zew)", catNo: "SEGO-LAC-WEW-ZEW", intranetId: 13531, price: 3 },
 
-    zewzew: { name: "SEGO łącznik zewnętrzny L", catNo: "SEGO-LAC-ZEW-L", price: 3 },
+    zewzew: { name: "SEGO łącznik zewnętrzny L", catNo: "SEGO-LAC-ZEW-L", intranetId: 13532, price: 3 },
 
-    miniFoot: { name: "Mini Foot", catNo: "SEGO-MINI-FOOT", price: 5 },
+    miniFoot: { name: "Mini Foot", catNo: "SEGO-MINI-FOOT", intranetId: 17145, price: 5 },
 
-    extCable: { name: "Extension Cable", catNo: "SEGO-EXT-CABLE", price: 9 },
+    extCable: { name: "Extension Cable", catNo: "SEGO-EXT-CABLE", intranetId: 13555, price: 9 },
 
-    bridge: { name: "Bridge Connector", catNo: "SEGO-BRIDGE-CONN", price: 8 },
+    bridge: { name: "Bridge Connector", catNo: "SEGO-BRIDGE-CONN", intranetId: 13533, price: 8 },
 
     adTribuneExpo: {
 

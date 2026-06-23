@@ -258,6 +258,59 @@ window.submitManualCart = function () {
 
     closeManualModal();
     if (typeof render === 'function') render();
+
+    // Integracja z modalem Intranetu (BOM)
+    if (window.openedFromIntranetModal) {
+        window.openedFromIntranetModal = false;
+        if (window.intranetBOMDraft) {
+            const ratePLN = window.KURS_PLN_DYNAMIC || 4.20;
+
+            // 1. Aktualizacja istniejących i dodawanie nowych pozycji manualnych
+            for (let k in manualItems) {
+                const item = manualItems[k];
+                let foundIndex = window.intranetBOMDraft.findIndex(d => d.name === item.name && d.isManual);
+
+                if (foundIndex !== -1) {
+                    window.intranetBOMDraft[foundIndex].qty = item.qty;
+                } else {
+                    const isKasetonItem = item.isKaseton;
+                    const priceEUR = isKasetonItem ? null : ((item.plnMargin * currentMultiplier) / ratePLN);
+
+                    window.intranetBOMDraft.push({
+                        id: isKasetonItem ? null : (item.intranetId || null),
+                        parentId: isKasetonItem ? (item.intranetId || null) : null,
+                        name: item.name,
+                        qty: item.qty,
+                        price: priceEUR,
+                        vat: isKasetonItem ? '0%' : '23%',
+                        displayName: '',
+                        description: '',
+                        isParent: false,
+                        isManual: true,
+                        isKaseton: isKasetonItem
+                    });
+                }
+            }
+
+            // 2. Usuwanie z draftu tych wierszy manualnych, które zostały usunięte z koszyka
+            window.intranetBOMDraft = window.intranetBOMDraft.filter(d => {
+                if (!d.isManual) return true;
+                let exists = false;
+                for (let k in manualItems) {
+                    if (manualItems[k].name === d.name) {
+                        exists = true;
+                        break;
+                    }
+                }
+                return exists;
+            });
+
+            // Re-render tabeli
+            if (typeof window.renderIntranetBomTable === 'function') {
+                window.renderIntranetBomTable();
+            }
+        }
+    }
 };
 
 window.clearManualCart = function () {
@@ -1251,9 +1304,11 @@ function onKasetonSystemChange(sel) {
     // CTF: adjust dimension limits
     const widthEl = document.getElementById('kasetonWidth');
     const depthEl = document.getElementById('kasetonDepth');
+    const height3DEl = document.getElementById('kasetonHeight3D');
     if (isCTF) {
-        if (widthEl) { widthEl.min = 50; widthEl.max = 800; }
-        if (depthEl) { depthEl.min = 50; depthEl.max = 800; }
+        if (widthEl) { widthEl.min = 30; widthEl.max = 800; }
+        if (depthEl) { depthEl.min = 30; depthEl.max = 800; }
+        if (height3DEl) { height3DEl.min = 30; height3DEl.max = 800; }
     } else {
         if (widthEl) { widthEl.min = 40; widthEl.max = 1000; }
         if (depthEl) { depthEl.min = 40; depthEl.max = 1000; }
@@ -1316,7 +1371,7 @@ function submitKasetonConfig() {
     const usage = usageEl ? usageEl.value : '';
 
     const isCTF = (sys === 'CTF');
-    const minDim = isCTF ? 50 : 40;
+    const minDim = isCTF ? 30 : 40;
     const maxDim = isCTF ? 800 : 1000;
 
     if (!sys) {
@@ -1348,8 +1403,8 @@ function submitKasetonConfig() {
     if (isCTF) {
         const heightEl = document.getElementById('kasetonHeight3D');
         const height3D = heightEl ? parseInt(heightEl.value) : 120;
-        if (isNaN(height3D) || height3D < 50 || height3D > 800) {
-            alert('⚠️ Głębokość 3D musi być w zakresie 50–800 cm!');
+        if (isNaN(height3D) || height3D < 30 || height3D > 800) {
+            alert('⚠️ Głębokość 3D musi być w zakresie 30–800 cm!');
             if (heightEl) heightEl.focus();
             return;
         }
@@ -1408,4 +1463,32 @@ function toggleSpakuj() {
         }
     }
     if (typeof update3DScene === 'function') update3DScene();
+}
+function updateMountingMenu(selectedSystem) {
+    const usageSelect = document.getElementById('usageSelect') || document.getElementById('usageInput');
+    if (!usageSelect) return;
+
+    const previousValue = usageSelect.value;
+
+    if (selectedSystem === 'LMSM') {
+        usageSelect.innerHTML = `
+      <option value="none">Bez montażu</option>
+      <option value="wall">Wieszany na ścianie</option>
+      <option value="suspended">Podwieszany</option>
+    `;
+        if (previousValue === 'freestanding') {
+            usageSelect.value = 'none';
+        } else {
+            usageSelect.value = previousValue;
+        }
+    } else {
+        usageSelect.innerHTML = `
+      <option value="freestanding">Wolnostojący</option>
+      <option value="wall">Wieszany na ścianie</option>
+      <option value="suspended">Podwieszany</option>
+    `;
+        usageSelect.value = previousValue;
+    }
+
+    if (typeof updateConfigFromUI === 'function') updateConfigFromUI();
 }

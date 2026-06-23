@@ -15,10 +15,10 @@ function buildMiteredRing(hw, hd, profile, material) {
     const group = new THREE.Group();
     const edgeMat = new THREE.LineBasicMaterial({ color: 0x444444 });
     const segmentsConfig = [
-      { zMin: -3.25, zMax: -3.0,  t: 1.4 }, // Ścianka zewnętrzna tylna
-      { zMin: -3.0,  zMax: 1.25,  t: 4.3 }, // Kanał wewnętrzny konstrukcyjny / LED
-      { zMin: 1.25,  zMax: 2.25,  t: 1.6 }, // Ścianka montażowa stopy
-      { zMin: 2.25,  zMax: 3.25,  t: 0.5 }  // Cienka krawędź frontowa Slim
+      { zMin: -3.25, zMax: -3.0, t: 1.4 }, // Ścianka zewnętrzna tylna
+      { zMin: -3.0, zMax: 1.25, t: 4.3 }, // Kanał wewnętrzny konstrukcyjny / LED
+      { zMin: 1.25, zMax: 2.25, t: 1.6 }, // Ścianka montażowa stopy
+      { zMin: 2.25, zMax: 3.25, t: 0.5 }  // Cienka krawędź frontowa Slim
     ];
 
     segmentsConfig.forEach(seg => {
@@ -1013,6 +1013,10 @@ function createQuadBackground(scene, textureUrls, radius = 2000, height = 1000) 
 function drawKasetonScene() {
   if (!scene) return;
 
+  const oldKasetony = [];
+  scene.traverse(obj => { if (obj.userData && obj.userData.isKaseton) oldKasetony.push(obj); });
+  oldKasetony.forEach(obj => scene.remove(obj));
+
   if (!window.currentKasetonConfig) {
     window.currentKasetonConfig = {
       system: 'LMD',
@@ -1166,10 +1170,10 @@ function drawKasetonScene() {
     const group = new THREE.Group();
     const edgeMat = new THREE.LineBasicMaterial({ color: 0x444444 });
     const segmentsConfig = [
-      { zMin: -3.25, zMax: -3.0,  t: 1.4 }, // Ścianka zewnętrzna tylna
-      { zMin: -3.0,  zMax: 1.25,  t: 4.3 }, // Kanał wewnętrzny konstrukcyjny / LED
-      { zMin: 1.25,  zMax: 2.25,  t: 1.6 }, // Ścianka montażowa stopy
-      { zMin: 2.25,  zMax: 3.25,  t: 0.5 }  // Cienka krawędź frontowa Slim
+      { zMin: -3.25, zMax: -3.0, t: 1.4 }, // Ścianka zewnętrzna tylna
+      { zMin: -3.0, zMax: 1.25, t: 4.3 }, // Kanał wewnętrzny konstrukcyjny / LED
+      { zMin: 1.25, zMax: 2.25, t: 1.6 }, // Ścianka montażowa stopy
+      { zMin: 2.25, zMax: 3.25, t: 0.5 }  // Cienka krawędź frontowa Slim
     ];
 
     segmentsConfig.forEach(seg => {
@@ -2330,6 +2334,13 @@ function drawCTFScene(config) {
     name: 'ctf_aluminum'
   });
   const edgeMat = new THREE.LineBasicMaterial({ color: 0x444444 });
+  const supportMat = isBlueprintMode ? new THREE.MeshStandardMaterial({
+    color: 0x22c55e,
+    emissive: 0x166534,
+    emissiveIntensity: 0.8,
+    roughness: 0.4,
+    metalness: 0.2
+  }) : aluMat;
 
   // Łącznik: satynowy szary plastik z delikatną teksturą proceduralną
   const plasticCanvas = document.createElement('canvas');
@@ -2394,21 +2405,21 @@ function drawCTFScene(config) {
   // --- FUNKCJA POMOCNICZA: Pozycjonowanie i orientacja profilu ---
   function createCTFProfile(length, startPoint, endPoint, outerDir) {
     const mesh = createCTFProfileMesh(length);
-    
+
     // Pozycja w połowie drogi
     const midPoint = new THREE.Vector3().addVectors(startPoint, endPoint).multiplyScalar(0.5);
     mesh.position.copy(midPoint);
-    
+
     // Kierunki bazowe
     const dirLong = new THREE.Vector3().subVectors(endPoint, startPoint).normalize();
     const dirOuter = outerDir.clone().normalize();
     const dirThickness = new THREE.Vector3().crossVectors(dirLong, dirOuter).normalize();
-    
+
     // Ustawienie orientacji
     const matrix = new THREE.Matrix4();
     matrix.makeBasis(dirOuter, dirThickness, dirLong);
     mesh.quaternion.setFromRotationMatrix(matrix);
-    
+
     return mesh;
   }
 
@@ -2552,7 +2563,7 @@ function drawCTFScene(config) {
 
     function addVertex(x, y, z) {
       vertices.push(x, y, z);
-      
+
       // Obliczenie współrzędnych na płaskim rozwinięciu tkaniny
       let x_unfolded, y_unfolded;
       if (Math.abs(z) < 0.01) {
@@ -2564,61 +2575,61 @@ function drawCTFScene(config) {
         x_unfolded = Math.sign(x) * (hw + eOffset + bw);
         y_unfolded = Math.sign(y) * (hh + eOffset + bw);
       }
-      
+
       const u = (x_unfolded + hw + eOffset + bw) / totalW;
       const v = (y_unfolded + hh + eOffset + bw) / totalH;
       uvs.push(u, v);
     }
 
     // Definiujemy 10 trójkątów tworzących płachtę (geometria nieindeksowana)
-    
+
     // 1. Główna część płótna (2 trójkąty)
     // T1: v0, v1, v2
     addVertex(-hw - eOffset, -hh - eOffset, 0);
-    addVertex( hw + eOffset, -hh - eOffset, 0);
-    addVertex( hw + eOffset,  hh + eOffset, 0);
+    addVertex(hw + eOffset, -hh - eOffset, 0);
+    addVertex(hw + eOffset, hh + eOffset, 0);
     // T2: v0, v2, v3
     addVertex(-hw - eOffset, -hh - eOffset, 0);
-    addVertex( hw + eOffset,  hh + eOffset, 0);
-    addVertex(-hw - eOffset,  hh + eOffset, 0);
+    addVertex(hw + eOffset, hh + eOffset, 0);
+    addVertex(-hw - eOffset, hh + eOffset, 0);
 
     // 2. Dolny pas załamania (2 trójkąty)
     // T1: v0, v4, v5
     addVertex(-hw - eOffset, -hh - eOffset, 0);
     addVertex(-hw - gxOffset, -hh - gxOffset, dz);
-    addVertex( hw + gxOffset, -hh - gxOffset, dz);
+    addVertex(hw + gxOffset, -hh - gxOffset, dz);
     // T2: v0, v5, v1
     addVertex(-hw - eOffset, -hh - eOffset, 0);
-    addVertex( hw + gxOffset, -hh - gxOffset, dz);
-    addVertex( hw + eOffset, -hh - eOffset, 0);
+    addVertex(hw + gxOffset, -hh - gxOffset, dz);
+    addVertex(hw + eOffset, -hh - eOffset, 0);
 
     // 3. Prawy pas załamania (2 trójkąty)
     // T1: v1, v5, v6
-    addVertex( hw + eOffset, -hh - eOffset, 0);
-    addVertex( hw + gxOffset, -hh - gxOffset, dz);
-    addVertex( hw + gxOffset,  hh + gxOffset, dz);
+    addVertex(hw + eOffset, -hh - eOffset, 0);
+    addVertex(hw + gxOffset, -hh - gxOffset, dz);
+    addVertex(hw + gxOffset, hh + gxOffset, dz);
     // T2: v1, v6, v2
-    addVertex( hw + eOffset, -hh - eOffset, 0);
-    addVertex( hw + gxOffset,  hh + gxOffset, dz);
-    addVertex( hw + eOffset,  hh + eOffset, 0);
+    addVertex(hw + eOffset, -hh - eOffset, 0);
+    addVertex(hw + gxOffset, hh + gxOffset, dz);
+    addVertex(hw + eOffset, hh + eOffset, 0);
 
     // 4. Górny pas załamania (2 trójkąty)
     // T1: v2, v6, v7
-    addVertex( hw + eOffset,  hh + eOffset, 0);
-    addVertex( hw + gxOffset,  hh + gxOffset, dz);
-    addVertex(-hw - gxOffset,  hh + gxOffset, dz);
+    addVertex(hw + eOffset, hh + eOffset, 0);
+    addVertex(hw + gxOffset, hh + gxOffset, dz);
+    addVertex(-hw - gxOffset, hh + gxOffset, dz);
     // T2: v2, v7, v3
-    addVertex( hw + eOffset,  hh + eOffset, 0);
-    addVertex(-hw - gxOffset,  hh + gxOffset, dz);
-    addVertex(-hw - eOffset,  hh + eOffset, 0);
+    addVertex(hw + eOffset, hh + eOffset, 0);
+    addVertex(-hw - gxOffset, hh + gxOffset, dz);
+    addVertex(-hw - eOffset, hh + eOffset, 0);
 
     // 5. Lewy pas załamania (2 trójkąty)
     // T1: v3, v7, v4
-    addVertex(-hw - eOffset,  hh + eOffset, 0);
-    addVertex(-hw - gxOffset,  hh + gxOffset, dz);
+    addVertex(-hw - eOffset, hh + eOffset, 0);
+    addVertex(-hw - gxOffset, hh + gxOffset, dz);
     addVertex(-hw - gxOffset, -hh - gxOffset, dz);
     // T2: v3, v4, v0
-    addVertex(-hw - eOffset,  hh + eOffset, 0);
+    addVertex(-hw - eOffset, hh + eOffset, 0);
     addVertex(-hw - gxOffset, -hh - gxOffset, dz);
     addVertex(-hw - eOffset, -hh - eOffset, 0);
 
@@ -2763,6 +2774,210 @@ function drawCTFScene(config) {
     kGroup.add(bottomFabMesh);
   }
 
+  // =========================================================================
+  // 🛠️ NOWOŚĆ: GENERATOR I SOLVER POPRZECZEK WZMACNIAJĄCYCH SUPPORT LIGHT
+  // =========================================================================
+  let totalSupportLengthM = 0;
+
+  // 1. Definicja linii podziałów pod segmenty ramy (logika LMD)
+  let numSegmentsW = 1, numSegmentsH = 1;
+  if (config.cut && config.cut.includes('half_w')) numSegmentsW = 2;
+  else if (config.cut && config.cut.includes('3w')) numSegmentsW = 3;
+  else if (config.cut && config.cut.includes('4w')) numSegmentsW = 4;
+  else if (config.cut && config.cut.includes('5w')) numSegmentsW = 5;
+
+  if (config.cut && config.cut.includes('half_h')) numSegmentsH = 2;
+  else if (config.cut && config.cut.includes('3h')) numSegmentsH = 3;
+  else if (config.cut && config.cut.includes('4h')) numSegmentsH = 4;
+  else if (config.cut && config.cut.includes('5h')) numSegmentsH = 5;
+
+  if (config.cut && config.cut.startsWith('auto')) {
+    const maxLen = config.cut === 'auto_dedicated' ? 300 : (config.cut === 'auto_courier_150' ? 150 : 200);
+    if (W > maxLen) numSegmentsW = Math.ceil(W / maxLen);
+    if (H > maxLen) numSegmentsH = Math.ceil(H / maxLen);
+  }
+
+  const cutX = [];
+  if (numSegmentsW > 1) {
+    for (let i = 1; i < numSegmentsW; i++) cutX.push(-W / 2 + (W / numSegmentsW) * i);
+  } else if (W > 200) { cutX.push(0); } // Reguła wzmocnienia dla nieciętej ramy > 2m
+
+  const cutY = [];
+  if (numSegmentsH > 1) {
+    for (let i = 1; i < numSegmentsH; i++) cutY.push((H / numSegmentsH) * i);
+  } else if (H > 200) { cutY.push(H / 2); } // Reguła wzmocnienia dla nieciętej ramy > 2m
+
+  const cutZ = D > 200 ? [0] : []; // Wzmocnienie osi głębokości (Z) jeśli boki > 2m
+
+  const allX = [-W / 2, ...cutX, W / 2];
+  const allY = [0, ...cutY, H];
+  const allZ = [-hd, ...cutZ, hd];
+
+  // 2. Uniwersalny, trójwymiarowy generator belek z docięciem krawędziowym 45 stopni
+  function createCustomSupportMesh(sizeX, sizeY, sizeZ, miterType, touchStart, touchEnd) {
+    const boxGeom = new THREE.BoxGeometry(sizeX, sizeY, sizeZ);
+    const posAttr = boxGeom.attributes.position;
+
+    for (let i = 0; i < posAttr.count; i++) {
+      let x = posAttr.getX(i);
+      let y = posAttr.getY(i);
+      let z = posAttr.getZ(i);
+
+      if (miterType === 'V') {
+        // Słupki pionowe (oś Y) – docinanie krańców pod profil skośny ramy obwodowej
+        const thick = (sizeX < sizeZ) ? x : z;
+        if (touchStart && y < -sizeY / 2 + 0.1) y += thick;
+        if (touchEnd && y > sizeY / 2 - 0.1) y -= thick;
+      } else if (miterType === 'H') {
+        // Belki poziome (oś X) – docinanie krańców pod profil skośny ramy obwodowej
+        const thick = (sizeY < sizeZ) ? y : z;
+        if (touchStart && x < -sizeX / 2 + 0.1) x += thick;
+        if (touchEnd && x > sizeX / 2 - 0.1) x -= thick;
+      } else if (miterType === 'Z_XY') {
+        // Belki głębokości (oś Z) na ścianach bocznych/suficie – docinanie krańców pod profil skośny
+        const thick = (sizeX < sizeY) ? x : y;
+        if (touchStart && z < -sizeZ / 2 + 0.1) z += thick;
+        if (touchEnd && z > sizeZ / 2 - 0.1) z -= thick;
+      }
+      posAttr.setXYZ(i, x, y, z);
+    }
+    boxGeom.computeVertexNormals();
+
+    const mesh = new THREE.Mesh(boxGeom, supportMat);
+    mesh.userData = { isKaseton: true };
+    mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(boxGeom), edgeMat));
+    return mesh;
+  }
+
+  const innerAttachOffset = 2.1213; // Przesunięcie montażowe (3cm × cos(45°)) do płaskiej ścianki wewnętrznej ramy
+  const frontZ = -hd + innerAttachOffset;
+  const backZ = hd - innerAttachOffset;
+  const leftX = -hw + innerAttachOffset;
+  const rightX = hw - innerAttachOffset;
+  const bottomY = innerAttachOffset;
+  const topY = H - innerAttachOffset;
+  const lenY = H - 2 * innerAttachOffset;
+
+  // 3. 📱 ŚCIANA FRONTOWA I TYLNA (Płaszczyzny XY)
+  // Słupki pionowe (Ciągłe)
+  cutX.forEach(cx => {
+    const vFront = createCustomSupportMesh(5, lenY, 1.5, 'V', true, true);
+    vFront.position.set(cx, elevY + H / 2, frontZ);
+    kGroup.add(vFront); totalSupportLengthM += lenY / 100;
+
+    const vBack = createCustomSupportMesh(5, lenY, 1.5, 'V', true, true);
+    vBack.position.set(cx, elevY + H / 2, backZ);
+    vBack.rotation.y = Math.PI;
+    kGroup.add(vBack); totalSupportLengthM += lenY / 100;
+  });
+
+  // Belki poziome (Dzielone / Interlocking)
+  cutY.forEach(cy => {
+    for (let i = 0; i < allX.length - 1; i++) {
+      let startX = allX[i]; let endX = allX[i + 1];
+      let touchLeft = (i === 0); let touchRight = (i === allX.length - 2);
+
+      if (!touchLeft) startX += 2.5;
+      if (!touchRight) endX -= 2.5;
+      const segLen = endX - startX;
+
+      if (segLen > 0) {
+        const hFront = createCustomSupportMesh(segLen, 5, 1.5, 'H', touchLeft, touchRight);
+        hFront.position.set(startX + segLen / 2, elevY + cy, frontZ);
+        kGroup.add(hFront); totalSupportLengthM += segLen / 100;
+
+        const hBack = createCustomSupportMesh(segLen, 5, 1.5, 'H', touchLeft, touchRight);
+        hBack.position.set(startX + segLen / 2, elevY + cy, backZ);
+        hBack.rotation.y = Math.PI;
+        kGroup.add(hBack); totalSupportLengthM += segLen / 100;
+      }
+    }
+  });
+
+  // 4. 🚪 ŚCIANA LEWA I PRAWA (Płaszczyzny ZY)
+  // Słupki pionowe (Dla głębokich kasetonów na linii cięcia osi Z)
+  cutZ.forEach(cz => {
+    const vLeft = createCustomSupportMesh(1.5, lenY, 5, 'V', true, true);
+    vLeft.position.set(leftX, elevY + H / 2, cz);
+    vLeft.rotation.y = Math.PI / 2;
+    kGroup.add(vLeft); totalSupportLengthM += lenY / 100;
+
+    const vRight = createCustomSupportMesh(1.5, lenY, 5, 'V', true, true);
+    vRight.position.set(rightX, elevY + H / 2, cz);
+    vRight.rotation.y = -Math.PI / 2;
+    kGroup.add(vRight); totalSupportLengthM += lenY / 100;
+  });
+
+  // Belki głębokości (Dzielone rury Z zorientowane poziomo na ścianach bocznych)
+  cutY.forEach(cy => {
+    for (let j = 0; j < allZ.length - 1; j++) {
+      let startZ = allZ[j]; let endZ = allZ[j + 1];
+      let touchFront = (j === 0); let touchBack = (j === allZ.length - 2);
+
+      if (!touchFront) startZ += 2.5;
+      if (!touchBack) endZ -= 2.5;
+      const segLen = endZ - startZ;
+
+      if (segLen > 0) {
+        const zLeft = createCustomSupportMesh(1.5, 5, segLen, 'Z_XY', touchFront, touchBack);
+        zLeft.position.set(leftX, elevY + cy, startZ + segLen / 2);
+        kGroup.add(zLeft); totalSupportLengthM += segLen / 100;
+
+        const zRight = createCustomSupportMesh(1.5, 5, segLen, 'Z_XY', touchFront, touchBack);
+        zRight.position.set(rightX, elevY + cy, startZ + segLen / 2);
+        kGroup.add(zRight); totalSupportLengthM += segLen / 100;
+      }
+    }
+  });
+
+  // 5. 🗺️ PODŁOGA I SUFIT (Płaszczyzny XZ)
+  // Belki głębokości Z (Zapięte płasko na podłodze/suficie na liniach szerokości cutX)
+  cutX.forEach(cx => {
+    for (let j = 0; j < allZ.length - 1; j++) {
+      let startZ = allZ[j]; let endZ = allZ[j + 1];
+      let touchFront = (j === 0); let touchBack = (j === allZ.length - 2);
+
+      if (!touchFront) startZ += 2.5;
+      if (!touchBack) endZ -= 2.5;
+      const segLen = endZ - startZ;
+
+      if (segLen > 0) {
+        const zBottom = createCustomSupportMesh(5, 1.5, segLen, 'Z_XY', touchFront, touchBack);
+        zBottom.position.set(cx, elevY + bottomY, startZ + segLen / 2);
+        kGroup.add(zBottom); totalSupportLengthM += segLen / 100;
+
+        const zTop = createCustomSupportMesh(5, 1.5, segLen, 'Z_XY', touchFront, touchBack);
+        zTop.position.set(cx, elevY + topY, startZ + segLen / 2);
+        kGroup.add(zTop); totalSupportLengthM += segLen / 100;
+      }
+    }
+  });
+
+  // Belki poziome X (Dla głębokich kasetonów leżące płasko na liniach cutZ)
+  cutZ.forEach(cz => {
+    for (let i = 0; i < allX.length - 1; i++) {
+      let startX = allX[i]; let endX = allX[i + 1];
+      let touchLeft = (i === 0); let touchRight = (i === allX.length - 2);
+
+      if (!touchLeft) startX += 2.5;
+      if (!touchRight) endX -= 2.5;
+      const segLen = endX - startX;
+
+      if (segLen > 0) {
+        const hBottom = createCustomSupportMesh(segLen, 1.5, 5, 'H', touchLeft, touchRight);
+        hBottom.position.set(startX + segLen / 2, elevY + bottomY, cz);
+        kGroup.add(hBottom); totalSupportLengthM += segLen / 100;
+
+        const hTop = createCustomSupportMesh(segLen, 1.5, 5, 'H', touchLeft, touchRight);
+        hTop.position.set(startX + segLen / 2, elevY + topY, cz);
+        kGroup.add(hTop); totalSupportLengthM += segLen / 100;
+      }
+    }
+  });
+
+  window.currentKasetonConfig.totalSupportLengthM = totalSupportLengthM;
+  // =========================================================================
+
   // --- BLAT GÓRNY ---
   const topPanel = config.topPanel || 'none';
   if (topPanel !== 'none') {
@@ -2806,21 +3021,7 @@ function drawCTFScene(config) {
     }
   }
 
-  // --- STOPY (wolnostojący) ---
-  if (config.usage === 'freestanding') {
-    const footGeom = new THREE.BoxGeometry(8, 2, 8);
-    const footPositions = [
-      { x: -hw + 6, z: -hd + 6 },
-      { x: hw - 6, z: -hd + 6 },
-      { x: -hw + 6, z: hd - 6 },
-      { x: hw - 6, z: hd - 6 }
-    ];
-    footPositions.forEach(pos => {
-      const foot = new THREE.Mesh(footGeom, aluMat);
-      foot.position.set(pos.x, elevY - 1, pos.z);
-      kGroup.add(foot);
-    });
-  }
+
 
   // --- PODWIESZENIE (suspended) ---
   if (config.usage === 'suspended') {
@@ -2860,6 +3061,8 @@ function drawCTFScene(config) {
     controls.target.set(0, elevY + H / 2, 0);
     controls.update();
   }
+
+  if (typeof generateKasetonBOM === 'function') generateKasetonBOM();
 
   console.log('✨ 3D CTF box scene rendered successfully!');
 }
