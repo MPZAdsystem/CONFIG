@@ -1330,6 +1330,10 @@ function onKasetonSystemChange(sel) {
                 '<option value="backlit_blockout">Przód backlit + Tył kolorowy blockout</option>' +
                 '<option value="back_white">Tylko białe plecy</option>' +
                 '<option value="no_print">Bez wydruku (sama rama)</option>';
+        } else if (sys === 'STF') {
+            // STF: rama jednostronna płaska - tylko przód lub brak druku
+            printSel.innerHTML = '<option value="single" selected>Wydruk blockout na przód</option>' +
+                '<option value="no_print">Bez wydruku (sama rama)</option>';
         } else {
             // LMD i inne: pełne opcje dwustronne
             printSel.innerHTML = '<option value="single">Jednostronny + Blockout tył</option>' +

@@ -103,24 +103,19 @@ const PARENT_PRODUCTS = {
     'CTF': { id: 12160, name: 'adFrame CTF (bez wydruku)' },
     'CTF_LED': { id: 12160, name: 'adFrame CTF (bez wydruku)' },
     'LCD_LMD': { id: 10334, name: 'adFrame LMD (bez wydruku)' },
+    'STF': { id: 18254, name: 'adFrame STF' } // <-- 1. DODANO AKTYWNE ID DLA STF
 };
 
 function saveToGoogleDrive() {
-    // Re-calculate BOM to make sure it is up to date
     if (typeof generateKasetonBOM === 'function') {
         generateKasetonBOM();
     }
-
     const bomItems = window.lastGeneratedBOM;
     if (!bomItems || bomItems.length === 0) {
         alert("Brak wygenerowanego zestawienia BOM do zapisania!");
         return;
     }
-
-    // Initialize draft data
     window.initIntranetBomDraft();
-
-    // Open modal
     const modal = document.getElementById('intranetBomModalOverlay');
     if (modal) {
         modal.style.display = 'flex';
@@ -136,11 +131,9 @@ window.initIntranetBomDraft = function () {
 
     const bomItems = window.lastGeneratedBOM || [];
     const draft = [];
-
     const isKasetonSystem = (currentSystem === 'kasetony_niestandardowe');
 
     if (isKasetonSystem) {
-        // 1. Add Parent Product Row for Custom Lightboxes
         const parentInfo = PARENT_PRODUCTS[sys] || { id: null, name: 'Kaseton ' + sys };
 
         let usageStr = '';
@@ -187,34 +180,26 @@ window.initIntranetBomDraft = function () {
             }
         }
 
-
-        // 1. Dynamiczne budowanie opisu pozycji nadrzędnej (Parent)
         let parentDesc = '';
-
         if (sys === 'CTF') {
-            const D = parseFloat(config.height3D) || 120; // Głębokość przestrzenna boxu
+            const D = parseFloat(config.height3D) || 120;
             const topPanel = config.topPanel || 'none';
-
-            // Mapowanie nazwy blatu na czytelny tekst do ERP
-            let topPanelStr = topPanel === 'none' ? 'brak blatu' :
-                (topPanel === 'mdf' ? 'blat MDF' :
-                    (topPanel === 'plexi' ? 'blat PLEXI' : 'blat poliwęglan'));
-
+            let topPanelStr = topPanel === 'none' ? 'brak blatu' : (topPanel === 'mdf' ? 'blat MDF' : (topPanel === 'plexi' ? 'blat PLEXI' : 'blat poliwęglan'));
             parentDesc = `Kostka CTF ${W}x${H}x${D} cm, zastosowanie: ${usageStr}, wykończenie: ${topPanelStr}`;
         } else {
-            // Standardowy fallback dla płaskich kasetonów LMD/LMS/LMSM
             const totalPower = Math.round(config.totalPowerW || 0);
             parentDesc = `Kaseton ${sys} ${W}x${H} cm, zastosowanie: ${usageStr}, liczba cięć: ${cutsStr}, LED na profilach: ${ledProfilesStr}, moc LED: ${totalPower}W`;
         }
 
         const finalEUR = window.globalTotalEUR || 0;
 
+        // 2. WYMUSZENIE CENY 0 DLA RODZICA STF (Produkt nadrzędny staje się czystym indeksem)
         draft.push({
             id: parentInfo.id,
             parentId: null,
             name: parentInfo.name,
             qty: 1,
-            price: finalEUR,
+            price: sys === 'STF' ? 0 : finalEUR,
             vat: '23%',
             displayName: '',
             description: parentDesc,
@@ -223,7 +208,7 @@ window.initIntranetBomDraft = function () {
             isKaseton: false
         });
 
-        // 2. Add BOM items as children (Dodawanie składowych jako podrzędne)
+        // Generowanie podzespołów składowych (Children)
         bomItems.forEach(item => {
             let idVal = item.intranetId;
             if (!idVal) {
@@ -232,120 +217,84 @@ window.initIntranetBomDraft = function () {
                 }
                 if (!idVal && typeof DB !== 'undefined') {
                     for (let key in DB) {
-                        if (DB[key].name === item.name) {
-                            idVal = DB[key].intranetId || DB[key].catNo;
-                            break;
-                        }
+                        if (DB[key].name === item.name) { idVal = DB[key].intranetId || DB[key].catNo; break; }
                     }
                 }
             }
 
             const isStandalone = item.isManual && !item.isKaseton;
-
             if (isStandalone) {
                 draft.push({
-                    id: idVal || null,
-                    parentId: null,
-                    name: item.name,
-                    qty: item.qty,
-                    price: item.price || 0,
-                    vat: '23%',
-                    displayName: '',
-                    description: item.description || '',
-                    isParent: false,
-                    isManual: true,
-                    isKaseton: false
+                    id: idVal || null, parentId: null, name: item.name, qty: item.qty, price: item.price || 0, vat: '23%', displayName: '', description: '', isParent: false, isManual: true, isKaseton: false
                 });
                 return;
             }
 
-            const isMainProfile = item.name.startsWith('profil LMS') || item.name.startsWith('profil LMD') || item.name.startsWith('profil LMSM') || item.name.startsWith('profil LMSO');
-
-            if (isMainProfile) {
+            // 3. DLA STF WPISUJEMY CENĘ I ID BEZPOŚREDNIO DO DZIECKA (Bypass paczkowania cenowego)
+            if (sys === 'STF') {
                 draft.push({
-                    id: null,
-                    parentId: idVal || null,
-                    name: 'szerokość - ' + item.name,
-                    qty: W / 100,
-                    price: null,
-                    vat: '0%',
+                    id: idVal || null,
+                    parentId: parentInfo.id, // Łączenie z id rodzica (18254)
+                    name: item.name,
+                    qty: item.qty,
+                    price: item.price || 0, // Przekazanie realnej ceny podzespołu z bom.js
+                    vat: '23%',            // Aktywacja stawki VAT dla wycenianej linii
                     displayName: '',
-                    description: `${W}cm / oświetlenie LED: ${ledProfilesStr} / cięcie: ${config.numCutsW > 0 ? 'cięty na pół' : 'cały'}`,
+                    description: item.description || '',
                     isParent: false,
-                    isManual: false,
+                    isManual: item.isManual || false,
                     isKaseton: true
                 });
+                return;
+            }
+
+            // Standardowa logika pakietowa dla LMD/LMS/LMSM (Ceny dzieci = null)
+            const isMainProfile = item.name.startsWith('profil LMS') || item.name.startsWith('profil LMD') || item.name.startsWith('profil LMSM') || item.name.startsWith('profil LMSO');
+            if (isMainProfile) {
                 draft.push({
-                    id: null,
-                    parentId: idVal || null,
-                    name: 'wysokość - ' + item.name,
-                    qty: H / 100,
-                    price: null,
-                    vat: '0%',
-                    displayName: '',
-                    description: `${H}cm / cięcie: ${config.numCutsH > 0 ? 'cięty na pół' : 'cały'}`,
-                    isParent: false,
-                    isManual: false,
-                    isKaseton: true
+                    id: null, parentId: idVal || null, name: 'szerokość - ' + item.name, qty: W / 100, price: null, vat: '0%', displayName: '', description: `${W}cm / oświetlenie LED: ${ledProfilesStr} / cięcie: ${config.numCutsW > 0 ? 'cięty na pół' : 'cały'}`, isParent: false, isManual: false, isKaseton: true
+                });
+                draft.push({
+                    id: null, parentId: idVal || null, name: 'wysokość - ' + item.name, qty: H / 100, price: null, vat: '0%', displayName: '', description: `${H}cm / cięcie: ${config.numCutsH > 0 ? 'cięty na pół' : 'cały'}`, isParent: false, isManual: false, isKaseton: true
                 });
                 return;
             }
 
             const isSupportProfile = item.name.includes('support') && item.name.includes('profil');
-
             if (isSupportProfile) {
-                // ... (tutaj zostaje Twoja niezmieniona logika warunków if dla supportów) ...
+                if (numCutsW > 0) {
+                    draft.push({
+                        id: null, parentId: idVal || null, name: 'support pionowy - ' + item.name, qty: H / 100, price: null, vat: '0%', displayName: '', description: 'krzyżowy', isParent: false, isManual: false, isKaseton: true
+                    });
+                }
+                if (numCutsH > 0) {
+                    draft.push({
+                        id: null, parentId: idVal || null, name: 'support poziomy - ' + item.name, qty: W / 100, price: null, vat: '0%', description: 'krzyżowy', isParent: false, isManual: false, isKaseton: true
+                    });
+                }
+                if (numCutsW === 0 && numCutsH === 0) {
+                    draft.push({
+                        id: null, parentId: idVal || null, name: item.name, qty: item.qty, price: null, vat: '0%', displayName: '', description: item.description || '', isParent: false, isManual: false, isKaseton: true
+                    });
+                }
                 return;
             }
 
-            // =================================══════════════════════════
-            // ⚠️ KLUCZOWY FALLBACK: Dla blatów oraz wydruków CTF
-            // =================================══════════════════════════
             draft.push({
-                id: null,
-                parentId: idVal || null,
-                name: item.name,
-                qty: item.qty,
-                price: null,
-                vat: '0%',
-                displayName: '',
-                description: item.description || '', // <-- TU MUSI BYĆ item.description ZAMIAST ''
-                isParent: false,
-                isManual: item.isManual || false,
-                isKaseton: true
+                id: null, parentId: idVal || null, name: item.name, qty: item.qty, price: null, vat: '0%', displayName: '', description: item.description || '', isParent: false, isManual: item.isManual || false, isKaseton: true
             });
         });
-
     } else {
-        // Flat Structure for non-custom lightboxes (currentSystem !== 'kasetony_niestandardowe')
         bomItems.forEach(item => {
             let idVal = item.intranetId;
             if (!idVal) {
-                if (window.KASETON_PRICES && window.KASETON_PRICES[item.name]) {
-                    idVal = window.KASETON_PRICES[item.name].intranetId;
-                }
+                if (window.KASETON_PRICES && window.KASETON_PRICES[item.name]) { idVal = window.KASETON_PRICES[item.name].intranetId; }
                 if (!idVal && typeof DB !== 'undefined') {
-                    for (let key in DB) {
-                        if (DB[key].name === item.name) {
-                            idVal = DB[key].intranetId || DB[key].catNo;
-                            break;
-                        }
-                    }
+                    for (let key in DB) { if (DB[key].name === item.name) { idVal = DB[key].intranetId || DB[key].catNo; break; } }
                 }
             }
-
             draft.push({
-                id: idVal || null,
-                parentId: null,
-                name: item.name,
-                qty: item.qty,
-                price: item.price || 0,
-                vat: '23%',
-                displayName: '',
-                description: '',
-                isParent: false,
-                isManual: item.isManual || false,
-                isKaseton: false
+                id: idVal || null, parentId: null, name: item.name, qty: item.qty, price: item.price || 0, vat: '23%', displayName: '', description: item.description || '', isParent: false, isManual: item.isManual || false, isKaseton: false
             });
         });
     }
@@ -353,6 +302,7 @@ window.initIntranetBomDraft = function () {
     window.intranetBOMDraft = draft;
 };
 
+// 4. KOREKTA INTERFEJSU GRAFICZNEGO (Uwidocznienie cen i ID dzieci dla systemu STF)
 window.renderIntranetBomTable = function () {
     const tbody = document.getElementById('intranetBomTableBody');
     if (!tbody) return;
@@ -371,15 +321,17 @@ window.renderIntranetBomTable = function () {
         }
 
         const priceVal = item.price !== null ? item.price.toFixed(2) : '';
-        const idVal = (item.isParent || !item.isKaseton) ? (item.id || '') : (item.parentId || '');
+
+        // Modyfikacja warunku: Jeśli element ma przypisaną cenę (jak w STF), wymuszamy wyświetlenie unikalnego ID podzespołu
+        const idVal = (item.price !== null && !item.isParent) ? (item.id || '') : ((item.isParent || !item.isKaseton) ? (item.id || '') : (item.parentId || ''));
 
         const isDeleteDisabled = item.isParent || !item.isManual;
-
         const displayNameHtml = `<input type="text" class="row-display-name" value="${item.displayName || ''}" onchange="window.updateIntranetDraftField(${idx}, 'displayName', this.value)">`;
         const descHtml = `<input type="text" class="row-description" value="${item.description || ''}" onchange="window.updateIntranetDraftField(${idx}, 'description', this.value)">`;
         const qtyHtml = `<input type="number" step="0.01" class="row-qty" value="${item.qty}" onchange="window.updateIntranetDraftField(${idx}, 'qty', this.value)">`;
 
-        const priceHtml = (item.isParent || !item.isKaseton)
+        // Uwidocznienie pól input ceny dla dzieci, które posiadają niezależną wycenę
+        const priceHtml = (item.price !== null)
             ? `<input type="number" step="0.01" class="row-price" value="${priceVal}" onchange="window.updateIntranetDraftField(${idx}, 'price', this.value)">`
             : `<span style="color:#666; font-style:italic;">BOM (brak)</span>`;
 
@@ -391,20 +343,11 @@ window.renderIntranetBomTable = function () {
         });
         vatHtml += `</select>`;
 
-        const deleteBtnHtml = !isDeleteDisabled
-            ? `<button class="btn-row-del" onclick="window.deleteIntranetDraftRow(${idx})" title="Usuń pozycję">🗑️</button>`
-            : `<span style="color:#444;">—</span>`;
-
-        // Drag-and-drop HTML5 properties (parent is not draggable)
+        const deleteBtnHtml = !isDeleteDisabled ? `<button class="btn-row-del" onclick="window.deleteIntranetDraftRow(${idx})" title="Usuń pozycję">🗑️</button>` : `<span style="color:#444;">—</span>`;
         const draggableAttr = item.isParent ? 'draggable="false"' : 'draggable="true"';
-        const dragStartAttr = item.isParent ? '' : `ondragstart="window.handleIntranetDragStart(event, ${idx})"`;
-        const dragOverAttr = item.isParent ? '' : `ondragover="window.handleIntranetDragOver(event, ${idx})"`;
-        const dragLeaveAttr = item.isParent ? '' : `ondragleave="window.handleIntranetDragLeave(event, ${idx})"`;
-        const dropAttr = item.isParent ? '' : `ondrop="window.handleIntranetDrop(event, ${idx})"`;
-        const dragEndAttr = item.isParent ? '' : `ondragend="window.handleIntranetDragEnd(event)"`;
 
         html += `
-                    <tr class="${rowClass}" data-index="${idx}" ${draggableAttr} ${dragStartAttr} ${dragOverAttr} ${dragLeaveAttr} ${dropAttr} ${dragEndAttr}>
+                    <tr class="${rowClass}" data-index="${idx}" ${draggableAttr} ondragstart="window.handleIntranetDragStart(event, ${idx})" ondragover="window.handleIntranetDragOver(event, ${idx})" ondragleave="window.handleIntranetDragLeave(event, ${idx})" ondrop="window.handleIntranetDrop(event, ${idx})" ondragend="window.handleIntranetDragEnd(event)">
                         <td style="font-weight:600; text-align:left;">${prefix}${item.name}</td>
                         <td>${idVal}</td>
                         <td>${displayNameHtml}</td>
@@ -416,7 +359,6 @@ window.renderIntranetBomTable = function () {
                     </tr>
                 `;
     });
-
     tbody.innerHTML = html;
 };
 

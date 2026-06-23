@@ -242,7 +242,188 @@ function generateKasetonBOM() {
     finishKasetonBOM(bomItems, W, H, sys, config);
     return;
   }
+  // =========================================================================
+  // 🔲 SYSTEM: adFrame STF — KLASYCZNA RAMA JEDNOSTRONNA (BEZ PRĄDU)
+  // =========================================================================
+  if (sys === 'STF') {
+    // Przedterminowe wyliczenie linii cięć (identyczne z logiką LMD/LMSM)
+    let numCutsW = 0, numCutsH = 0;
+    if (config.cut && config.cut.includes('half_w')) numCutsW = 1;
+    else if (config.cut && config.cut.includes('3w')) numCutsW = 2;
+    else if (config.cut && config.cut.includes('4w')) numCutsW = 3;
+    else if (config.cut && config.cut.includes('5w')) numCutsW = 4;
 
+    if (config.cut && config.cut.includes('half_h')) numCutsH = 1;
+    else if (config.cut && config.cut.includes('3h')) numCutsH = 2;
+    else if (config.cut && config.cut.includes('4h')) numCutsH = 3;
+    else if (config.cut && config.cut.includes('5h')) numCutsH = 4;
+
+    if (config.cut && config.cut.startsWith('auto')) {
+      const maxLen = config.cut === 'auto_dedicated' ? 300 : (config.cut === 'auto_courier_150' ? 150 : 200);
+      if (W > maxLen) numCutsW = Math.ceil(W / maxLen) - 1;
+      if (H > maxLen) numCutsH = Math.ceil(H / maxLen) - 1;
+    }
+
+    const totalCuts = numCutsW + numCutsH;
+
+    // 1. Indeks nadrzędny całego zestawu ramy STF (bez ceny, spięty z ID 18254)
+    bomItems.push({ name: "adFrame STF", qty: 1, unit: "szt", intranetId: 18254, forceZeroPrice: true });
+
+    // 2. Profil obwodowy rozbity na pozycje szerokość oraz wysokość (ID 10937) + informacja o cięciach
+    const descW = `Szerokość ${W}cm / cięcie: ${numCutsW > 0 ? 'pocięty na ' + (numCutsW + 1) + ' części' : 'w całości'}`;
+    bomItems.push({ name: "profil STF", qty: parseFloat((2 * W / 100).toFixed(2)), unit: "mb", intranetId: 10937, description: descW });
+
+    const descH = `Wysokość ${H}cm / cięcie: ${numCutsH > 0 ? 'pocięty na ' + (numCutsH + 1) + ' części' : 'w całości'}`;
+    bomItems.push({ name: "profil STF", qty: parseFloat((2 * H / 100).toFixed(2)), unit: "mb", intranetId: 10937, description: descH });
+
+    // 3. Narożniki dedykowane (ID 10940) — dokładnie 4 sztuki zawsze
+    bomItems.push({ name: "adFrame LMS/STF/DTF narożnik (gwintowany)", qty: 4, unit: "szt", intranetId: 10940 });
+
+    // 4. Układ wzmocnień (Supporty light) skopiowany z LMD/LMSM wraz z zapięciami i krzyżakami
+    const suppLen = config.totalSupportLengthM || ((numCutsW * H + numCutsH * W) / 100);
+    if (suppLen > 0) {
+      bomItems.push({ name: 'profil support light', qty: parseFloat(suppLen.toFixed(2)), unit: 'mb', intranetId: 11951 });
+    }
+
+    // Zamki rurek (ID 10949) oraz wewnętrzne łączniki 180° krzyżaków (ID 11131)
+    const zamki = (numCutsW * 2) + (numCutsH * 2);
+    if (zamki > 0) {
+      bomItems.push({ name: 'adFrame support zamek', qty: zamki, unit: 'szt', intranetId: 10949 });
+    }
+    const crossConns = numCutsW * numCutsH;
+    if (crossConns > 0) {
+      bomItems.push({ name: 'adFrame support 180° łącznik', qty: crossConns * 2, unit: 'szt', intranetId: 11131 });
+    }
+
+    // Łączniki 180° pociętych krawędzi profili obwodowych ramy (ID 10941) — po 2 szt. na każde fizyczne cięcie ramy
+    if (totalCuts > 0) {
+      bomItems.push({ name: 'adFrame DTF/STF/LMSM łącznik 180°', qty: totalCuts * 2, unit: 'szt', intranetId: 10941 });
+    }
+
+    // 5. Wieszaki naścienne dla opcji ściennej (Skopiowane 1:1 z retencji LMSM, ID 10944)
+    if (config.usage === 'wall') {
+      let hangerQty = (H <= 150) ? 2 : 4;
+      if (W > 150) {
+        let extraMeters = Math.ceil((W - 150) / 100);
+        hangerQty += 2 * extraMeters;
+      }
+      if (numCutsW > 0) {
+        let totalTopSegments = numCutsW + 1;
+        let cutRequiredHangers = 2 * totalTopSegments;
+        if (hangerQty < cutRequiredHangers) {
+          hangerQty = cutRequiredHangers;
+        }
+      }
+      bomItems.push({ name: 'adFrame STF/STFL wieszak', qty: hangerQty, unit: 'szt', intranetId: 10944 });
+    }
+
+    // [RETENCJA PRODUKCYJNA]: Brak modułów LED, zasilaczy i przewodów zasilających — rama niepodświetlana
+
+    // 6. Zestaw narzędzi montażowych (Imbusy + Torx)
+    bomItems.push({ name: 'adFrame imbus 2,5mm', qty: 1, unit: 'szt', intranetId: 11315 });
+    bomItems.push({ name: 'adFrame imbus 4mm', qty: 1, unit: 'szt', intranetId: 11316 });
+    bomItems.push({ name: 'adFrame torx T30', qty: 1, unit: 'szt', intranetId: 13758 });
+
+    // 7. Dobór opakowań kartonowych oraz pianek ochronnych (ID 14813)
+    let maxSegmentLen = Math.max(W / (numCutsW + 1), H / (numCutsH + 1));
+    let isSplit = false;
+    if (maxSegmentLen > 200) { maxSegmentLen = maxSegmentLen / 2; isSplit = true; }
+
+    const requiredCartonLength = maxSegmentLen + 10;
+    let cartonName = 'Karton DTF/STF/LMSM - 110x16x16cm'; // Bazowy domyślny
+    if (requiredCartonLength <= 110) {
+      cartonName = totalCuts > 4 ? 'Karton DTF/STF/LMSM - 110x16x26cm' : 'Karton DTF/STF/LMSM - 110x16x16cm';
+    } else if (requiredCartonLength <= 135) {
+      cartonName = 'Karton DTF/STF/LMSM - 135x16x26cm';
+    } else {
+      cartonName = 'Karton DTF/STF/LMSM - 160x16x26cm';
+    }
+
+    // Przypisanie specyficznego ID kartonu pod ERP
+    const cartonIdMap = {
+      'Karton DTF/STF/LMSM - 110x16x16cm': 14835,
+      'Karton DTF/STF/LMSM - 110x16x26cm': 14836,
+      'Karton DTF/STF/LMSM - 135x16x26cm': 14838,
+      'Karton DTF/STF/LMSM - 160x16x26cm': 14840
+    };
+    const currentCartonId = cartonIdMap[cartonName] || 14835;
+
+    const totalPieces = 2 * (numCutsW + 1) + 2 * (numCutsH + 1);
+    let baseCartons = totalCuts > 4 ? Math.ceil(totalPieces / 8) : 1;
+    const finalCartonQty = isSplit ? baseCartons * 2 : baseCartons;
+
+    bomItems.push({ name: cartonName, qty: finalCartonQty, unit: 'szt', intranetId: currentCartonId });
+    bomItems.push({ name: 'adFrame DTF/STF pianka ochronna', qty: finalCartonQty * 4, unit: 'szt', intranetId: 14813 });
+
+    config.cartonName = cartonName;
+    config.cartonQty = finalCartonQty;
+
+    // 8. Logika parowania i dobierania jednostronnych wydruków (Siatka exactSizes ze screenshotu + ogólne do ERP)
+    const printOption = config.print || 'single';
+    if (printOption !== 'no_print') {
+      const exactSTFSizes = [
+        { w: 100, h: 100, id: 17954 }, { w: 100, h: 200, id: 17956 }, { w: 100, h: 250, id: 17957 },
+        { w: 150, h: 200, id: 17960 }, { w: 150, h: 250, id: 17961 }, { w: 200, h: 250, id: 17962 },
+        { w: 200, h: 200, id: 17963 }, { w: 300, h: 200, id: 17964 }, { w: 300, h: 250, id: 17965 },
+        { w: 400, h: 200, id: 17966 }, { w: 400, h: 250, id: 17967 }, { w: 500, h: 200, id: 17968 },
+        { w: 500, h: 250, id: 17969 }, { w: 50, h: 50, id: 17972 }, { w: 600, h: 250, id: 17974 },
+        { w: 70, h: 100, id: 17975 }
+      ];
+
+      // Szukamy idealnego odwzorowania w bazie ustandaryzowanej
+      let match = exactSTFSizes.find(function (s) {
+        return (s.w === W && s.h === H) || (s.w === H && s.h === W);
+      });
+
+      let pName = "";
+      let pId = null;
+      let pDesc = "";
+
+      if (match) {
+        pName = `Wydruk adFrame STF/STFL ${match.w}x${match.h}`;
+        pId = match.id;
+      } else {
+        // Dobór jednej z 3 pozycji ogólnych na podstawie dłuższego boku ramy
+        let longerDim = Math.max(W, H);
+        if (longerDim <= 100) {
+          pName = "Wydruk adFrame STF/STFL (do 1mb/medium250)";
+          pId = 17953;
+        } else if (longerDim <= 300) {
+          pName = "Wydruk adFrame STF/STFL (do 3mb/medium250)";
+          pId = 17980;
+        } else {
+          pName = "Wydruk adFrame STF/STFL (pow. 3mb/medium250)";
+          pId = 17978;
+        }
+        pDesc = `${W}x${H} cm`; // Wymiar wklejany automatycznie do opisu dokumentu
+      }
+
+      bomItems.push({ name: pName, qty: 1, unit: 'szt', intranetId: pId, description: pDesc });
+    }
+
+    // 9. Koszyk manualny (Dopłaty handlowców)
+    if (typeof manualItems !== 'undefined') {
+      for (let key in manualItems) {
+        let item = manualItems[key];
+        if (item && typeof item === 'object' && item.qty > 0) {
+          bomItems.push({
+            name: item.name,
+            qty: item.qty,
+            unit: 'szt',
+            intranetId: item.intranetId,
+            isManual: true,
+            plnMargin: item.plnMargin,
+            multiplier: item.multiplier || 2.8,
+            plnPrice: item.plnMargin * (item.multiplier || 2.8)
+          });
+        }
+      }
+    }
+
+    // Przekazanie gotowej paczki obiektów do pętli wyceniającej i wyjście z funkcji
+    finishKasetonBOM(bomItems, W, H, sys, config);
+    return;
+  }
   if (sys === 'LMSM') {
     // Przedterminowe wyliczenie linii cięć, niezbędne dla solvera oświetleniowego i strukturalnego
     let numCutsW = 0, numCutsH = 0;
@@ -5841,71 +6022,83 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
     let plnPrice = 0;
     let plnMargin = 0;
     let priceEUR = 0;
-
-    let isWydrukWithArea = false;
-    let wydrukArea = 0;
-    const area = calculateWydrukArea(item.name);
-    if (area !== null) {
-      isWydrukWithArea = true;
-      wydrukArea = area;
-    }
-
     let hasNoPrice = false;
-    if (KASETON_PRICES[item.name] && KASETON_PRICES[item.name].noPrice) {
-      if (!isWydrukWithArea) {
-        hasNoPrice = true;
-      }
-    }
 
-    if (window.customPriceOverrides && window.customPriceOverrides[item.name] !== undefined) {
-      priceEUR = window.customPriceOverrides[item.name];
-      plnPrice = priceEUR * ratePLN;
-      plnMargin = plnPrice / 2.8;
-      hasNoPrice = false; // Override clears warning
-    } else if (isWydrukWithArea) {
-      priceEUR = wydrukArea * 24;
-      plnPrice = wydrukArea * 100;
-      plnMargin = plnPrice / 2.8;
-    } else if (item.isManual) {
-      plnPrice = item.plnPrice;
-      plnMargin = item.plnMargin;
-      priceEUR = plnPrice / ratePLN;
-    } else if (KASETON_PRICES[item.name]) {
-      plnPrice = KASETON_PRICES[item.name].plnPrice;
-      plnMargin = KASETON_PRICES[item.name].plnMargin;
-      priceEUR = plnPrice / ratePLN;
-      if (KASETON_PRICES[item.name].intranetId) {
-        item.intranetId = KASETON_PRICES[item.name].intranetId;
-      }
-    } else if (item.name.startsWith("Wydruk adFrame")) {
-      const areaM2 = (W * H) / 10000;
-      priceEUR = areaM2 * 24;
-      plnPrice = areaM2 * 100;
-      plnMargin = plnPrice / 2.8;
-      const PRINT_INTRANET_IDS = {
-        "Wydruk adFrame LMD/LMS/LMSM 100x200": 14442,
-        "Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU 100x200": 14722,
-        "Wydruk adFrame Blockout 100x200 plecy nie do druku": 14722
-      };
-      if (PRINT_INTRANET_IDS[item.name]) {
-        item.intranetId = PRINT_INTRANET_IDS[item.name];
-      }
+    const parentNames = ['adFrame STF', 'adFrame LMD', 'adFrame LMS', 'adFrame LMSM', 'adFrame DTF'];
+    if (item.forceZeroPrice || parentNames.includes(item.name)) {
+      item.plnPrice = 0;
+      item.plnMargin = 0;
+      item.price = 0;
+      item.hasNoPrice = false;
+      // Przeskakujemy resztę kalkulacji cennika dla tej konkretnej pozycji
+      item.plnPrice = 0; item.plnMargin = 0; item.price = 0; item.hasNoPrice = false;
     } else {
-      // Fallback for new/unknown items not in prices database
-      hasNoPrice = true;
-      priceEUR = 0;
-      plnPrice = 0;
-      plnMargin = 0;
-    }
 
-    if (window.customPriceOverrides && window.customPriceOverrides[item.name] !== undefined) {
-      // already set
-    } else if (!isWydrukWithArea && !item.name.startsWith("Wydruk adFrame")) {
-      priceEUR = plnPrice / ratePLN;
-    }
+      let isWydrukWithArea = false;
+      let wydrukArea = 0;
+      const area = calculateWydrukArea(item.name);
+      if (area !== null) {
+        isWydrukWithArea = true;
+        wydrukArea = area;
+      }
 
-    if (plnPrice > 0 || priceEUR > 0) {
-      hasNoPrice = false;
+      let hasNoPrice = false;
+      if (KASETON_PRICES[item.name] && KASETON_PRICES[item.name].noPrice) {
+        if (!isWydrukWithArea) {
+          hasNoPrice = true;
+        }
+      }
+
+      if (window.customPriceOverrides && window.customPriceOverrides[item.name] !== undefined) {
+        priceEUR = window.customPriceOverrides[item.name];
+        plnPrice = priceEUR * ratePLN;
+        plnMargin = plnPrice / 2.8;
+        hasNoPrice = false; // Override clears warning
+      } else if (isWydrukWithArea) {
+        priceEUR = wydrukArea * 24;
+        plnPrice = wydrukArea * 100;
+        plnMargin = plnPrice / 2.8;
+      } else if (item.isManual) {
+        plnPrice = item.plnPrice;
+        plnMargin = item.plnMargin;
+        priceEUR = plnPrice / ratePLN;
+      } else if (KASETON_PRICES[item.name]) {
+        plnPrice = KASETON_PRICES[item.name].plnPrice;
+        plnMargin = KASETON_PRICES[item.name].plnMargin;
+        priceEUR = plnPrice / ratePLN;
+        if (KASETON_PRICES[item.name].intranetId) {
+          item.intranetId = KASETON_PRICES[item.name].intranetId;
+        }
+      } else if (item.name.startsWith("Wydruk adFrame")) {
+        const areaM2 = (W * H) / 10000;
+        priceEUR = areaM2 * 24;
+        plnPrice = areaM2 * 100;
+        plnMargin = plnPrice / 2.8;
+        const PRINT_INTRANET_IDS = {
+          "Wydruk adFrame LMD/LMS/LMSM 100x200": 14442,
+          "Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU 100x200": 14722,
+          "Wydruk adFrame Blockout 100x200 plecy nie do druku": 14722
+        };
+        if (PRINT_INTRANET_IDS[item.name]) {
+          item.intranetId = PRINT_INTRANET_IDS[item.name];
+        }
+      } else {
+        // Fallback for new/unknown items not in prices database
+        hasNoPrice = true;
+        priceEUR = 0;
+        plnPrice = 0;
+        plnMargin = 0;
+      }
+
+      if (window.customPriceOverrides && window.customPriceOverrides[item.name] !== undefined) {
+        // already set
+      } else if (!isWydrukWithArea && !item.name.startsWith("Wydruk adFrame")) {
+        priceEUR = plnPrice / ratePLN;
+      }
+
+      if (plnPrice > 0 || priceEUR > 0) {
+        hasNoPrice = false;
+      }
     }
 
     item.plnPrice = plnPrice;
@@ -5915,6 +6108,7 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
 
     totalEUR += item.price * parseFloat(item.qty);
   });
+
 
   // 🛠️ AKTUALIZACJA: Pobranie zniżki i obliczenie finalnej wartości EUR po rabacie
   const discountInputEl = document.getElementById('discountInput');
@@ -5940,7 +6134,6 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
     const u = item.unit ? (' ' + item.unit) : 'x';
     const lineTotal = item.price * parseFloat(q);
 
-    // Style check for missing price
     let inputStyle = 'width: 65px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid #444; border-radius: 4px; padding: 2px 4px; text-align: right; font-family: inherit; font-size: 11px;';
     let warningHtml = '';
     if (item.hasNoPrice) {
@@ -5950,8 +6143,12 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
 
     const escapedName = item.name.replace(/\x27/g, "\\\x27").replace(/\x22/g, "&quot;");
 
+    // 🔥 NOWOŚĆ: Generowanie podglądu opisu technicznego w locie na okienku wyceny
+    let itemDescHtml = item.description ? `<br><span style="color: #8f95b2; font-size: 10px; font-style: italic; margin-left: 15px; display: block; margin-top: 2px;">↳ ${item.description}</span>` : '';
+
     html += '<div class="bom-item" style="align-items: center; gap: 5px;' + (item.hasNoPrice ? ' background: rgba(255,0,0,0.1); border-radius: 4px; padding: 2px;' : '') + '">';
-    html += '<span style="flex-grow: 1; text-align: left;">' + q + u + ' ' + item.name + warningHtml + '</span>';
+    // Wstrzyknięcie itemDescHtml bezpośrednio do komórki nazwy produktu
+    html += '<span style="flex-grow: 1; text-align: left;"><b>' + q + u + '</b> ' + item.name + itemDescHtml + warningHtml + '</span>';
     html += '<div style="display: flex; align-items: center; gap: 4px;">';
     html += '<input type="number" step="0.01" style="' + inputStyle + '" value="' + item.price.toFixed(2) + '" onchange="window.overrideBomPrice(\'' + escapedName + '\', this.value)">';
     html += '<span style="min-width: 55px; text-align: right;">' + lineTotal.toFixed(2) + ' \u20ac</span>';
