@@ -632,7 +632,6 @@ function update3DScene() {
             if (m) m.dispose();
           });
         } else {
-          doc.material.dispose(); // Poprawka ewentualnego typo (było obj.material.dispose)
           obj.material.dispose();
         }
       }
@@ -777,7 +776,6 @@ function update3DScene() {
       const baseLedColor = currentLedMode === 'static' ? new THREE.Color(currentLedColor) : new THREE.Color(0xffffff);
       const ledMat = new THREE.MeshStandardMaterial({
         color: 0x000000,
-        mouseemissive: baseLedColor,
         emissive: baseLedColor,
         emissiveIntensity: currentLedIntensity,
         side: THREE.DoubleSide,

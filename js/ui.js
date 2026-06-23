@@ -1294,6 +1294,15 @@ function onKasetonSystemChange(sel) {
         if (isCTF) {
             usageEl.innerHTML = '<option value="freestanding">Wolnostojący (Stopy)</option>' +
                 '<option value="suspended">Podwieszany (Linki)</option>';
+        } else if (sys === 'STF' || sys === 'STFL') {
+            usageEl.innerHTML = '<option value="wall" selected>Naścienny</option>' +
+                '<option value="suspended">Podwieszany</option>' +
+                '<option value="none">Bez montażu</option>';
+        } else if (sys === 'DTF') {
+            usageEl.innerHTML = '<option value="freestanding" selected>Wolnostojący - stopy płaskie</option>' +
+                '<option value="freestanding_tri">Wolnostojący - stopy trójkątne</option>' +
+                '<option value="suspended">Podwieszany</option>' +
+                '<option value="none">Bez montażu</option>';
         } else {
             usageEl.innerHTML = '<option value="freestanding">Wolnostojący (Stopy)</option>' +
                 '<option value="suspended">Podwieszany (Linki)</option>' +
@@ -1330,10 +1339,14 @@ function onKasetonSystemChange(sel) {
                 '<option value="backlit_blockout">Przód backlit + Tył kolorowy blockout</option>' +
                 '<option value="back_white">Tylko białe plecy</option>' +
                 '<option value="no_print">Bez wydruku (sama rama)</option>';
-        } else if (sys === 'STF') {
-            // STF: rama jednostronna płaska - tylko przód lub brak druku
-            printSel.innerHTML = '<option value="single" selected>Wydruk blockout na przód</option>' +
-                '<option value="no_print">Bez wydruku (sama rama)</option>';
+        } else if (sys === 'STF' || sys === 'STFL') {
+            // STF/STFL: frontowy blockout lub bez wydruku
+            printSel.innerHTML = '<option value="front_blockout" selected>frontowy blockout</option>' +
+                '<option value="no_print">bez wydruku</option>';
+        } else if (sys === 'DTF') {
+            // DTF: obustronny blockout lub bez wydruku
+            printSel.innerHTML = '<option value="double_blockout" selected>obustronny blockout</option>' +
+                '<option value="no_print">bez wydruku</option>';
         } else {
             // LMD i inne: pełne opcje dwustronne
             printSel.innerHTML = '<option value="single">Jednostronny + Blockout tył</option>' +

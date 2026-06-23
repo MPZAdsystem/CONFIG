@@ -193,13 +193,13 @@ window.initIntranetBomDraft = function () {
 
         const finalEUR = window.globalTotalEUR || 0;
 
-        // 2. WYMUSZENIE CENY 0 DLA RODZICA STF (Produkt nadrzędny staje się czystym indeksem)
+        // 2. WYMUSZENIE CENY 0 DLA RODZICA STF/STFL/DTF (Produkt nadrzędny staje się czystym indeksem)
         draft.push({
             id: parentInfo.id,
             parentId: null,
             name: parentInfo.name,
             qty: 1,
-            price: sys === 'STF' ? 0 : finalEUR,
+            price: (sys === 'STF' || sys === 'STFL' || sys === 'DTF') ? 0 : finalEUR,
             vat: '23%',
             displayName: '',
             description: parentDesc,
@@ -230,11 +230,11 @@ window.initIntranetBomDraft = function () {
                 return;
             }
 
-            // 3. DLA STF WPISUJEMY CENĘ I ID BEZPOŚREDNIO DO DZIECKA (Bypass paczkowania cenowego)
-            if (sys === 'STF') {
+            // 3. DLA STF/STFL/DTF WPISUJEMY CENĘ I ID BEZPOŚREDNIO DO DZIECKA (Bypass paczkowania cenowego)
+            if (sys === 'STF' || sys === 'STFL' || sys === 'DTF') {
                 draft.push({
                     id: idVal || null,
-                    parentId: parentInfo.id, // Łączenie z id rodzica (18254)
+                    parentId: parentInfo.id, // Łączenie z id rodzica
                     name: item.name,
                     qty: item.qty,
                     price: item.price || 0, // Przekazanie realnej ceny podzespołu z bom.js

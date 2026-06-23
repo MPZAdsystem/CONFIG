@@ -1959,7 +1959,6 @@ async function randomizeProjectGraphics(btnElement) {
         const files = await response.json();
 
         const validExts = ['jpg', 'jpeg', 'png', 'pdf', 'tif', 'tiff'];
-        const sysLower = currentSystem.toLowerCase();
 
         const parsedGraphics = files
             .filter(f => f.type === 'file' && validExts.includes(f.name.split('.').pop().toLowerCase()))
@@ -1971,25 +1970,66 @@ async function randomizeProjectGraphics(btnElement) {
                     w = parseInt(dimMatch[1], 10);
                     h = parseInt(dimMatch[2], 10);
                 }
+
+                // Pobranie kategorii z końcówki nazwy pliku
+                const baseName = f.name.substring(0, f.name.lastIndexOf('.'));
+                const tokens = baseName.split(/[_-\s]+/);
+                const lastToken = tokens[tokens.length - 1].toLowerCase();
+                
+                const ignoreTokens = ['sego', 'foldable', 'adframe', 'multiframe', 'general', 'generic', 'uni', 'universal', 'brand'];
+                let category = null;
+                if (lastToken && isNaN(lastToken) && !ignoreTokens.includes(lastToken) && !lastToken.includes('x')) {
+                    category = lastToken;
+                }
+
                 return {
                     name: f.name,
                     url: f.download_url,
                     width: w,
                     height: h,
                     ratio: w / h,
-                    isGeneric: nameLower.includes('generic'),
-                    systems: ['sego', 'foldable', 'adframe', 'multiframe'].filter(sys => nameLower.includes(sys))
+                    isGeneric: nameLower.includes('general') || nameLower.includes('generic'),
+                    systems: ['sego', 'foldable', 'adframe', 'multiframe'].filter(sys => nameLower.includes(sys)),
+                    category: category,
+                    isUniversal: nameLower.includes('uni') || nameLower.includes('universal'),
+                    isBrand: nameLower.includes('brand')
                 };
             });
 
-        // Inteligentny Solver Proporcji z uwzględnieniem tolerancji
+        // Dobór spójnej tematyki dla całego stoiska
+        let chosenCategory = null;
+        const categories = parsedGraphics.map(g => g.category).filter(c => c !== null);
+        const uniqueCategories = [...new Set(categories)];
+        if (uniqueCategories.length > 0) {
+            chosenCategory = uniqueCategories[Math.floor(Math.random() * uniqueCategories.length)];
+            console.log("🎨 Wylosowany motyw graficzny dla stoiska:", chosenCategory);
+        }
+
+        let brandCount = 0;
+
+        // Inteligentny Solver Proporcji z uwzględnieniem tolerancji, kategorii i systemów
         const findBestGraphic = (targetW, targetH) => {
             const targetRatio = targetW / targetH;
+            const sysLower = currentSystem === 'kasetony_niestandardowe' ? 'adframe' : currentSystem.toLowerCase();
 
-            let pool = parsedGraphics.filter(g => g.isGeneric || g.systems.includes(sysLower));
-            if (pool.length === 0) pool = parsedGraphics.filter(g => g.isGeneric);
-            if (pool.length === 0) pool = parsedGraphics;
+            // Pula przefiltrowana pod kątem kompatybilności systemowej i limitu brandu
+            let pool = parsedGraphics.filter(g => {
+                const isSystemCompatible = g.systems.length === 0 || g.systems.includes(sysLower) || g.isGeneric;
+                if (!isSystemCompatible) return false;
+                if (brandCount >= 2 && g.isBrand) return false;
+                return true;
+            });
+
             if (pool.length === 0) return greenFallback;
+
+            // Próba dobrania tematycznego (kategoria wiodąca lub universalne)
+            if (chosenCategory) {
+                const themedPool = pool.filter(g => g.category === chosenCategory || g.isUniversal);
+                const hasMatchingThemed = themedPool.some(g => Math.abs(g.ratio - targetRatio) <= 0.4);
+                if (hasMatchingThemed) {
+                    pool = themedPool;
+                }
+            }
 
             let minDiff = Infinity;
             pool.forEach(g => {
@@ -2003,7 +2043,12 @@ async function randomizeProjectGraphics(btnElement) {
             }
 
             const bestMatches = pool.filter(g => Math.abs(Math.abs(g.ratio - targetRatio) - minDiff) < 0.02);
-            return bestMatches[Math.floor(Math.random() * bestMatches.length)];
+            const selected = bestMatches[Math.floor(Math.random() * bestMatches.length)];
+            
+            if (selected.isBrand) {
+                brandCount++;
+            }
+            return selected;
         };
 
         // ═══════════════════════════════════════════════════════════

@@ -245,7 +245,10 @@ function generateKasetonBOM() {
   // =========================================================================
   // 🔲 SYSTEM: adFrame STF — KLASYCZNA RAMA JEDNOSTRONNA (BEZ PRĄDU)
   // =========================================================================
-  if (sys === 'STF') {
+  // =========================================================================
+  // 🔲 SYSTEM: adFrame STF / STFL / DTF — KLASYCZNE RAMY BEZ PRĄDU
+  // =========================================================================
+  if (sys === 'STF' || sys === 'STFL' || sys === 'DTF') {
     // Przedterminowe wyliczenie linii cięć (identyczne z logiką LMD/LMSM)
     let numCutsW = 0, numCutsH = 0;
     if (config.cut && config.cut.includes('half_w')) numCutsW = 1;
@@ -266,18 +269,25 @@ function generateKasetonBOM() {
 
     const totalCuts = numCutsW + numCutsH;
 
-    // 1. Indeks nadrzędny całego zestawu ramy STF (bez ceny, spięty z ID 18254)
-    bomItems.push({ name: "adFrame STF", qty: 1, unit: "szt", intranetId: 18254, forceZeroPrice: true });
+    // 1. Indeks nadrzędny całego zestawu ramy (bez ceny, spięty z odpowiednim ID)
+    const parentName = sys === 'STFL' ? "adFrame STFL" : (sys === 'DTF' ? "adFrame DTF" : "adFrame STF");
+    const parentId = sys === 'STFL' ? 10594 : (sys === 'DTF' ? 10332 : 18254);
+    bomItems.push({ name: parentName, qty: 1, unit: "szt", intranetId: parentId, forceZeroPrice: true });
 
-    // 2. Profil obwodowy rozbity na pozycje szerokość oraz wysokość (ID 10937) + informacja o cięciach
+    // 2. Profil obwodowy rozbity na pozycje szerokość oraz wysokość + informacja o cięciach
+    const profileName = sys === 'STFL' ? "profil STFL" : (sys === 'DTF' ? "profil DTF" : "profil STF");
+    const profileId = sys === 'STFL' ? 10934 : (sys === 'DTF' ? 10932 : 10937);
+
     const descW = `Szerokość ${W}cm / cięcie: ${numCutsW > 0 ? 'pocięty na ' + (numCutsW + 1) + ' części' : 'w całości'}`;
-    bomItems.push({ name: "profil STF", qty: parseFloat((2 * W / 100).toFixed(2)), unit: "mb", intranetId: 10937, description: descW });
+    bomItems.push({ name: profileName, qty: parseFloat((2 * W / 100).toFixed(2)), unit: "mb", intranetId: profileId, description: descW });
 
     const descH = `Wysokość ${H}cm / cięcie: ${numCutsH > 0 ? 'pocięty na ' + (numCutsH + 1) + ' części' : 'w całości'}`;
-    bomItems.push({ name: "profil STF", qty: parseFloat((2 * H / 100).toFixed(2)), unit: "mb", intranetId: 10937, description: descH });
+    bomItems.push({ name: profileName, qty: parseFloat((2 * H / 100).toFixed(2)), unit: "mb", intranetId: profileId, description: descH });
 
-    // 3. Narożniki dedykowane (ID 10940) — dokładnie 4 sztuki zawsze
-    bomItems.push({ name: "adFrame LMS/STF/DTF narożnik (gwintowany)", qty: 4, unit: "szt", intranetId: 10940 });
+    // 3. Narożniki dedykowane — dokładnie 4 sztuki zawsze
+    const cornerName = sys === 'STFL' ? "adFrame STFL narożnik" : "adFrame LMS/STF/DTF narożnik (gwintowany)";
+    const cornerId = sys === 'STFL' ? 10953 : 10940;
+    bomItems.push({ name: cornerName, qty: 4, unit: "szt", intranetId: cornerId });
 
     // 4. Układ wzmocnień (Supporty light) skopiowany z LMD/LMSM wraz z zapięciami i krzyżakami
     const suppLen = config.totalSupportLengthM || ((numCutsW * H + numCutsH * W) / 100);
@@ -295,13 +305,15 @@ function generateKasetonBOM() {
       bomItems.push({ name: 'adFrame support 180° łącznik', qty: crossConns * 2, unit: 'szt', intranetId: 11131 });
     }
 
-    // Łączniki 180° pociętych krawędzi profili obwodowych ramy (ID 10941) — po 2 szt. na każde fizyczne cięcie ramy
+    // Łączniki 180° pociętych krawędzi profili obwodowych ramy — po 2 szt. na każde fizyczne cięcie ramy
     if (totalCuts > 0) {
-      bomItems.push({ name: 'adFrame DTF/STF/LMSM łącznik 180°', qty: totalCuts * 2, unit: 'szt', intranetId: 10941 });
+      const connName = sys === 'STFL' ? "adFrame STFL łącznik 180°" : "adFrame DTF/STF/LMSM łącznik 180°";
+      const connId = sys === 'STFL' ? 11908 : 10941;
+      bomItems.push({ name: connName, qty: totalCuts * 2, unit: 'szt', intranetId: connId });
     }
 
-    // 5. Wieszaki naścienne dla opcji ściennej (Skopiowane 1:1 z retencji LMSM, ID 10944)
-    if (config.usage === 'wall') {
+    // 5. Wieszaki naścienne dla opcji ściennej (Skopiowane 1:1 z retencji LMSM, ID 10944) - dotyczy tylko STF/STFL
+    if ((sys === 'STF' || sys === 'STFL') && config.usage === 'wall') {
       let hangerQty = (H <= 150) ? 2 : 4;
       if (W > 150) {
         let extraMeters = Math.ceil((W - 150) / 100);
@@ -315,6 +327,21 @@ function generateKasetonBOM() {
         }
       }
       bomItems.push({ name: 'adFrame STF/STFL wieszak', qty: hangerQty, unit: 'szt', intranetId: 10944 });
+    }
+
+    // 5a. Stopy płaskie lub trójkątne (DTF) - zawsze dokładnie 2 sztuki montowane po bokach
+    if (sys === 'DTF' && (config.usage === 'freestanding' || config.usage === 'freestanding_tri')) {
+      if (config.usage === 'freestanding') {
+        bomItems.push({ name: 'adFrame DTF stopa płaska', qty: 2, unit: 'szt', intranetId: 10943 });
+      } else {
+        bomItems.push({ name: 'adFrame DTF stopa trójkątna', qty: 2, unit: 'szt', intranetId: 10942 });
+      }
+    }
+
+    // 5b. Zestaw do podwieszenia dla opcji podwieszanej (STF/STFL/DTF)
+    if (config.usage === 'suspended') {
+      let numSuspensionSets = config.numSuspensionSets || 2;
+      bomItems.push({ name: 'adFrame - zestaw do podwieszenia ∅2mm', qty: numSuspensionSets, unit: 'szt', intranetId: 11871 });
     }
 
     // [RETENCJA PRODUKCYJNA]: Brak modułów LED, zasilaczy i przewodów zasilających — rama niepodświetlana
@@ -358,47 +385,86 @@ function generateKasetonBOM() {
     config.cartonName = cartonName;
     config.cartonQty = finalCartonQty;
 
-    // 8. Logika parowania i dobierania jednostronnych wydruków (Siatka exactSizes ze screenshotu + ogólne do ERP)
-    const printOption = config.print || 'single';
+    // 8. Logika parowania i dobierania wydruków (Siatka exactSizes ze screenshotu + ogólne do ERP)
+    const defaultPrint = (sys === 'DTF') ? 'double_blockout' : 'front_blockout';
+    const printOption = config.print || defaultPrint;
     if (printOption !== 'no_print') {
-      const exactSTFSizes = [
-        { w: 100, h: 100, id: 17954 }, { w: 100, h: 200, id: 17956 }, { w: 100, h: 250, id: 17957 },
-        { w: 150, h: 200, id: 17960 }, { w: 150, h: 250, id: 17961 }, { w: 200, h: 250, id: 17962 },
-        { w: 200, h: 200, id: 17963 }, { w: 300, h: 200, id: 17964 }, { w: 300, h: 250, id: 17965 },
-        { w: 400, h: 200, id: 17966 }, { w: 400, h: 250, id: 17967 }, { w: 500, h: 200, id: 17968 },
-        { w: 500, h: 250, id: 17969 }, { w: 50, h: 50, id: 17972 }, { w: 600, h: 250, id: 17974 },
-        { w: 70, h: 100, id: 17975 }
-      ];
+      if (sys === 'DTF') {
+        const exactDTFSizes = [
+          { w: 100, h: 100, id: 14347 }, { w: 100, h: 200, id: 14830 }, { w: 100, h: 250, id: 14828 },
+          { w: 150, h: 200, id: 14827 }, { w: 150, h: 210, id: 19025 }, { w: 150, h: 250, id: 14826 },
+          { w: 160, h: 200, id: 19873 }, { w: 200, h: 200, id: 14825 }, { w: 200, h: 250, id: 14823 },
+          { w: 300, h: 200, id: 14822 }, { w: 300, h: 250, id: 14821 }, { w: 400, h: 200, id: 14820 },
+          { w: 400, h: 250, id: 14819 }, { w: 500, h: 200, id: 14818 }, { w: 500, h: 250, id: 14817 },
+          { w: 600, h: 200, id: 14816 }, { w: 600, h: 250, id: 14815 }, { w: 80, h: 200, id: 14564 },
+          { w: 50, h: 100, id: 14562 }
+        ];
 
-      // Szukamy idealnego odwzorowania w bazie ustandaryzowanej
-      let match = exactSTFSizes.find(function (s) {
-        return (s.w === W && s.h === H) || (s.w === H && s.h === W);
-      });
+        let match = exactDTFSizes.find(function (s) {
+          return (s.w === W && s.h === H) || (s.w === H && s.h === W);
+        });
 
-      let pName = "";
-      let pId = null;
-      let pDesc = "";
+        let pName = "";
+        let pId = null;
+        let pDesc = "";
 
-      if (match) {
-        pName = `Wydruk adFrame STF/STFL ${match.w}x${match.h}`;
-        pId = match.id;
-      } else {
-        // Dobór jednej z 3 pozycji ogólnych na podstawie dłuższego boku ramy
-        let longerDim = Math.max(W, H);
-        if (longerDim <= 100) {
-          pName = "Wydruk adFrame STF/STFL (do 1mb/medium250)";
-          pId = 17953;
-        } else if (longerDim <= 300) {
-          pName = "Wydruk adFrame STF/STFL (do 3mb/medium250)";
-          pId = 17980;
+        if (match) {
+          pName = `Wydruk adFrame DTF ${match.w}x${match.h}`;
+          pId = match.id;
         } else {
-          pName = "Wydruk adFrame STF/STFL (pow. 3mb/medium250)";
-          pId = 17978;
+          let longerDim = Math.max(W, H);
+          if (longerDim <= 100) {
+            pName = "Wydruk adFrame DTF (do 1mb/medium250)";
+            pId = 10546;
+          } else if (longerDim <= 300) {
+            pName = "Wydruk adFrame DTF (do 3mb/medium250)";
+            pId = 16423;
+          } else {
+            pName = "Wydruk adFrame DTF (pow. 3mb/medium250)";
+            pId = 16424;
+          }
+          pDesc = `${W}x${H} cm`;
         }
-        pDesc = `${W}x${H} cm`; // Wymiar wklejany automatycznie do opisu dokumentu
-      }
 
-      bomItems.push({ name: pName, qty: 1, unit: 'szt', intranetId: pId, description: pDesc });
+        bomItems.push({ name: pName, qty: 2, unit: 'szt', intranetId: pId, description: pDesc });
+      } else {
+        const exactSTFSizes = [
+          { w: 100, h: 100, id: 17954 }, { w: 100, h: 200, id: 17956 }, { w: 100, h: 250, id: 17957 },
+          { w: 150, h: 200, id: 17960 }, { w: 150, h: 250, id: 17961 }, { w: 200, h: 250, id: 17962 },
+          { w: 200, h: 200, id: 17963 }, { w: 300, h: 200, id: 17964 }, { w: 300, h: 250, id: 17965 },
+          { w: 400, h: 200, id: 17966 }, { w: 400, h: 250, id: 17967 }, { w: 500, h: 200, id: 17968 },
+          { w: 500, h: 250, id: 17969 }, { w: 50, h: 50, id: 17972 }, { w: 600, h: 250, id: 17974 },
+          { w: 70, h: 100, id: 17975 }
+        ];
+
+        let match = exactSTFSizes.find(function (s) {
+          return (s.w === W && s.h === H) || (s.w === H && s.h === W);
+        });
+
+        let pName = "";
+        let pId = null;
+        let pDesc = "";
+
+        if (match) {
+          pName = `Wydruk adFrame STF/STFL ${match.w}x${match.h}`;
+          pId = match.id;
+        } else {
+          let longerDim = Math.max(W, H);
+          if (longerDim <= 100) {
+            pName = "Wydruk adFrame STF/STFL (do 1mb/medium250)";
+            pId = 17953;
+          } else if (longerDim <= 300) {
+            pName = "Wydruk adFrame STF/STFL (do 3mb/medium250)";
+            pId = 17980;
+          } else {
+            pName = "Wydruk adFrame STF/STFL (pow. 3mb/medium250)";
+            pId = 17978;
+          }
+          pDesc = `${W}x${H} cm`;
+        }
+
+        bomItems.push({ name: pName, qty: 1, unit: 'szt', intranetId: pId, description: pDesc });
+      }
     }
 
     // 9. Koszyk manualny (Dopłaty handlowców)
@@ -6024,7 +6090,7 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
     let priceEUR = 0;
     let hasNoPrice = false;
 
-    const parentNames = ['adFrame STF', 'adFrame LMD', 'adFrame LMS', 'adFrame LMSM', 'adFrame DTF'];
+    const parentNames = ['adFrame STF', 'adFrame LMD', 'adFrame LMS', 'adFrame LMSM', 'adFrame DTF', 'adFrame STFL'];
     if (item.forceZeroPrice || parentNames.includes(item.name)) {
       item.plnPrice = 0;
       item.plnMargin = 0;

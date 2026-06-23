@@ -956,7 +956,14 @@ function updateWallEmissive() {
         let mats = Array.isArray(child.material) ? child.material : [child.material];
 
         mats.forEach(mat => {
-          if (mat.map) { // Świecą tylko te strony, które mają nałożoną grafikę!
+          if (mat.name === 'led_print') {
+            mat.emissive = new THREE.Color(0xffffff);
+            mat.emissiveIntensity = isNightMode ? 1.2 : 0.8;
+            if (mat.map && !mat.emissiveMap) {
+              mat.emissiveMap = mat.map;
+            }
+            mat.needsUpdate = true;
+          } else if (mat.map) { // Świecą tylko te strony, które mają nałożoną grafikę!
             if (isNightMode) {
               mat.emissive = new THREE.Color(0xffffff);
               mat.emissiveIntensity = 0.45;
@@ -1038,7 +1045,7 @@ function drawKasetonScene() {
     return drawCTFScene(config);
   }
 
-  const pD = (sys === 'LMS') ? 12.0 : (sys === 'LMSM' ? 6.5 : 14.0);
+  const pD = (sys === 'LMS') ? 12.0 : (sys === 'LMSM' ? 6.5 : (sys === 'DTF' ? 4.5 : (sys === 'STF' ? 2.6 : (sys === 'STFL' ? 1.6 : 14.0))));
 
   // 🟢 TUTAJ: Resetujemy licznik LED przy każdym nowym renderowaniu sceny
   window.kasetonLedSummary = {};
@@ -1079,16 +1086,23 @@ function drawKasetonScene() {
       if (isBlockout) {
         matParams.emissive = new THREE.Color(0x000000);
         matParams.emissiveIntensity = 0.0;
+        matParams.name = 'blockout_print';
       } else {
-        // Softer, richer back-light that does not overexpose colors
-        matParams.emissive = new THREE.Color(0x282828);
-        matParams.emissiveIntensity = 1.0;
+        // Efekt świecenia bez utraty żywości kolorów
+        matParams.emissive = new THREE.Color(0xffffff);
+        matParams.emissiveIntensity = 0.8;
+        matParams.name = 'led_print';
       }
+    } else {
+      matParams.name = 'standard_print';
     }
     if (textureUrl) {
       const tex = new THREE.TextureLoader().load(textureUrl);
       tex.encoding = THREE.sRGBEncoding;
       matParams.map = tex;
+      if (isLedSys && !isBlockout) {
+        matParams.emissiveMap = tex;
+      }
     }
     return new THREE.MeshStandardMaterial(matParams);
   }
@@ -1159,10 +1173,13 @@ function drawKasetonScene() {
     return geom;
   }
 
-  // 3. GENERATOR PROFILU - WYBOR SYSTEMU (LMD vs LMS vs LMSM)
+  // 3. GENERATOR PROFILU - WYBOR SYSTEMU (LMD vs LMS vs LMSM vs STF vs STFL vs DTF)
   function createProfileGroup(L) {
     if (sys === 'LMSM') return createProfileGroupLMSM(L);
     if (sys === 'LMS') return createProfileGroupLMS(L);
+    if (sys === 'STF') return createProfileGroupSTF(L);
+    if (sys === 'STFL') return createProfileGroupSTFL(L);
+    if (sys === 'DTF') return createProfileGroupDTF(L);
     return createProfileGroupLMD(L);
   }
 
@@ -1273,6 +1290,76 @@ function drawKasetonScene() {
     });
 
     return { group: lmsGroup };
+  }
+
+  // 3c. PROFIL STF (26mm głębokości, jednostronny płaski slim)
+  // Prostokątny przekrój o szerokości 4.0cm z jednym rowkiem (t=0.8) na frontowej krawędzi (z = -1.3 do -0.9)
+  function createProfileGroupSTF(L) {
+    const group = new THREE.Group();
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x444444 });
+    // Frontowy rowek (cienki kołnierz)
+    const frontGeom = createMiteredSegmentGeometry(L, -1.3, -0.9, 0.8);
+    const frontMesh = new THREE.Mesh(frontGeom, aluMat);
+    group.add(frontMesh);
+    // Korpus główny ramy
+    const bodyGeom = createMiteredSegmentGeometry(L, -0.9, 1.3, 4.0);
+    const bodyMesh = new THREE.Mesh(bodyGeom, aluMat);
+    group.add(bodyMesh);
+
+    [frontGeom, bodyGeom].forEach(g => {
+      const edges = new THREE.EdgesGeometry(g);
+      const line = new THREE.LineSegments(edges, edgeMat);
+      group.add(line);
+    });
+    return { group };
+  }
+
+  // 3d. PROFIL STFL (16mm głębokości, jednostronny płaski extra slim)
+  // Prostokątny przekrój o szerokości 4.0cm z jednym rowkiem (t=0.8) na frontowej krawędzi (z = -0.8 do -0.5)
+  function createProfileGroupSTFL(L) {
+    const group = new THREE.Group();
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x444444 });
+    // Frontowy rowek (cienki kołnierz)
+    const frontGeom = createMiteredSegmentGeometry(L, -0.8, -0.5, 0.8);
+    const frontMesh = new THREE.Mesh(frontGeom, aluMat);
+    group.add(frontMesh);
+    // Korpus główny ramy
+    const bodyGeom = createMiteredSegmentGeometry(L, -0.5, 0.8, 4.0);
+    const bodyMesh = new THREE.Mesh(bodyGeom, aluMat);
+    group.add(bodyMesh);
+
+    [frontGeom, bodyGeom].forEach(g => {
+      const edges = new THREE.EdgesGeometry(g);
+      const line = new THREE.LineSegments(edges, edgeMat);
+      group.add(line);
+    });
+    return { group };
+  }
+
+  // 3e. PROFIL DTF (45mm głębokości, obustronny płaski slim)
+  // Prostokątny przekrój o szerokości 4.0cm z rowkami po obu stronach (z = -2.25 do -1.85 oraz z = 1.85 do 2.25)
+  function createProfileGroupDTF(L) {
+    const group = new THREE.Group();
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x444444 });
+    // Frontowy rowek (cienki kołnierz)
+    const frontGeom = createMiteredSegmentGeometry(L, -2.25, -1.85, 0.8);
+    const frontMesh = new THREE.Mesh(frontGeom, aluMat);
+    group.add(frontMesh);
+    // Korpus główny
+    const bodyGeom = createMiteredSegmentGeometry(L, -1.85, 1.85, 4.0);
+    const bodyMesh = new THREE.Mesh(bodyGeom, aluMat);
+    group.add(bodyMesh);
+    // Tylny rowek (cienki kołnierz)
+    const backGeom = createMiteredSegmentGeometry(L, 1.85, 2.25, 0.8);
+    const backMesh = new THREE.Mesh(backGeom, aluMat);
+    group.add(backMesh);
+
+    [frontGeom, bodyGeom, backGeom].forEach(g => {
+      const edges = new THREE.EdgesGeometry(g);
+      const line = new THREE.LineSegments(edges, edgeMat);
+      group.add(line);
+    });
+    return { group };
   }
 
   // 4. STRIP PACKING ALGORITHMS FOR LEDS
@@ -1447,8 +1534,8 @@ function drawKasetonScene() {
       });
     });
   }
-  // Globalna wysokość/pozycja na podłodze (suspended = +100cm)
-  const elevY = config.usage === 'suspended' ? 100 : 0;
+  // Globalna wysokość/pozycja na podłodze (suspended = +100cm, wall = +70cm)
+  const elevY = config.usage === 'suspended' ? 100 : (config.usage === 'wall' ? 70 : 0);
 
   const kGroup = new THREE.Group();
   kGroup.userData = { isKaseton: true };
@@ -1631,11 +1718,28 @@ function drawKasetonScene() {
   const cutY = [];
   for (let i = 1; i <= numCutsH; i++) cutY.push(elevY + (H / numSegmentsH) * i);
 
+  let supportThickness = 1.5;
+  let supportZ = 0;
+  if (sys === 'LMS') {
+    supportZ = -3.5;
+  } else if (sys === 'LMSM') {
+    supportZ = -0.875;
+  } else if (sys === 'STFL') {
+    supportThickness = 0.6;
+    supportZ = 0.5;
+  } else if (sys === 'STF') {
+    supportThickness = 1.2;
+    supportZ = 0.7;
+  } else if (sys === 'DTF') {
+    supportThickness = 1.5;
+    supportZ = 0;
+  }
+
   // Vertical supports (continuous)
   cutX.forEach(cx => {
-    const vGeom = new THREE.BoxGeometry(5, H - 6.4, 1.5);
+    const vGeom = new THREE.BoxGeometry(5, H - 6.4, supportThickness);
     const vMesh = new THREE.Mesh(vGeom, supportMat);
-    vMesh.position.set(cx, elevY + H / 2, (sys === 'LMS' ? -3.5 : (sys === 'LMSM' ? -0.875 : 0)));
+    vMesh.position.set(cx, elevY + H / 2, supportZ);
     kGroup.add(vMesh);
   });
 
@@ -1649,9 +1753,9 @@ function drawKasetonScene() {
       const left = xBounds[i];
       const right = xBounds[i + 1];
       if (right > left) {
-        const hGeom = new THREE.BoxGeometry(right - left, 5, 1.5);
+        const hGeom = new THREE.BoxGeometry(right - left, 5, supportThickness);
         const hMesh = new THREE.Mesh(hGeom, supportMat);
-        hMesh.position.set((left + right) / 2, cy, (sys === 'LMS' ? -3.5 : (sys === 'LMSM' ? -0.875 : 0)));
+        hMesh.position.set((left + right) / 2, cy, supportZ);
         kGroup.add(hMesh);
       }
     }
@@ -1667,8 +1771,25 @@ function drawKasetonScene() {
 
   const isLMS = (sys === 'LMS');
   const isLMSM = (sys === 'LMSM');
-  const zPos180 = isLMS ? [-5.5] : (isLMSM ? [-2.5, 2.5] : [-5.4, 5.4]);
-  const connZWidth = isLMS ? 0.8 : 1.5;
+  
+  let zPos180 = [-5.4, 5.4];
+  let connZWidth = 1.5;
+  if (isLMS) {
+    zPos180 = [-5.5];
+    connZWidth = 0.8;
+  } else if (isLMSM) {
+    zPos180 = [-2.5, 2.5];
+    connZWidth = 1.5;
+  } else if (sys === 'DTF') {
+    zPos180 = [0];
+    connZWidth = 1.5;
+  } else if (sys === 'STF') {
+    zPos180 = [0.2];
+    connZWidth = 1.2;
+  } else if (sys === 'STFL') {
+    zPos180 = [0.15];
+    connZWidth = 0.8;
+  }
 
   // Cięcia pionowe (cutX) przecinają profile poziome (dół i góra)
   cutX.forEach(cx => {
@@ -1736,15 +1857,27 @@ function drawKasetonScene() {
     ];
 
     cornerPositions.forEach(corner => {
-      const zPositions = (sys === 'LMSM') ? [-2.5, 2.5] : [-5.4, 5.4];
+      let zPositions = [-5.4, 5.4];
+      let armWidthZ = 1.5;
+      if (sys === 'LMSM') {
+        zPositions = [-2.5, 2.5];
+      } else if (sys === 'DTF') {
+        zPositions = [0];
+      } else if (sys === 'STF') {
+        zPositions = [0.2];
+      } else if (sys === 'STFL') {
+        zPositions = [0.15];
+        armWidthZ = 0.8;
+      }
+
       zPositions.forEach(zPos => {
         const cGroup = new THREE.Group();
-        // Horizontal arm (10cm length in X, 0.5cm height in Y, 1.5cm width in Z)
-        const hArm = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, 1.5), cornerMat);
+        // Horizontal arm (10cm length in X, 0.5cm height in Y)
+        const hArm = new THREE.Mesh(new THREE.BoxGeometry(10, 0.5, armWidthZ), cornerMat);
         hArm.position.set(corner.dx * 5, corner.dy * 0.4, 0);
         cGroup.add(hArm);
-        // Vertical arm (0.5cm width in X, 10cm length in Y, 1.5cm width in Z)
-        const vArm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 10, 1.5), cornerMat);
+        // Vertical arm (0.5cm width in X, 10cm length in Y)
+        const vArm = new THREE.Mesh(new THREE.BoxGeometry(0.5, 10, armWidthZ), cornerMat);
         vArm.position.set(corner.dx * 0.4, corner.dy * 5, 0);
         cGroup.add(vArm);
         cGroup.position.set(corner.x, corner.y, zPos);
@@ -1759,8 +1892,8 @@ function drawKasetonScene() {
   window.currentKasetonConfig.totalPowerW = totalPowerW;
 
   // 7.5. GENEROWANIE STÓP (dla konfiguracji wolnostojącej)
-  if (config.usage === 'freestanding') {
-    const footGeom = new THREE.BoxGeometry(8, 2, 40);
+  if (config.usage === 'freestanding' || config.usage === 'freestanding_tri') {
+    const isTriFoot = (config.usage === 'freestanding_tri' && sys === 'DTF');
     const footXPositions = [-W / 2 + 15, W / 2 - 15];
     if (numCutsW > 0) {
       cutX.forEach(cx => footXPositions.push(cx));
@@ -1776,11 +1909,81 @@ function drawKasetonScene() {
       }
     });
 
-    uniqueX.forEach(x => {
-      const footMesh = new THREE.Mesh(footGeom, aluMat);
-      footMesh.position.set(x, elevY - 1, 0); // Sits at Y range [-2, 0] under the kaseton bottom profile at Y=0
-      kGroup.add(footMesh);
-    });
+    if (isTriFoot) {
+      // Wymodelowanie stopy trójkątnej o szerokości 50cm i wysokości 25cm z wycięciami i łukiem
+      const shape = new THREE.Shape();
+      shape.moveTo(-25, 0);
+      shape.lineTo(-24, 0.5);
+      shape.lineTo(-2.5, 23);
+      shape.lineTo(-2.5, 25);
+      shape.lineTo(2.5, 25);
+      shape.lineTo(2.5, 23);
+      shape.lineTo(24, 0.5);
+      shape.lineTo(25, 0);
+      shape.lineTo(18, 0);
+      shape.quadraticCurveTo(0, 8, -18, 0);
+      shape.closePath();
+
+      // Lewy i prawy otwór trójkątny o zaokrąglonych brzegach, oddalone od zewnętrznej krawędzi o ok. 30mm
+      const hole1 = new THREE.Path();
+      hole1.moveTo(-14.7, 5.2);
+      hole1.quadraticCurveTo(-16, 4.5, -14.9, 5.6);
+      hole1.lineTo(-5.1, 15.4);
+      hole1.quadraticCurveTo(-4, 16.5, -4.0, 14.5);
+      hole1.lineTo(-4.0, 11.5);
+      hole1.quadraticCurveTo(-4, 10.5, -5.0, 10.0);
+      hole1.closePath();
+      shape.holes.push(hole1);
+
+      const hole2 = new THREE.Path();
+      hole2.moveTo(14.7, 5.2);
+      hole2.quadraticCurveTo(16, 4.5, 14.9, 5.6);
+      hole2.lineTo(5.1, 15.4);
+      hole2.quadraticCurveTo(4, 16.5, 4.0, 14.5);
+      hole2.lineTo(4.0, 11.5);
+      hole2.quadraticCurveTo(4, 10.5, 5.0, 10.0);
+      hole2.closePath();
+      shape.holes.push(hole2);
+
+      const extrudeSettings = { depth: 0.8, bevelEnabled: true, bevelSegments: 2, steps: 1, bevelSize: 0.05, bevelThickness: 0.05 };
+      const triGeom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+      triGeom.center(); // Centrowanie geometrii
+
+      // Stopy trójkątne są montowane po bokach bocznych profili (X = -W/2 oraz W/2), zawsze dokładnie 2 sztuki.
+      const dtfFootX = [-W / 2 - 0.4, W / 2 + 0.4];
+      dtfFootX.forEach(x => {
+        const footMesh = new THREE.Mesh(triGeom, aluMat);
+        // Obrót wokół Y o 90 stopni, aby stopa była prostopadle do kasetonu
+        footMesh.rotation.y = Math.PI / 2;
+        // geom.center() środkuje Y (wysokość 25) w 12.5, więc stawiamy na elevY + 12.5
+        footMesh.position.set(x, elevY + 12.5, 0);
+        kGroup.add(footMesh);
+
+        // Krawędzie
+        const edges = new THREE.EdgesGeometry(triGeom);
+        const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x444444 }));
+        footMesh.add(line);
+      });
+    } else {
+      // Dla DTF z płaskimi stopami również montujemy po bokach bocznych profili, zawsze 2 sztuki.
+      if (sys === 'DTF') {
+        const dtfFlatFootX = [-W / 2 - 4, W / 2 + 4];
+        const footGeom = new THREE.BoxGeometry(8, 2, 40);
+        dtfFlatFootX.forEach(x => {
+          const footMesh = new THREE.Mesh(footGeom, aluMat);
+          footMesh.position.set(x, elevY - 1, 0);
+          kGroup.add(footMesh);
+        });
+      } else {
+        // Pozostałe systemy korzystają ze starej logiki montażu na profilu dolnym
+        const footGeom = new THREE.BoxGeometry(8, 2, 40);
+        uniqueX.forEach(x => {
+          const footMesh = new THREE.Mesh(footGeom, aluMat);
+          footMesh.position.set(x, elevY - 1, 0); // Sits at Y range [-2, 0] under the kaseton bottom profile at Y=0
+          kGroup.add(footMesh);
+        });
+      }
+    }
   }
 
   // 7.6. GENEROWANIE PODWIESZENIA (dla konfiguracji suspended)
@@ -1849,6 +2052,19 @@ function drawKasetonScene() {
     });
 
     window.currentKasetonConfig.numSuspensionSets = uniqueEyelets.length;
+
+    // Wieszaki (metalowe płytki z tyłu kasetonu)
+    if (sys === 'STF' || sys === 'STFL' || sys === 'DTF') {
+      const plateGeom = new THREE.BoxGeometry(4, 6, 0.1);
+      const plateMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.8, roughness: 0.2 });
+      const leftPlate = new THREE.Mesh(plateGeom, plateMat);
+      leftPlate.position.set(-W / 2 + 5, elevY + H - 3, pD / 2 + 0.05);
+      kGroup.add(leftPlate);
+
+      const rightPlate = new THREE.Mesh(plateGeom, plateMat);
+      rightPlate.position.set(W / 2 - 5, elevY + H - 3, pD / 2 + 0.05);
+      kGroup.add(rightPlate);
+    }
   }
 
   // 8. GENEROWANIE TKANINY REKLAMOWEJ (WYDRUKI)
@@ -1857,16 +2073,16 @@ function drawKasetonScene() {
     const printW = W - 0.4;
     const printH = H - 0.4;
     const planeGeom = new THREE.PlaneGeometry(printW, printH);
-    const pD = (sys === 'LMS') ? 12.0 : (sys === 'LMSM' ? 6.5 : 14.0);
+    const pD = (sys === 'LMS') ? 12.0 : (sys === 'LMSM' ? 6.5 : (sys === 'DTF' ? 4.5 : (sys === 'STF' ? 2.6 : (sys === 'STFL' ? 1.6 : 14.0))));
 
 
     // Przód
     const hasFrontMesh = (sys === 'LMS')
       ? ['backlit_white', 'backlit_blockout'].includes(printOption)
-      : ['single', 'double', 'front_blockout', 'front_blockout_2'].includes(printOption);
+      : ['single', 'double', 'front_blockout', 'front_blockout_2', 'double_blockout'].includes(printOption);
 
     if (hasFrontMesh) {
-      const isFrontBlockout = false;
+      const isFrontBlockout = (printOption === 'front_blockout' || printOption === 'double_blockout');
       const frontMat = getPrintMaterial(config.textureFront, isFrontBlockout);
       const frontPrint = new THREE.Mesh(planeGeom, frontMat);
       frontPrint.position.set(0, elevY + H / 2, -pD / 2 + 0.2);
@@ -1878,12 +2094,12 @@ function drawKasetonScene() {
     // Tył
     const hasBackMesh = (sys === 'LMS')
       ? ['backlit_white', 'backlit_blockout', 'back_white'].includes(printOption)
-      : ['single', 'double', 'front_blockout', 'front_blockout_2', 'back_blockout'].includes(printOption);
+      : ['single', 'double', 'front_blockout', 'front_blockout_2', 'back_blockout', 'double_blockout'].includes(printOption);
 
     if (hasBackMesh) {
       const isBackBlockout = (sys === 'LMS')
         ? ['backlit_blockout'].includes(printOption)
-        : ['single', 'front_blockout', 'front_blockout_2', 'back_blockout'].includes(printOption);
+        : ['single', 'front_blockout', 'front_blockout_2', 'back_blockout', 'double_blockout'].includes(printOption);
 
       const backMat = getPrintMaterial(config.textureBack, isBackBlockout);
       const backPrint = new THREE.Mesh(planeGeom, backMat);
@@ -2278,6 +2494,362 @@ function drawKasetonScene() {
     const pH2 = new THREE.Vector3(W / 2, elevY + H, 0);
     kGroup.add(addDimension3D(pH1, pH2, H + ' cm', new THREE.Vector3(25, 0, 0), 1.3));
   }
+
+  if (config.usage === 'wall') {
+    const wallGroup = new THREE.Group();
+    wallGroup.name = "WallGroup";
+    wallGroup.position.z = 0.02; // Przesunięcie ściany o 0.2mm w celu uniknięcia kolizji i Z-fighting z ramą kasetonu
+
+    // Drzwi szklane dwyskrzydłowe o wysokości 250 cm
+    const doorW = 120; // Dwuskrzydłowe, łącznie 120 cm szerokości (skrzydło 60 cm)
+    const doorLeafW = doorW / 2;
+    const doorH = 250;
+    const doorD = 2;
+    
+    // Szara ściana za kasetonem o wysokości co najmniej 500 cm i minimum 300 cm po bokach drzwi
+    const wallH = Math.max(500, (elevY + H) + 50);
+    const wallD = 10; // grubość ściany 10 cm
+    // Generator proceduralnej tekstury tynku/gipsu o wysokim realizmie (bump mapy)
+    const createPlasterTexture = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      
+      // Neutralne średnio-szare tło jako mapa wysokości
+      ctx.fillStyle = '#808080';
+      ctx.fillRect(0, 0, 512, 512);
+      
+      // Generowanie drobnoziarnistego szumu tynku
+      const imgData = ctx.getImageData(0, 0, 512, 512);
+      const data = imgData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        let noise = (Math.random() - 0.5) * 14;
+        data[i]     += noise;
+        data[i + 1] += noise;
+        data[i + 2] += noise;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      
+      // Dodawanie większych, nieregularnych plam tynku dla efektu organiczności
+      for (let i = 0; i < 45; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const r = 8 + Math.random() * 25;
+        const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+        const alpha = 0.04 + Math.random() * 0.05;
+        const colorVal = Math.random() > 0.5 ? 255 : 0;
+        grad.addColorStop(0, `rgba(${colorVal},${colorVal},${colorVal},${alpha})`);
+        grad.addColorStop(1, 'rgba(128,128,128,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(6, 6);
+      return texture;
+    };
+
+    const plasterTex = createPlasterTexture();
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0xdddddd, // Elegancki, matowy, lekko ciepły jasnoszary/off-white kolor ściany
+      roughness: 0.95,
+      metalness: 0.0,
+      bumpMap: plasterTex,
+      bumpScale: 0.04,
+      name: 'wall_plaster'
+    });
+    
+    // Budujemy ścianę z wycięciami na drzwi (struktura architektoniczna)
+    // 1. Środkowy segment ściany (między drzwiami lewymi i prawymi)
+    const middleWallW = W + 300; // 150 cm po każdej stronie kasetonu do drzwi
+    const middleWallGeom = new THREE.BoxGeometry(middleWallW, wallH, wallD);
+    const middleWallMesh = new THREE.Mesh(middleWallGeom, wallMat);
+    middleWallMesh.position.set(0, wallH / 2, pD / 2 + wallD / 2);
+    middleWallMesh.castShadow = true;
+    middleWallMesh.receiveShadow = true;
+    wallGroup.add(middleWallMesh);
+
+    // 2. Nadproża (lintels) i ściany boczne za drzwiami (przedłużone o 10m = 1300 cm)
+    const sideWallW = 1300;
+    const lintelH = wallH - doorH;
+    
+    const sideWallGeom = new THREE.BoxGeometry(sideWallW, wallH, wallD);
+    const lintelGeom = new THREE.BoxGeometry(doorW, lintelH, wallD);
+    
+    // Lewe skrzydło ścienne (boczne)
+    const leftSideWall = new THREE.Mesh(sideWallGeom, wallMat);
+    leftSideWall.position.set(-middleWallW / 2 - doorW - sideWallW / 2, wallH / 2, pD / 2 + wallD / 2);
+    leftSideWall.castShadow = true;
+    leftSideWall.receiveShadow = true;
+    wallGroup.add(leftSideWall);
+    
+    // Lewe nadproże (nad lewymi drzwiami)
+    const leftLintel = new THREE.Mesh(lintelGeom, wallMat);
+    leftLintel.position.set(-middleWallW / 2 - doorW / 2, doorH + lintelH / 2, pD / 2 + wallD / 2);
+    leftLintel.castShadow = true;
+    leftLintel.receiveShadow = true;
+    wallGroup.add(leftLintel);
+    
+    // Prawe skrzydło ścienne (boczne)
+    const rightSideWall = new THREE.Mesh(sideWallGeom, wallMat);
+    rightSideWall.position.set(middleWallW / 2 + doorW + sideWallW / 2, wallH / 2, pD / 2 + wallD / 2);
+    rightSideWall.castShadow = true;
+    rightSideWall.receiveShadow = true;
+    wallGroup.add(rightSideWall);
+    
+    // Prawe nadproże (nad prawymi drzwiami)
+    const rightLintel = new THREE.Mesh(lintelGeom, wallMat);
+    rightLintel.position.set(middleWallW / 2 + doorW / 2, doorH + lintelH / 2, pD / 2 + wallD / 2);
+    rightLintel.castShadow = true;
+    rightLintel.receiveShadow = true;
+    wallGroup.add(rightLintel);
+
+    const glassMat = new THREE.MeshPhysicalMaterial({
+      color: 0xe0f7fa,
+      transparent: true,
+      opacity: 1.0,
+      transmission: 0.9,
+      roughness: 0.05,
+      metalness: 0.1,
+      ior: 1.5,
+      thickness: doorD,
+      depthWrite: false, // Poprawne renderowanie obiektów przezroczystych za szkłem
+      name: 'glass_door'
+    });
+    
+    const handleMat = new THREE.MeshStandardMaterial({
+      color: 0x111111,
+      roughness: 0.2,
+      metalness: 0.9
+    });
+
+    const doorLeafGeom = new THREE.BoxGeometry(doorLeafW, doorH, doorD);
+    const frameGeom = new THREE.BoxGeometry(doorW + 2, doorH + 2, doorD + 0.4);
+    const frameEdges = new THREE.EdgesGeometry(frameGeom);
+    const frameLineMat = new THREE.LineBasicMaterial({ color: 0x222222, linewidth: 2 });
+    
+    // Pionowe uchwyty drzwi: rurka 80 cm, średnica 0.8 cm (promień 0.4)
+    const handleBarGeom = new THREE.CylinderGeometry(0.4, 0.4, 80, 16);
+    const handleSupportGeom = new THREE.CylinderGeometry(0.3, 0.3, 1.5, 8);
+
+    const setupDoubleDoor = (doorCenterX) => {
+      // Skrzydło lewe
+      const leafL = new THREE.Mesh(doorLeafGeom, glassMat);
+      leafL.position.set(doorCenterX - doorLeafW / 2, doorH / 2, pD / 2 + doorD / 2);
+      wallGroup.add(leafL);
+      
+      // Skrzydło prawe
+      const leafR = new THREE.Mesh(doorLeafGeom, glassMat);
+      leafR.position.set(doorCenterX + doorLeafW / 2, doorH / 2, pD / 2 + doorD / 2);
+      wallGroup.add(leafR);
+      
+      // Ościeżnica
+      const frameLine = new THREE.LineSegments(frameEdges, frameLineMat);
+      frameLine.position.set(doorCenterX, doorH / 2, pD / 2 + doorD / 2);
+      wallGroup.add(frameLine);
+      
+      // Dodajemy pionowe uchwyty przy krawędziach styku skrzydeł (X = doorCenterX)
+      // Uchwyt dla lewego skrzydła (przesunięty o 3 cm w lewo od styku)
+      const handleLX = doorCenterX - 3;
+      
+      // Uchwyty od strony frontowej (pokój)
+      const hBarL_F = new THREE.Mesh(handleBarGeom, handleMat);
+      hBarL_F.position.set(handleLX, 120, pD / 2 + doorD + 1.5);
+      wallGroup.add(hBarL_F);
+      
+      const hSupL1_F = new THREE.Mesh(handleSupportGeom, handleMat);
+      hSupL1_F.position.set(handleLX, 90, pD / 2 + doorD + 0.75);
+      hSupL1_F.rotation.x = Math.PI / 2;
+      wallGroup.add(hSupL1_F);
+      
+      const hSupL2_F = hSupL1_F.clone();
+      hSupL2_F.position.y = 150;
+      wallGroup.add(hSupL2_F);
+
+      // Uchwyty od strony tylnej (zewnętrznej)
+      const hBarL_B = new THREE.Mesh(handleBarGeom, handleMat);
+      hBarL_B.position.set(handleLX, 120, pD / 2 - 1.5);
+      wallGroup.add(hBarL_B);
+      
+      const hSupL1_B = new THREE.Mesh(handleSupportGeom, handleMat);
+      hSupL1_B.position.set(handleLX, 90, pD / 2 - 0.75);
+      hSupL1_B.rotation.x = -Math.PI / 2;
+      wallGroup.add(hSupL1_B);
+      
+      const hSupL2_B = hSupL1_B.clone();
+      hSupL2_B.position.y = 150;
+      wallGroup.add(hSupL2_B);
+
+      // Uchwyt dla prawego skrzydła (przesunięty o 3 cm w prawo od styku)
+      const handleRX = doorCenterX + 3;
+      
+      // Uchwyty od strony frontowej (pokój)
+      const hBarR_F = new THREE.Mesh(handleBarGeom, handleMat);
+      hBarR_F.position.set(handleRX, 120, pD / 2 + doorD + 1.5);
+      wallGroup.add(hBarR_F);
+      
+      const hSupR1_F = new THREE.Mesh(handleSupportGeom, handleMat);
+      hSupR1_F.position.set(handleRX, 90, pD / 2 + doorD + 0.75);
+      hSupR1_F.rotation.x = Math.PI / 2;
+      wallGroup.add(hSupR1_F);
+      
+      const hSupR2_F = hSupR1_F.clone();
+      hSupR2_F.position.y = 150;
+      wallGroup.add(hSupR2_F);
+
+      // Uchwyty od strony tylnej (zewnętrznej)
+      const hBarR_B = new THREE.Mesh(handleBarGeom, handleMat);
+      hBarR_B.position.set(handleRX, 120, pD / 2 - 1.5);
+      wallGroup.add(hBarR_B);
+      
+      const hSupR1_B = new THREE.Mesh(handleSupportGeom, handleMat);
+      hSupR1_B.position.set(handleRX, 90, pD / 2 - 0.75);
+      hSupR1_B.rotation.x = -Math.PI / 2;
+      wallGroup.add(hSupR1_B);
+      
+      const hSupR2_B = hSupR1_B.clone();
+      hSupR2_B.position.y = 150;
+      wallGroup.add(hSupR2_B);
+    };
+
+    // Generujemy lewy i prawy zestaw drzwi
+    setupDoubleDoor(-middleWallW / 2 - doorW / 2);
+    setupDoubleDoor(middleWallW / 2 + doorW / 2);
+
+    // Generator proceduralnej ciemniejszej tekstury drewna z horyzontalnymi słojami
+    const createWoodTexture = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      
+      // Bazowy ciemniejszy kolor drewna (np. orzech włoski / ciemny dąb)
+      ctx.fillStyle = '#664024';
+      ctx.fillRect(0, 0, 512, 512);
+      
+      // Rysowanie słojów drewna horyzontalnie (wzdłuż osi X)
+      for (let x = 0; x < 512; x += 3) {
+        let yOffset = Math.sin(x * 0.035) * 15 + Math.sin(x * 0.007) * 30;
+        yOffset += (Math.random() - 0.5) * 1.5;
+        
+        for (let y = -60; y < 572; y += 40) {
+          const py = y + yOffset;
+          ctx.strokeStyle = `rgba(50, 26, 8, ${0.12 + Math.random() * 0.16})`;
+          ctx.lineWidth = 1 + Math.random() * 1.5;
+          ctx.beginPath();
+          ctx.moveTo(x, py);
+          ctx.lineTo(x + 3, py + (Math.random() - 0.5) * 3);
+          ctx.stroke();
+        }
+      }
+      
+      // Dodawanie horyzontalnych sęków
+      for (let k = 0; k < 4; k++) {
+        const kx = Math.random() * 512;
+        const ky = Math.random() * 512;
+        const kr = 15 + Math.random() * 20;
+        
+        for (let r = kr; r > 3; r -= 3) {
+          ctx.strokeStyle = `rgba(40, 18, 2, ${0.06 + (1 - r/kr) * 0.22})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          // Horyzontalna elipsa (szeroka, spłaszczona w Y)
+          ctx.ellipse(kx, ky, r, r * 0.45, Math.PI / 16 + (Math.random() - 0.5) * 0.1, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+      
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      return texture;
+    };
+
+    const woodTex = createWoodTexture();
+    
+    // Tworzymy zestaw 10 materiałów z losowym przesunięciem tekstury wzdłuż osi X i Y
+    const woodMaterials = [];
+    for (let i = 0; i < 10; i++) {
+      const tex = woodTex.clone();
+      tex.offset.set(Math.random(), Math.random());
+      tex.needsUpdate = true;
+      const mat = new THREE.MeshStandardMaterial({
+        map: tex,
+        bumpMap: tex,
+        bumpScale: 0.02,
+        roughness: 0.88, // Matowe wykończenie
+        metalness: 0.04,
+        name: 'wood_plank_' + i
+      });
+      woodMaterials.push(mat);
+    }
+
+    const plankH = 20;  // Wysokość deski 20 cm
+    const plankL = 100; // Długość deski 100 cm
+    const plankD = 1.5; // Grubość deski 1.5 cm
+
+    // Proceduralne układanie desek w sposób cegiełkowy i przycinanie przy krawędziach
+    const buildPlanks = (xMin, xMax) => {
+      // Dwa rzędy desek: rząd 0 (Y=110 cm) i rząd 1 (Y=130 cm)
+      for (let row = 0; row < 2; row++) {
+        const yCenter = 110 + row * 20;
+        
+        // Przesunięcie cegiełkowe o połowę długości (50cm) dla górnego rzędu
+        const startXOffset = row === 1 ? -50 : 0;
+        
+        // Obliczamy zakres indeksów desek, które mogą zachodzić na [xMin, xMax]
+        const firstIdx = Math.floor((xMin - startXOffset) / plankL);
+        const lastIdx = Math.ceil((xMax - startXOffset) / plankL);
+        
+        for (let i = firstIdx; i <= lastIdx; i++) {
+          const plankStartX = startXOffset + i * plankL;
+          const plankEndX = plankStartX + plankL;
+          
+          // Przycięcie deski do obszaru ściany (np. przy ościeżnicy drzwi)
+          const finalStartX = Math.max(plankStartX, xMin);
+          const finalEndX = Math.min(plankEndX, xMax);
+          
+          if (finalEndX > finalStartX) {
+            const width = finalEndX - finalStartX;
+            const cx = finalStartX + width / 2;
+            
+            // BoxGeometry z dylatacjami 1mm po bokach i 2mm w pionie
+            const plankGeom = new THREE.BoxGeometry(width - 0.1, plankH - 0.2, plankD);
+            const plankMat = woodMaterials[Math.floor(Math.random() * woodMaterials.length)];
+            const plankMesh = new THREE.Mesh(plankGeom, plankMat);
+            
+            plankMesh.position.set(cx, yCenter, pD / 2 - plankD / 2);
+            plankMesh.castShadow = true;
+            plankMesh.receiveShadow = true;
+            wallGroup.add(plankMesh);
+          }
+        }
+      }
+    };
+
+    // Układamy deski na 4 segmentach solidnych ścian (omijając drzwi i światło ramy kasetonu)
+    // 1. Lewa ściana boczna
+    buildPlanks(-middleWallW / 2 - doorW - sideWallW, -middleWallW / 2 - doorW);
+    
+    // 2. Lewy środkowy segment (między drzwiami lewymi a kasetonem)
+    const midPanelW = 150;
+    buildPlanks(-W / 2 - midPanelW, -W / 2);
+    
+    // 3. Prawy środkowy segment (między kasetonem a drzwiami prawymi)
+    buildPlanks(W / 2, W / 2 + midPanelW);
+    
+    // 4. Prawa ściana boczna
+    buildPlanks(middleWallW / 2 + doorW, middleWallW / 2 + doorW + sideWallW);
+
+    kGroup.add(wallGroup);
+  }
+
+  kGroup.rotation.y = Math.PI;
 
   scene.add(kGroup);
   sceneObjects.push(kGroup);
@@ -3051,6 +3623,8 @@ function drawCTFScene(config) {
       kGroup.add(eye);
     });
   }
+
+  kGroup.rotation.y = Math.PI;
 
   scene.add(kGroup);
 
