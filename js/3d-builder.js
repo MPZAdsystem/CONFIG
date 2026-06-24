@@ -149,6 +149,22 @@ function addDimension3D(p1, p2, text, offsetVector, customScale = 1.0) {
 function applyTransform2D() {
   const layer = document.getElementById('drawingLayer');
   layer.style.transform = `translate(${viewPanX}px, ${viewPanY}px) scale(${viewScale})`;
+  
+  const stage = document.getElementById('stage');
+  if (stage) {
+    let sWidth = stage.clientWidth || window.innerWidth - 400;
+    let sHeight = stage.clientHeight || window.innerHeight;
+    const stageCenterStartX = sWidth / 2 - 100;
+    const stageCenterStartY = sHeight / 2 + 100;
+
+    let scaledGridSize100 = 100 * viewScale;
+    let scaledGridSize50 = 50 * viewScale;
+    let bgPosX = viewPanX + stageCenterStartX * viewScale;
+    let bgPosY = viewPanY + stageCenterStartY * viewScale;
+    
+    stage.style.backgroundSize = `${scaledGridSize100}px ${scaledGridSize100}px, ${scaledGridSize100}px ${scaledGridSize100}px, ${scaledGridSize50}px ${scaledGridSize50}px, ${scaledGridSize50}px ${scaledGridSize50}px`;
+    stage.style.backgroundPosition = `${bgPosX}px ${bgPosY}px, ${bgPosX}px ${bgPosY}px, ${bgPosX}px ${bgPosY}px, ${bgPosX}px ${bgPosY}px`;
+  }
 }
 
 function updateFloor() {
@@ -339,16 +355,30 @@ function createLeaderLine(startY, endY, zOffset = 0) {
 }
 
 function countCollisions(testPlan) {
-  let colls = 0; let x = 0, y = 0, angle = 0;
-  let walls = []; let pendingTurnItem = null;
+  const stage = document.getElementById('stage');
+  const sWidth = stage ? (stage.clientWidth || window.innerWidth - 400) : (window.innerWidth - 400);
+  const sHeight = stage ? (stage.clientHeight || window.innerHeight) : window.innerHeight;
+  const stageCenterStartX = sWidth / 2 - 100;
+  const stageCenterStartY = sHeight / 2 + 100;
+
+  let colls = 0;
+  let x = stageCenterStartX, y = stageCenterStartY, angle = 0;
+  let walls = [];
+  let pendingTurnItem = null;
+  let nodes = [{ x: x, y: y, angle: angle }];
 
   for (let item of testPlan) {
     if (item.type === 'turn') {
       item.prevAngle = angle; angle += item.angle; item.currAngle = angle;
       item.cornerX = x; item.cornerY = y; pendingTurnItem = item;
     } else if (item.type === 'jump') {
-      let targetNode = testPlan[item.target];
-      if (targetNode) { x = targetNode.x; y = targetNode.y; angle = targetNode.angle; }
+      if (item.x !== undefined && item.y !== undefined) {
+        x = item.x; y = item.y; angle = item.angle !== undefined ? item.angle : 0;
+        nodes.push({ x: x, y: y, angle: angle });
+      } else {
+        let targetNode = nodes[item.target];
+        if (targetNode) { x = targetNode.x; y = targetNode.y; angle = targetNode.angle; }
+      }
     } else if (item.type === 'wall') {
       let tempX = x, tempY = y;
       if (pendingTurnItem) {
@@ -358,19 +388,17 @@ function countCollisions(testPlan) {
         let sV1 = 0, sV2 = 0;
         let cType = pendingTurnItem.cornerType || 'wew-zew-1';
 
-        // 💎 BAZOWE WEKTORY (Zawsze poprawne dla naturalnego ciągu)
+        // 💎 BAZOWE WEKTORY
         if (cType === 'zew-zew') { sV1 = offset; sV2 = offset; }
         else if (cType === 'wew-zew-1') { sV1 = -offset; sV2 = offset; }
         else if (cType === 'wew-zew-2') { sV1 = offset; sV2 = -offset; }
 
-        // 💎 FIX "PUNKTU POCZĄTKOWEGO" (Twój strzał w dziesiątkę!)
         let isBranchingFromStart = false;
         for (let w of walls) {
           if (Math.abs(pendingTurnItem.cornerX - w.startX) < 1 && Math.abs(pendingTurnItem.cornerY - w.startY) < 1) {
             isBranchingFromStart = true; break;
           }
         }
-        // Jeśli rysujemy od początku ramy, odwracamy jej wektor ucieczki
         if (isBranchingFromStart) sV1 = -sV1;
 
         tempX = pendingTurnItem.cornerX + sV1 * Math.cos(rad1) + sV2 * Math.cos(rad2);
@@ -402,6 +430,7 @@ function countCollisions(testPlan) {
       }
       walls.push({ startX: tempX, startY: tempY, endX: nX, endY: nY, minX: minX1, maxX: maxX1, minY: minY1, maxY: maxY1 });
       x = nX; y = nY;
+      nodes.push({ x: x, y: y, angle: angle });
     }
   }
   return colls;
@@ -446,8 +475,12 @@ function addTurn(direction) {
     if (newAngle % 360 === 0) {
       plan.pop();
     } else if (Math.abs(newAngle) % 360 === 180) {
-      alert("Blokada: Nie możesz zawrócić o 180 stopni, aby nie nałożyć ścian na siebie!");
-      return;
+      if (currentSystem === 'kasetony_niestandardowe') {
+        alert("Blokada: Nie możesz zawrócić o 180 stopni, aby nie nałożyć ścian na siebie!");
+        return;
+      } else {
+        lastTurn.angle = newAngle;
+      }
     } else {
       lastTurn.angle = newAngle;
     }
@@ -463,11 +496,55 @@ function addTurn(direction) {
   render();
 }
 
+function checkWillGoBackwards() {
+  let currentAngle = 0;
+  let lastWallAngle = null;
+  let hasJumpSinceLastWall = false;
+  
+  for (let item of plan) {
+    if (item.type === 'wall') {
+      lastWallAngle = currentAngle;
+      hasJumpSinceLastWall = false;
+    } else if (item.type === 'turn') {
+      currentAngle += item.angle;
+    } else if (item.type === 'jump') {
+      hasJumpSinceLastWall = true;
+    }
+  }
+  
+  if (lastWallAngle !== null && !hasJumpSinceLastWall) {
+    let normCurrent = ((currentAngle % 360) + 360) % 360;
+    let normLastWall = ((lastWallAngle % 360) + 360) % 360;
+    let diff = Math.abs(normCurrent - normLastWall) % 360;
+    if (diff === 180) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function addModule(id) {
   // Przeskok rysowania na zaznaczoną ścianę (Zostawiamy, to genialna funkcja!)
   if (selectedItemIndex !== null && plan[selectedItemIndex] && plan[selectedItemIndex].type === 'wall') {
     if (plan[selectedItemIndex].endNodeIndex !== undefined) plan.push({ type: 'jump', target: plan[selectedItemIndex].endNodeIndex });
     selectedItemIndex = null;
+  }
+
+  let isWallModule = false;
+  if (id === 'foldable100x250') {
+    isWallModule = true;
+  } else {
+    let itemData = DB[id];
+    if (itemData && itemData.type === 'wall') {
+      isWallModule = true;
+    }
+  }
+
+  if (isWallModule && currentSystem !== 'kasetony_niestandardowe') {
+    if (checkWillGoBackwards()) {
+      alert("Blokada: Nie możesz postawić ściany w kierunku wstecz!");
+      return;
+    }
   }
 
   let newItem;
@@ -547,7 +624,48 @@ function jumpTo(nodeIndex) { plan.push({ type: 'jump', target: nodeIndex }); sel
 
 function selectItem(index, e) { e.stopPropagation(); selectedItemIndex = index; render(); }
 
-function deselectItem(e) { if (e.target.id === 'stage' && !isDraggingView) { selectedItemIndex = null; render(); } }
+function deselectItem(e) {
+  if (e.target.id === 'stage' && !isDraggingView) {
+    selectedItemIndex = null;
+    const stage = document.getElementById('stage');
+    if (stage) {
+      const rect = stage.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      
+      const localX = (clickX - viewPanX) / viewScale;
+      const localY = (clickY - viewPanY) / viewScale;
+      
+      const sWidth = stage.clientWidth || window.innerWidth - 400;
+      const sHeight = stage.clientHeight || window.innerHeight;
+      const stageCenterStartX = sWidth / 2 - 100;
+      const stageCenterStartY = sHeight / 2 + 100;
+      
+      const dx = localX - stageCenterStartX;
+      const dy = localY - stageCenterStartY;
+      const snappedDx = Math.round(dx / 50) * 50;
+      const snappedDy = Math.round(dy / 50) * 50;
+      const snappedX = stageCenterStartX + snappedDx;
+      const snappedY = stageCenterStartY + snappedDy;
+      
+      const currentAngle = window.currentCursorAngle !== undefined ? window.currentCursorAngle : 0;
+      
+      if (plan.length > 0 && plan[plan.length - 1].type === 'jump' && plan[plan.length - 1].x !== undefined) {
+        plan[plan.length - 1].x = snappedX;
+        plan[plan.length - 1].y = snappedY;
+        plan[plan.length - 1].angle = currentAngle;
+      } else {
+        plan.push({
+          type: 'jump',
+          x: snappedX,
+          y: snappedY,
+          angle: currentAngle
+        });
+      }
+    }
+    render();
+  }
+}
 
 function undo() { plan.pop(); selectedItemIndex = null; render(); }
 

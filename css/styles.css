@@ -427,8 +427,12 @@
         .stage {
             flex-grow: 1;
             position: relative;
-            background-image: radial-gradient(#333 1px, transparent 1px);
-            background-size: 50px 50px;
+            background-color: #1a1a1a;
+            background-image:
+                linear-gradient(to right, rgba(255, 255, 255, 0.15) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.15) 1px, transparent 1px),
+                linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
             overflow: hidden;
             cursor: grab;
         }
@@ -900,7 +904,8 @@
 
         /* NOWY KOD DO PODŚWIETLANIA ELEMENTÓW */
         .sego-freestanding.selected,
-        .sego-suspended.selected {
+        .sego-suspended.selected,
+        .sego-table-chairs.selected {
             border-color: var(--highlight) !important;
             box-shadow: 0 0 20px var(--highlight) !important;
             z-index: 30;

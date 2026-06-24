@@ -1188,6 +1188,26 @@ function generateKasetonBOM() {
   }
 
   finishKasetonBOM(bomItems, W, H, sys, config);
+  if (sys === 'CTF') {
+    if (Array.isArray(window.lastGeneratedBOM)) {
+      // Krok A: Usuwamy pozycję składową "adFrame CTF" (18337), aby nie dublowała się jako dziecko
+      let filteredBOM = window.lastGeneratedBOM.filter(function (item) {
+        return item.intranetId !== 18337 && item.name !== "adFrame CTF";
+      });
+
+      // Krok B: Przekształcamy indeks nadrzędny 12160 na właściwe ID 18337
+      window.lastGeneratedBOM = filteredBOM.map(function (item) {
+        if (item.intranetId === 12160 || item.name === "adFrame CTF (bez wydruku)") {
+          return {
+            ...item,
+            name: "adFrame CTF",
+            intranetId: 18337
+          };
+        }
+        return item;
+      });
+    }
+  }
 }
 
 // 9. DATABASE & CURRENCY LOGIC

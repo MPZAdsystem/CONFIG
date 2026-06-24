@@ -504,10 +504,13 @@ async function exportToSheets() {
         else if (name === "łącznik prosty (Clamp)") catNo = DB.clamp.catNo;
         else if (name === "łącznik kątowy (wew/zew)") catNo = DB.wewzew.catNo;
         else if (name === "SEGO łącznik zewnętrzny L") catNo = DB.zewzew.catNo;
-        else if (name === "Mini Foot" || name === "Mini Foot (Kantorek)") catNo = DB.miniFoot.catNo; else if (name === "Extension Cable") catNo = DB.extCable.catNo;
-        else if (name === "AdTribune Expo 100x100") catNo = DB.adTribuneExpo.catNo; else if (name === "adUp Vario quadfloat") catNo = DB.adUpQuadfloat.catNo;
+        else if (name === "Mini Foot" || name === "Mini Foot (Kantorek)" || name === "SEGO Mini FOOT") catNo = DB.miniFoot.catNo; else if (name === "Extension Cable") catNo = DB.extCable.catNo;
+        else if (name === "AdTribune Expo 100x100") catNo = DB.adTribuneExpo.catNo;
+        else if (name === "Okrągły stół z 3 krzesłami") catNo = DB.tableChairs.catNo;
+        else if (name === "adUp Vario quadfloat") catNo = DB.adUpQuadfloat.catNo;
         else if (name === "adUp Vario Ringfloat dwustronne") catNo = DB.adUpRingfloat.catNo;
         else if (name === "Ścianka tekstylna Vario S-80") catNo = DB.adUpVarioS80.catNo;
+        else if (name === "Roślina doniczkowa") catNo = DB.pottedPlant.catNo;
         else if (name === "Wykładzina dywanowa (m2)") catNo = "FLOOR-CARPET";
         else if (name === "- Płyty Adfloor prosty (m2)") catNo = "FLOOR-ADFLOOR";
         else if (name === "Adfloor z najazdami LED" || name === "Adfloor prosty") continue;

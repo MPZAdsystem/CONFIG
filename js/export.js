@@ -100,7 +100,7 @@ const PARENT_PRODUCTS = {
     'LMSM': { id: 10444, name: 'adFrame LMSM (bez wydruku)' },
     'DTF': { id: 10332, name: 'adFrame DTF (bez wydruku)' },
     'STFL': { id: 10594, name: 'adFrame STFL (bez wydruku)' },
-    'CTF': { id: 12160, name: 'adFrame CTF (bez wydruku)' },
+    'CTF': { id: 18337, name: 'adFrame CTF' },
     'CTF_LED': { id: 12160, name: 'adFrame CTF (bez wydruku)' },
     'LCD_LMD': { id: 10334, name: 'adFrame LMD (bez wydruku)' },
     'STF': { id: 18254, name: 'adFrame STF' } // <-- 1. DODANO AKTYWNE ID DLA STF
@@ -210,6 +210,9 @@ window.initIntranetBomDraft = function () {
 
         // Generowanie podzespołów składowych (Children)
         bomItems.forEach(item => {
+            if (sys === 'CTF' && (item.intranetId === 18337 || item.name === 'adFrame CTF')) {
+                return; // Przeskakuje do następnego elementu, nie dublując pozycji
+            }
             let idVal = item.intranetId;
             if (!idVal) {
                 if (window.KASETON_PRICES && window.KASETON_PRICES[item.name]) {

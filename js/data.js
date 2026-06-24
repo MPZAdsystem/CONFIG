@@ -36,7 +36,7 @@ const DB = {
 
     zewzew: { name: "SEGO łącznik zewnętrzny L", catNo: "SEGO-LAC-ZEW-L", intranetId: 13532, price: 3 },
 
-    miniFoot: { name: "Mini Foot", catNo: "SEGO-MINI-FOOT", intranetId: 17145, price: 5 },
+    miniFoot: { name: "SEGO Mini FOOT", catNo: "SEGO-MINI-FOOT", intranetId: 17145, price: 5 },
 
     extCable: { name: "Extension Cable", catNo: "SEGO-EXT-CABLE", intranetId: 13555, price: 9 },
 
@@ -47,6 +47,22 @@ const DB = {
         id: "adTribuneExpo", name: "AdTribune Expo 100x100", labelEN: "White LED Counter", catNo: "AD-TRIBUNE-EXPO-W",
 
         type: "freestanding", width: 100, height: 95, depth: 40, price: 350, color: "#ffffff"
+
+    },
+
+    tableChairs: {
+
+        id: "tableChairs", name: "Okrągły stół z 3 krzesłami", labelEN: "Round Table and 3 Chairs", catNo: "TABLE-CHAIRS-SET",
+
+        type: "table_chairs", width: 160, height: 75, depth: 160, price: 0, color: "#ffffff"
+
+    },
+
+    pottedPlant: {
+
+        id: "pottedPlant", name: "Roślina doniczkowa", labelEN: "Potted Plant", catNo: "POTTED-PLANT",
+
+        type: "potted_plant", width: 60, height: 120, depth: 60, price: 0, color: "#00ff88"
 
     },
 
@@ -472,7 +488,7 @@ document.addEventListener('keydown', function (e) {
 
         if (e.key.toLowerCase() === 'q') {
 
-            if (item.type === 'freestanding' || item.type === 'freestanding_s' || item.type === 'suspended') {
+            if (item.type === 'freestanding' || item.type === 'freestanding_s' || item.type === 'suspended' || item.type === 'table_chairs' || item.type === 'potted_plant') {
 
                 item.rotation = ((item.rotation || 0) + 90) % 360;
 
@@ -618,6 +634,52 @@ document.addEventListener('keydown', function (event) {
         event.preventDefault(); // Zapobiega domyślnym akcjom przeglądarki
 
         if (typeof undo === 'function') undo();
+
+    }
+
+    // 1b. CTRL + C -> Kopiuj element
+
+    if (event.ctrlKey && event.key.toLowerCase() === 'c') {
+
+        if (typeof selectedItemIndex !== 'undefined' && selectedItemIndex !== null && plan[selectedItemIndex]) {
+
+            event.preventDefault();
+
+            window.clipboardItem = JSON.parse(JSON.stringify(plan[selectedItemIndex]));
+
+        }
+
+    }
+
+    // 1c. CTRL + V -> Wklej element
+
+    if (event.ctrlKey && event.key.toLowerCase() === 'v') {
+
+        if (window.clipboardItem) {
+
+            event.preventDefault();
+
+            let newItem = JSON.parse(JSON.stringify(window.clipboardItem));
+
+            if (newItem.offsetX !== undefined) newItem.offsetX += 40;
+
+            if (newItem.offsetY !== undefined) newItem.offsetY += 40;
+
+            if (newItem.startX !== undefined) newItem.startX += 40;
+
+            if (newItem.startY !== undefined) newItem.startY += 40;
+
+            if (newItem.endX !== undefined) newItem.endX += 40;
+
+            if (newItem.endY !== undefined) newItem.endY += 40;
+
+            plan.push(newItem);
+
+            selectedItemIndex = plan.length - 1;
+
+            if (typeof render === 'function') render();
+
+        }
 
     }
 
