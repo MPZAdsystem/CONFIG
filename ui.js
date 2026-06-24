@@ -32,52 +32,121 @@ function handleLoginKey(e) {
 }
 
 function attemptLogin() {
-    const user = document.getElementById('loginUser').value.toLowerCase().trim();
+    const user = document.getElementById('loginUser').value.trim();
     const pass = document.getElementById('loginPass').value.trim();
     const err = document.getElementById('loginError');
     const remember = document.getElementById('rememberMe').checked;
+    const loginBtn = document.querySelector('#loginOverlay button[onclick="attemptLogin()"]');
 
-    if (user === 'klient' && pass === 'klient123') currentUserRole = 'klient';
-    else if (user === 'agencja' && pass === 'agencja123') currentUserRole = 'agencja';
-    else if (user === 'admin' && pass === 'admin123') currentUserRole = 'admin';
-    else {
+    if (!user || !pass) {
         err.style.display = 'block';
+        err.innerText = 'Wprowadź login i hasło!';
         return;
     }
 
-    // NOWE: Jeśli zaznaczono "Zapamiętaj mnie", zapisujemy rolę w przeglądarce
-    if (remember) {
-        try {
-            localStorage.setItem('expoBuilderRole', currentUserRole);
-        } catch (e) {
-            console.warn("Storage item write blocked:", e);
-        }
+    // Blokada przycisku na czas zapytania
+    if (loginBtn) {
+        loginBtn.disabled = true;
+        loginBtn.innerText = '⏳ Logowanie...';
     }
-    document.getElementById('loginOverlay').style.display = 'none';
-    runFlavorLoading(() => { applyRolePermissions(); });
+    err.style.display = 'none';
+
+    // AJAX POST do api_login.php (serwer PHP weryfikuje przez API CMS)
+    fetch('api_login.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'cms_login=' + encodeURIComponent(user) + '&cms_password=' + encodeURIComponent(pass)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'OK') {
+            // Logowanie pomyślne — ustawiamy domyślną rolę
+            // (API CMS nie zwraca ról, więc wszyscy zalogowani = admin)
+            currentUserRole = 'admin';
+
+            if (remember) {
+                try {
+                    localStorage.setItem('expoBuilderRole', currentUserRole);
+                    localStorage.setItem('expoBuilderUser', user);
+                } catch (e) {
+                    console.warn("Storage item write blocked:", e);
+                }
+            }
+
+            document.getElementById('loginOverlay').style.display = 'none';
+            runFlavorLoading(() => { applyRolePermissions(); });
+        } else {
+            // Logowanie nieudane
+            err.style.display = 'block';
+            err.innerText = data.message || 'Nieprawidłowy login lub hasło!';
+        }
+    })
+    .catch(error => {
+        console.error("Błąd połączenia z API logowania:", error);
+        err.style.display = 'block';
+        err.innerText = 'Błąd połączenia z serwerem. Spróbuj ponownie.';
+    })
+    .finally(() => {
+        if (loginBtn) {
+            loginBtn.disabled = false;
+            loginBtn.innerText = 'Zaloguj się';
+        }
+    });
 }
 
 function checkSavedLogin() {
-    let savedRole = null;
-    try {
-        savedRole = localStorage.getItem('expoBuilderRole');
-    } catch (e) {
-        console.warn("Storage read blocked:", e);
-    }
-    if (savedRole) {
-        currentUserRole = savedRole;
-        document.getElementById('loginOverlay').style.display = 'none';
-
-        // 🔥 ZMIANA: Zamiast od razu włączać uprawnienia, najpierw odpalamy ekran ładowania
-        runFlavorLoading(() => {
-            applyRolePermissions();
+    // Sprawdzamy sesję PHP na serwerze (zamiast localStorage)
+    fetch('api_check_session.php')
+        .then(response => response.json())
+        .then(data => {
+            if (data.logged_in === true) {
+                // Sesja PHP aktywna — wpuszczamy użytkownika
+                currentUserRole = 'admin';
+                document.getElementById('loginOverlay').style.display = 'none';
+                runFlavorLoading(() => { applyRolePermissions(); });
+            } else {
+                // Brak sesji PHP — sprawdzamy localStorage jako fallback
+                let savedRole = null;
+                try {
+                    savedRole = localStorage.getItem('expoBuilderRole');
+                } catch (e) {
+                    console.warn("Storage read blocked:", e);
+                }
+                // Nie logujemy automatycznie z localStorage — wymagamy sesji serwerowej
+                // Pokazujemy formularz logowania
+            }
+        })
+        .catch(error => {
+            // Brak dostępu do serwera (offline/lokalny dev) — fallback na localStorage
+            console.warn("Nie można sprawdzić sesji serwerowej, fallback na localStorage:", error);
+            let savedRole = null;
+            try {
+                savedRole = localStorage.getItem('expoBuilderRole');
+            } catch (e) {
+                console.warn("Storage read blocked:", e);
+            }
+            if (savedRole) {
+                currentUserRole = savedRole;
+                document.getElementById('loginOverlay').style.display = 'none';
+                runFlavorLoading(() => { applyRolePermissions(); });
+            }
         });
-    }
 }
 
 function logout() {
+    // Wylogowanie z serwera PHP
+    fetch('api_logout.php')
+        .then(() => {
+            console.log("Sesja serwerowa zakończona.");
+        })
+        .catch(err => {
+            console.warn("Błąd wylogowania z serwera:", err);
+        });
+
+    // Czyścimy localStorage
     try {
-        localStorage.removeItem('expoBuilderRole'); // Czyścimy pamięć
+        localStorage.removeItem('expoBuilderRole');
+        localStorage.removeItem('expoBuilderUser');
     } catch (e) {
         console.warn("Storage remove blocked:", e);
     }
@@ -92,6 +161,7 @@ function logout() {
     // Pokazujemy ekran logowania ponownie
     document.getElementById('loginOverlay').style.display = 'flex';
 }
+
 
 function applyRolePermissions() {
     const adminBtn = document.getElementById('btnAdminDB');
@@ -162,14 +232,14 @@ function removePolishAccents(str) {
 function scoreResult(name, intranetId, queryWords) {
     let nameNorm = removePolishAccents(name.toLowerCase());
     let idNorm = String(intranetId || '').toLowerCase();
-    
+
     let matchedAll = true;
     let score = 0;
-    
+
     for (let word of queryWords) {
         let indexInName = nameNorm.indexOf(word);
         let indexInId = idNorm.indexOf(word);
-        
+
         if (indexInName !== -1) {
             if (indexInName === 0 || nameNorm.charAt(indexInName - 1) === ' ') {
                 score += 15;
@@ -184,13 +254,13 @@ function scoreResult(name, intranetId, queryWords) {
             break;
         }
     }
-    
+
     if (!matchedAll) return -1;
     score -= (name.length * 0.01);
     return score;
 }
 
-window.changeDraftQty = function(key, delta, itemData) {
+window.changeDraftQty = function (key, delta, itemData) {
     if (!window.manualCartDraft[key]) {
         if (delta <= 0) return;
         window.manualCartDraft[key] = {
@@ -201,7 +271,7 @@ window.changeDraftQty = function(key, delta, itemData) {
             isKaseton: itemData.isKaseton
         };
     }
-    
+
     window.manualCartDraft[key].qty += delta;
     if (window.manualCartDraft[key].qty <= 0) {
         delete window.manualCartDraft[key];
@@ -209,7 +279,7 @@ window.changeDraftQty = function(key, delta, itemData) {
     refreshManualPanel();
 };
 
-window.setDraftQty = function(key, val, itemData) {
+window.setDraftQty = function (key, val, itemData) {
     let qty = parseInt(val) || 0;
     if (qty <= 0) {
         delete window.manualCartDraft[key];
@@ -228,19 +298,19 @@ window.setDraftQty = function(key, val, itemData) {
     refreshManualPanel();
 };
 
-window.removeFromDraft = function(key) {
+window.removeFromDraft = function (key) {
     delete window.manualCartDraft[key];
     refreshManualPanel();
 };
 
-window.submitManualCart = function() {
+window.submitManualCart = function () {
     for (let k in manualItems) {
         delete manualItems[k];
     }
-    
+
     const multInput = document.getElementById('manualMultiplierInput');
     const currentMultiplier = multInput ? parseFloat(multInput.value) : 2.8;
-    
+
     for (let k in window.manualCartDraft) {
         let draftItem = window.manualCartDraft[k];
         if (draftItem.qty > 0) {
@@ -255,30 +325,83 @@ window.submitManualCart = function() {
             };
         }
     }
-    
+
     closeManualModal();
     if (typeof render === 'function') render();
+
+    // Integracja z modalem Intranetu (BOM)
+    if (window.openedFromIntranetModal) {
+        window.openedFromIntranetModal = false;
+        if (window.intranetBOMDraft) {
+            const ratePLN = window.KURS_PLN_DYNAMIC || 4.20;
+
+            // 1. Aktualizacja istniejących i dodawanie nowych pozycji manualnych
+            for (let k in manualItems) {
+                const item = manualItems[k];
+                let foundIndex = window.intranetBOMDraft.findIndex(d => d.name === item.name && d.isManual);
+
+                if (foundIndex !== -1) {
+                    window.intranetBOMDraft[foundIndex].qty = item.qty;
+                } else {
+                    const isKasetonItem = item.isKaseton;
+                    const priceEUR = isKasetonItem ? null : ((item.plnMargin * currentMultiplier) / ratePLN);
+
+                    window.intranetBOMDraft.push({
+                        id: isKasetonItem ? null : (item.intranetId || null),
+                        parentId: isKasetonItem ? (item.intranetId || null) : null,
+                        name: item.name,
+                        qty: item.qty,
+                        price: priceEUR,
+                        vat: isKasetonItem ? '0%' : '23%',
+                        displayName: '',
+                        description: '',
+                        isParent: false,
+                        isManual: true,
+                        isKaseton: isKasetonItem
+                    });
+                }
+            }
+
+            // 2. Usuwanie z draftu tych wierszy manualnych, które zostały usunięte z koszyka
+            window.intranetBOMDraft = window.intranetBOMDraft.filter(d => {
+                if (!d.isManual) return true;
+                let exists = false;
+                for (let k in manualItems) {
+                    if (manualItems[k].name === d.name) {
+                        exists = true;
+                        break;
+                    }
+                }
+                return exists;
+            });
+
+            // Re-render tabeli
+            if (typeof window.renderIntranetBomTable === 'function') {
+                window.renderIntranetBomTable();
+            }
+        }
+    }
 };
 
-window.clearManualCart = function() {
+window.clearManualCart = function () {
     window.manualCartDraft = {};
     refreshManualPanel();
 };
 
 function calculateWydrukArea(name) {
-  if (!name || typeof name !== 'string') return null;
-  if (!/wydruk/i.test(name)) return null;
-  const normalized = name.replace(/,/g, '.');
-  const match = normalized.match(/(\d+(?:\.\d+)?)\s*[xX]\s*(\d+(?:\.\d+)?)/);
-  if (!match) return null;
-  const val1 = parseFloat(match[1]);
-  const val2 = parseFloat(match[2]);
-  if (isNaN(val1) || isNaN(val2)) return null;
-  if (val1 <= 15 && val2 <= 15) {
-    return val1 * val2;
-  } else {
-    return (val1 / 100) * (val2 / 100);
-  }
+    if (!name || typeof name !== 'string') return null;
+    if (!/wydruk/i.test(name)) return null;
+    const normalized = name.replace(/,/g, '.');
+    const match = normalized.match(/(\d+(?:\.\d+)?)\s*[xX]\s*(\d+(?:\.\d+)?)/);
+    if (!match) return null;
+    const val1 = parseFloat(match[1]);
+    const val2 = parseFloat(match[2]);
+    if (isNaN(val1) || isNaN(val2)) return null;
+    if (val1 <= 15 && val2 <= 15) {
+        return val1 * val2;
+    } else {
+        return (val1 / 100) * (val2 / 100);
+    }
 }
 
 function refreshManualPanel() {
@@ -288,13 +411,13 @@ function refreshManualPanel() {
 
     const searchInput = document.getElementById('manualSearchInput');
     const multInput = document.getElementById('manualMultiplierInput');
-    
+
     const query = searchInput ? searchInput.value.trim() : '';
     const multiplier = multInput ? parseFloat(multInput.value) || 2.8 : 2.8;
     const ratePLN = window.KURS_PLN_DYNAMIC || 4.20;
 
     const allProducts = {};
-    
+
     if (typeof DB !== 'undefined') {
         for (let key in DB) {
             let dbItem = DB[key];
@@ -314,7 +437,7 @@ function refreshManualPanel() {
             }
         }
     }
-    
+
     if (window.KASETON_PRICES) {
         for (let name in window.KASETON_PRICES) {
             let kItem = window.KASETON_PRICES[name];
@@ -358,7 +481,7 @@ function refreshManualPanel() {
             let p = res.product;
             let draftItem = window.manualCartDraft[p.key];
             let qty = draftItem ? draftItem.qty : 0;
-            
+
             // Check if it's a print and extract area
             let isWydrukWithArea = false;
             let wydrukArea = 0;
@@ -391,7 +514,7 @@ function refreshManualPanel() {
             if (plnMargin > 0 || clientPrice > 0) {
                 hasNoPrice = false;
             }
-            
+
             let actionHtml = '';
             let itemDataJson = JSON.stringify({
                 name: p.name,
@@ -411,9 +534,9 @@ function refreshManualPanel() {
                     </div>
                 `;
             }
-            
+
             let categoryLabelHtml = p.category ? `<br><span style="font-size:10px; color:#8f95b2; font-style:italic;">${p.category}</span>` : '';
-            
+
             let priceLabelHtml = '';
             let marginLabelHtml = '';
             let rowStyle = '';
@@ -453,7 +576,7 @@ function refreshManualPanel() {
     let totalQty = 0;
     let hasMissingPriceInCart = false;
     let totalPrintArea = 0;
-    
+
     let draftKeys = Object.keys(window.manualCartDraft);
     if (draftKeys.length === 0) {
         cartHtml = `
@@ -465,7 +588,7 @@ function refreshManualPanel() {
     } else {
         draftKeys.forEach(key => {
             let item = window.manualCartDraft[key];
-            
+
             // Check if it's a print and extract area
             let isWydrukWithArea = false;
             let wydrukArea = 0;
@@ -503,7 +626,7 @@ function refreshManualPanel() {
             }
 
             let lineMargin = plnMargin * item.qty;
-            
+
             if (itemHasNoPrice) {
                 hasMissingPriceInCart = true;
             } else {
@@ -511,14 +634,14 @@ function refreshManualPanel() {
                 totalClientPriceSum += lineClientPrice;
             }
             totalQty += item.qty;
-            
+
             let itemDataJson = JSON.stringify({
                 name: item.name,
                 plnMargin: plnMargin,
                 intranetId: item.intranetId,
                 isKaseton: item.isKaseton
             }).replace(/"/g, '&quot;');
-            
+
             let cartRowStyle = '';
             let cartPriceHtml = '';
             if (itemHasNoPrice) {
@@ -555,12 +678,12 @@ function refreshManualPanel() {
             `;
         });
     }
-    
+
     selectedContainer.innerHTML = cartHtml;
-    
+
     const badge = document.getElementById('cartCountBadge');
     if (badge) badge.innerText = `${totalQty} szt`;
-    
+
     const marginSpan = document.getElementById('summaryMarginTotal');
     if (marginSpan) {
         marginSpan.innerText = `${totalMarginSum.toFixed(2).toString().replace('.', ',')} PLN`;
@@ -568,7 +691,7 @@ function refreshManualPanel() {
             marginSpan.innerHTML += ` <span style="color:#ff3333; font-size:10px;">(+brak)</span>`;
         }
     }
-    
+
     const priceSpan = document.getElementById('summaryPriceTotal');
     if (priceSpan) {
         priceSpan.innerText = `${totalClientPriceSum.toFixed(2).toString().replace('.', ',')} PLN`;
@@ -703,7 +826,7 @@ function toggleAutoRotate() {
 function openManualModal() {
     window.manualCartDraft = {};
     const ratePLN = window.KURS_PLN_DYNAMIC || 4.20;
-    
+
     if (typeof manualItems !== 'undefined') {
         for (let key in manualItems) {
             let item = manualItems[key];
@@ -732,10 +855,10 @@ function openManualModal() {
             }
         }
     }
-    
+
     const searchInput = document.getElementById('manualSearchInput');
     if (searchInput) searchInput.value = '';
-    
+
     const multInput = document.getElementById('manualMultiplierInput');
     if (multInput) {
         let firstKey = Object.keys(window.manualCartDraft)[0];
@@ -745,7 +868,7 @@ function openManualModal() {
             multInput.value = '2.8';
         }
     }
-    
+
     const modal = document.getElementById('manualModalOverlay');
     if (modal) modal.style.display = 'flex';
     if (typeof refreshManualPanel === 'function') refreshManualPanel();
@@ -769,6 +892,10 @@ function toggle3D() {
         const btnRadial = document.getElementById('btnToggleRadial');
         if (btnRadial) {
             btnRadial.style.display = (is3DMode && currentSystem === 'foldable') ? 'flex' : 'none';
+        }
+        const btnRand = document.getElementById('btnRandomizeGraphics');
+        if (btnRand) {
+            btnRand.style.display = (is3DMode && !['wydruki', 'mframe_pallet'].includes(currentSystem)) ? 'flex' : 'none';
         }
 
         if (is3DMode) {
@@ -807,7 +934,7 @@ function toggle3D() {
 }
 
 // Global helper: re-populates legend panel after programmatic update3DScene() calls
-window.refreshBlueprintLegend = function() {
+window.refreshBlueprintLegend = function () {
     const panel = document.getElementById('blueprintLegend');
     if (!panel) return;
     if (!showDimensions || !window.blueprintLegendItems || !window.blueprintDimensions) {
@@ -817,19 +944,23 @@ window.refreshBlueprintLegend = function() {
     const dim = window.blueprintDimensions;
     const dimsEl = document.getElementById('blDims');
     if (dimsEl) {
-        dimsEl.innerHTML =
+        let html =
             '<div class="bl-dim-row"><span class="bl-dim-label">Szerokość</span><span class="bl-dim-value">' + dim.W + ' cm</span></div>' +
-            '<div class="bl-dim-row"><span class="bl-dim-label">Wysokość</span><span class="bl-dim-value">' + dim.H + ' cm</span></div>' +
-            '<div class="bl-dim-row"><span class="bl-dim-label">System</span><span class="bl-dim-value" style="font-size:12px;">' + dim.sys + '</span></div>';
+            '<div class="bl-dim-row"><span class="bl-dim-label">Wysokość</span><span class="bl-dim-value">' + dim.H + ' cm</span></div>';
+        if (dim.D) {
+            html += '<div class="bl-dim-row"><span class="bl-dim-label">Głębokość</span><span class="bl-dim-value">' + dim.D + ' cm</span></div>';
+        }
+        html += '<div class="bl-dim-row"><span class="bl-dim-label">System</span><span class="bl-dim-value" style="font-size:12px;">' + dim.sys + '</span></div>';
+        dimsEl.innerHTML = html;
     }
     const listEl = document.getElementById('blList');
     if (listEl) {
-        listEl.innerHTML = window.blueprintLegendItems.map(function(item) {
+        listEl.innerHTML = window.blueprintLegendItems.map(function (item) {
             return '<div class="bl-item">' +
                 '<div class="bl-badge" style="background:' + item.color + ';">' + item.num + '</div>' +
                 '<div class="bl-item-text">' +
-                    '<div class="bl-item-name">' + item.name + '</div>' +
-                    (item.desc ? '<div class="bl-item-desc">' + item.desc + '</div>' : '') +
+                '<div class="bl-item-name">' + item.name + '</div>' +
+                (item.desc ? '<div class="bl-item-desc">' + item.desc + '</div>' : '') +
                 '</div></div>';
         }).join('');
     }
@@ -931,6 +1062,41 @@ function switchSystem(newSystem) {
 
     currentSystem = newSystem;
 
+    const blockedSystems = ['multiframe', 'Flex_noLEd', 'adframe', 'SEGO_2_0'];
+    const isBlocked = blockedSystems.includes(newSystem);
+    const overlay = document.getElementById('constructionOverlay');
+    if (overlay) {
+        overlay.style.display = isBlocked ? 'flex' : 'none';
+    }
+    if (isBlocked && typeof is3DMode !== 'undefined' && is3DMode && typeof toggle3D === 'function') {
+        toggle3D();
+    }
+
+    if (isBlocked) {
+        const collapsible = document.getElementById('sidebar-collapsible-content');
+        if (collapsible) collapsible.style.display = 'none';
+
+        const allPanels = document.querySelectorAll('.system-ui-panel');
+        allPanels.forEach(p => p.style.display = 'none');
+
+        const btnRadial = document.getElementById('btnToggleRadial');
+        if (btnRadial) btnRadial.style.display = 'none';
+        const btnSpakuj = document.getElementById('btnSpakuj');
+        if (btnSpakuj) btnSpakuj.style.display = 'none';
+        const btnRand = document.getElementById('btnRandomizeGraphics');
+        if (btnRand) btnRand.style.display = 'none';
+
+        const wydrukiBtns = ['btnWydrukiReport', 'btnWydrukiMatch', 'btnWydrukiClearStage', 'btnClearWydruki'];
+        wydrukiBtns.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+
+        if (typeof render === 'function') render();
+        console.log("🚀 System switched to BLOCKED: " + newSystem);
+        return;
+    }
+
     if (currentSystem === 'LMSM') {
         window.currentSystemConfig = { prefix: "LMSM", defWidth: 100, defHeight: 250, cornerType: "BI_FOLD_SLIM", neonColorHex: 0x00FF88 };
         if (typeof clearPlan === 'function') clearPlan();
@@ -968,6 +1134,14 @@ function switchSystem(newSystem) {
             btnSpakuj.classList.remove('packed');
             btnSpakuj.innerHTML = '📦 Spakuj';
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 🔥 NOWOŚĆ: Automatyczna kontrola widoczności przycisku losowania grafik
+    // ═══════════════════════════════════════════════════════════
+    const btnRand = document.getElementById('btnRandomizeGraphics');
+    if (btnRand) {
+        btnRand.style.display = (is3DMode && !['wydruki', 'mframe_pallet'].includes(newSystem)) ? 'flex' : 'none';
     }
 
     const allPanels = document.querySelectorAll('.system-ui-panel');
@@ -1012,7 +1186,6 @@ function switchSystem(newSystem) {
         }, 400);
     }
 }
-
 function toggleRadialMenus() {
     radialMenusVisible = !radialMenusVisible;
     const layer = document.getElementById('foldable-ui-layer');
@@ -1177,6 +1350,7 @@ function onKasetonSystemChange(sel) {
     if (!sel) return;
     const sys = sel.value;
     const root = document.documentElement;
+    const isCTF = (sys === 'CTF' || sys === 'CTF_LED');
 
     if (typeof KASETON_NEON_MAP !== 'undefined' && KASETON_NEON_MAP[sys]) {
         const map = KASETON_NEON_MAP[sys];
@@ -1204,16 +1378,88 @@ function onKasetonSystemChange(sel) {
         }
     }
 
+    // Aktualizacja opcji oświetlenia dla CTF LED
+    updateKasetonLightOptions();
+
+    // CTF:-specific sections: 3rd dimension and top panel
+    const heightSec = document.getElementById('kasetonHeightSection');
+    const topSec = document.getElementById('kasetonTopSection');
+    if (heightSec) {
+        if (isCTF) heightSec.classList.add('visible');
+        else heightSec.classList.remove('visible');
+    }
+    if (topSec) {
+        if (isCTF) topSec.classList.add('visible');
+        else topSec.classList.remove('visible');
+    }
+
+    // CTF: hide cut section (no cuts in CTF box system)
+    const cutSec = document.getElementById('kasetonCut');
+    if (cutSec) {
+        const cutParent = cutSec.closest('.kaseton-section');
+        if (cutParent) cutParent.style.display = isCTF ? 'none' : '';
+    }
+
+    // CTF: restrict usage options to freestanding + suspended only
+    const usageEl = document.getElementById('kasetonUsage');
+    if (usageEl) {
+        if (isCTF) {
+            usageEl.innerHTML = '<option value="freestanding">Wolnostojący (Stopy)</option>' +
+                '<option value="suspended">Podwieszany (Linki)</option>';
+        } else if (sys === 'STF' || sys === 'STFL') {
+            usageEl.innerHTML = '<option value="wall" selected>Naścienny</option>' +
+                '<option value="suspended">Podwieszany</option>' +
+                '<option value="none">Bez montażu</option>';
+        } else if (sys === 'DTF') {
+            usageEl.innerHTML = '<option value="freestanding" selected>Wolnostojący - stopy płaskie</option>' +
+                '<option value="freestanding_tri">Wolnostojący - stopy trójkątne</option>' +
+                '<option value="suspended">Podwieszany</option>' +
+                '<option value="none">Bez montażu</option>';
+        } else {
+            usageEl.innerHTML = '<option value="freestanding">Wolnostojący (Stopy)</option>' +
+                '<option value="suspended">Podwieszany (Linki)</option>' +
+                '<option value="wall">Naścienny</option>';
+        }
+    }
+
+    // CTF: adjust dimension limits
+    const widthEl = document.getElementById('kasetonWidth');
+    const depthEl = document.getElementById('kasetonDepth');
+    const height3DEl = document.getElementById('kasetonHeight3D');
+    if (isCTF) {
+        if (widthEl) { widthEl.min = 30; widthEl.max = 800; }
+        if (depthEl) { depthEl.min = 30; depthEl.max = 800; }
+        if (height3DEl) { height3DEl.min = 30; height3DEl.max = 800; }
+    } else {
+        if (widthEl) { widthEl.min = 40; widthEl.max = 1000; }
+        if (depthEl) { depthEl.min = 40; depthEl.max = 1000; }
+    }
+
     // Dynamiczne opcje wydruku zależne od systemu
     var printSel = document.getElementById('kasetonPrint');
     if (printSel) {
         printSel.innerHTML = '';
-        if (sys === 'LMS' || sys === 'LMSM') {
+        if (isCTF) {
+            // CTF/CTF_LED: print options for 4, 5, 6 sides, default is 6 sides
+            printSel.innerHTML = '<option value="6_sides" selected>Wydruk na 6 ścian</option>' +
+                '<option value="4_sides">Wydruk na 4 ściany</option>' +
+                '<option value="5_sides_top_open">Wydruk na 5 ścian (otwarta góra)</option>' +
+                '<option value="5_sides_bottom_open">Wydruk na 5 ścian (otwarty dół)</option>' +
+                '<option value="no_print">Bez wydruku (sama rama)</option>';
+        } else if (sys === 'LMS' || sys === 'LMSM') {
             // LMS / LMSM: kaseton jednostronny - ograniczone opcje
             printSel.innerHTML = '<option value="backlit_white" selected>Przód backlit + Tył białe plecy</option>' +
                 '<option value="backlit_blockout">Przód backlit + Tył kolorowy blockout</option>' +
                 '<option value="back_white">Tylko białe plecy</option>' +
                 '<option value="no_print">Bez wydruku (sama rama)</option>';
+        } else if (sys === 'STF' || sys === 'STFL') {
+            // STF/STFL: frontowy blockout lub bez wydruku
+            printSel.innerHTML = '<option value="front_blockout" selected>frontowy blockout</option>' +
+                '<option value="no_print">bez wydruku</option>';
+        } else if (sys === 'DTF') {
+            // DTF: obustronny blockout lub bez wydruku
+            printSel.innerHTML = '<option value="double_blockout" selected>obustronny blockout</option>' +
+                '<option value="no_print">bez wydruku</option>';
         } else {
             // LMD i inne: pełne opcje dwustronne
             printSel.innerHTML = '<option value="single">Jednostronny + Blockout tył</option>' +
@@ -1225,6 +1471,47 @@ function onKasetonSystemChange(sel) {
     }
 
     console.log('🔲 Kaseton system changed to:', sys);
+}
+
+function updateKasetonLightOptions() {
+    const sysEl = document.getElementById('kasetonSystem');
+    const topEl = document.getElementById('kasetonTop');
+    const lightEl = document.getElementById('kasetonLight');
+    if (!sysEl || !lightEl) return;
+
+    const sys = sysEl.value;
+    const topVal = topEl ? topEl.value : 'none';
+    const currentVal = lightEl.value;
+
+    if (sys === 'CTF_LED') {
+        let html = '';
+        html += '<option value="zarowka">żarówka</option>';
+        html += '<option value="plafon_dol">Plafon LED (dół)</option>';
+        html += '<option value="plafon_gora">Plafon LED (góra)</option>';
+        if (topVal === 'mdf') {
+            html += '<option value="paski_led">paski LED obwodowo pod blatem</option>';
+        }
+        lightEl.innerHTML = html;
+
+        // Przywróć poprzednią wartość jeśli wciąż istnieje
+        if (html.includes('value="' + currentVal + '"')) {
+            lightEl.value = currentVal;
+        } else {
+            lightEl.value = 'zarowka';
+        }
+    } else {
+        // Standardowe opcje LED
+        lightEl.innerHTML = `
+            <option value="power_long">Krawędziowo - Długie boki (Góra/Dół)</option>
+            <option value="power_short">Krawędziowo - Krótkie boki (Lewo/Prawo)</option>
+            <option value="power_around">Po obwodzie (Wszystkie 4 boki)</option>
+        `;
+        if (['power_long', 'power_short', 'power_around'].includes(currentVal)) {
+            lightEl.value = currentVal;
+        } else {
+            lightEl.value = 'power_long';
+        }
+    }
 }
 
 function kasetonAfterglowTrigger(el) {
@@ -1254,18 +1541,22 @@ function submitKasetonConfig() {
     const print = printEl ? printEl.value : '';
     const usage = usageEl ? usageEl.value : '';
 
+    const isCTF = (sys === 'CTF' || sys === 'CTF_LED');
+    const minDim = isCTF ? 30 : 40;
+    const maxDim = isCTF ? 800 : 1000;
+
     if (!sys) {
         alert('⚠️ Wybierz system kasetonu!');
         sysEl.focus();
         return;
     }
-    if (isNaN(width) || width < 40 || width > 1000) {
-        alert('⚠️ Szerokość musi być w zakresie 40–1000 cm!');
+    if (isNaN(width) || width < minDim || width > maxDim) {
+        alert('⚠️ Szerokość musi być w zakresie ' + minDim + '–' + maxDim + ' cm!');
         widthEl.focus();
         return;
     }
-    if (isNaN(depth) || depth < 40 || depth > 1000) {
-        alert('⚠️ Głębokość musi być w zakresie 40–1000 cm!');
+    if (isNaN(depth) || depth < minDim || depth > maxDim) {
+        alert('⚠️ Wysokość musi być w zakresie ' + minDim + '–' + maxDim + ' cm!');
         depthEl.focus();
         return;
     }
@@ -1278,6 +1569,21 @@ function submitKasetonConfig() {
         print: print,
         usage: usage
     };
+
+    // CTF-specific: 3rd dimension and top panel
+    if (isCTF) {
+        const heightEl = document.getElementById('kasetonHeight3D');
+        const height3D = heightEl ? parseInt(heightEl.value) : 120;
+        if (isNaN(height3D) || height3D < 30 || height3D > 800) {
+            alert('⚠️ Głębokość 3D musi być w zakresie 30–800 cm!');
+            if (heightEl) heightEl.focus();
+            return;
+        }
+        config.height3D = height3D;
+        const topEl = document.getElementById('kasetonTop');
+        config.topPanel = topEl ? topEl.value : 'none';
+        config.cut = 'none'; // CTF has no cuts
+    }
 
     const kasetonPowerEl = document.getElementById('kasetonPower');
     const kasetonLightEl = document.getElementById('kasetonLight');
@@ -1328,4 +1634,32 @@ function toggleSpakuj() {
         }
     }
     if (typeof update3DScene === 'function') update3DScene();
+}
+function updateMountingMenu(selectedSystem) {
+    const usageSelect = document.getElementById('usageSelect') || document.getElementById('usageInput');
+    if (!usageSelect) return;
+
+    const previousValue = usageSelect.value;
+
+    if (selectedSystem === 'LMSM') {
+        usageSelect.innerHTML = `
+      <option value="none">Bez montażu</option>
+      <option value="wall">Wieszany na ścianie</option>
+      <option value="suspended">Podwieszany</option>
+    `;
+        if (previousValue === 'freestanding') {
+            usageSelect.value = 'none';
+        } else {
+            usageSelect.value = previousValue;
+        }
+    } else {
+        usageSelect.innerHTML = `
+      <option value="freestanding">Wolnostojący</option>
+      <option value="wall">Wieszany na ścianie</option>
+      <option value="suspended">Podwieszany</option>
+    `;
+        usageSelect.value = previousValue;
+    }
+
+    if (typeof updateConfigFromUI === 'function') updateConfigFromUI();
 }

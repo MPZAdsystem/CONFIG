@@ -12,6 +12,22 @@ function removeLegAccessory(pIdx, aIdx, legAccIdx, e) {
     e.stopPropagation(); plan[pIdx].accessories[aIdx].accessories.splice(legAccIdx, 1); render();
 }
 
+// Kod do wklejenia wewnątrz funkcji executePDFGeneration()
+
+function removeSuspended(index, e) { e.stopPropagation(); plan.splice(index, 1); render(); }
+
+function toggleAccDir(planIndex, accIndex, e) { e.stopPropagation(); plan[planIndex].accessories[accIndex].dir *= -1; render(); }
+
+function removeAccessory(planIndex, accIndex, e) { e.stopPropagation(); plan[planIndex].accessories.splice(accIndex, 1); render(); }
+
+function toggleLegAccDir(pIdx, aIdx, legAccIdx, e) {
+    e.stopPropagation(); plan[pIdx].accessories[aIdx].accessories[legAccIdx].dir *= -1; render();
+}
+
+function removeLegAccessory(pIdx, aIdx, legAccIdx, e) {
+    e.stopPropagation(); plan[pIdx].accessories[aIdx].accessories.splice(legAccIdx, 1); render();
+}
+
 async function executePDFGeneration() {
     isPdfGenerating = true; cancelPdfGeneration = false;
     document.getElementById('pdfModalButtons').style.display = 'none';
@@ -49,6 +65,7 @@ async function executePDFGeneration() {
     const abortPdf = () => {
         if (!was3DMode) { is3DMode = false; container3D.style.display = 'none'; container3D.style.opacity = '1'; }
         showDimensions = originalDimState; isBlueprintMode = originalBlueState;
+        if (human3DModel) human3DModel.visible = true; // Przywrócenie człowieka w razie awarii
         if (is3DMode) update3DScene();
         isPdfGenerating = false;
         document.getElementById('pdfModalOverlay').style.display = 'none'; document.getElementById('pdfModalButtons').style.display = 'flex'; document.getElementById('pdfLoadingStatus').style.display = 'none';
@@ -67,7 +84,6 @@ async function executePDFGeneration() {
     const pageWidth = doc.internal.pageSize.getWidth(); const pageHeight = doc.internal.pageSize.getHeight();
     const pName = document.getElementById('projectName').value || 'System_EXPO'; const cName = document.getElementById('customerName').value || '...';
 
-    // Definiowanie stopek i nagłówków motywów
     const applyDarkThemeAndFooter = (pageNo, sectionTitle) => {
         doc.setFillColor(18, 18, 18); doc.rect(0, 0, pageWidth, pageHeight, 'F');
         doc.setDrawColor(255, 0, 128); doc.setLineWidth(1.5); doc.line(15, 25, pageWidth - 15, 25);
@@ -93,9 +109,6 @@ async function executePDFGeneration() {
     }
     if (cancelPdfGeneration) return abortPdf();
 
-    // ===================================
-    // PRZECHWYTYWANIE ZRZUTÓW EKRANU 3D
-    // ===================================
     let imgDataLeft, imgDataRight;
     const pdfScreenshotMode = document.getElementById('pdfScreenshotMode').value;
 
@@ -120,10 +133,15 @@ async function executePDFGeneration() {
     if (cancelPdfGeneration) return abortPdf();
 
     // ===================================
-    // PRZYGOTOWANIE RZUTU WYMIAROWANIA 3D
+    // RZUT TECHNICZNY 3D (ZABEZPIECZONY I OCZYSZCZONY)
     // ===================================
     updateProgress(60, "📐 Przeliczanie inżynierii technicznej...");
-    showDimensions = true; isBlueprintMode = true; update3DScene();
+    showDimensions = true; isBlueprintMode = true;
+
+    // ZMIANA: Ukrywamy trójwymiarowy model człowieka przed wygenerowaniem rzutu technicznego
+    if (human3DModel) human3DModel.visible = false;
+
+    update3DScene();
 
     scene.background = new THREE.Color(0x000000);
     if (windowGridHelper) windowGridHelper.visible = false;
@@ -132,15 +150,19 @@ async function executePDFGeneration() {
         if (tBox.getSize(new THREE.Vector3()).x > 3000) obj.visible = false;
     });
 
-    await new Promise(r => setTimeout(r, 400));
+    // ZMIANA: Wydłużone opóźnienie do 800ms, aby sterownik GPU zdążył przetworzyć geometrię dużych projektów
+    await new Promise(r => setTimeout(r, 800));
     let imgDataTech = autoFrameForScreenshot(-30);
+
+    // Przywracamy widoczność człowieka dla sceny runtime
+    if (human3DModel) human3DModel.visible = true;
+
     if (cancelPdfGeneration) return abortPdf();
 
     if (!was3DMode) { is3DMode = false; container3D.style.display = 'none'; container3D.style.opacity = '1'; }
     showDimensions = originalDimState; isBlueprintMode = originalBlueState;
     if (is3DMode) update3DScene();
 
-    // Agregacja danych tabelarycznych
     let tableData = []; let totalFinal = 0; let totalBase = 0;
     const discountPercent = parseFloat(document.getElementById('discountInput').value) || 0;
 
@@ -166,14 +188,13 @@ async function executePDFGeneration() {
         else tableData.push([itemName, dimText, `${item.qty}`, `${finalRowUnit.toFixed(2)} ${sym}`, `${(finalRowUnit * item.qty).toFixed(2)} ${sym}`]);
     }
 
-    // Odczyt wybranego motywu dokumentu
     const selectedTheme = document.getElementById('pdfTheme') ? document.getElementById('pdfTheme').value : 'white';
 
     if (selectedTheme === 'white') {
-        // ═══════════════════════════════════════════════════════════
-        // ⚪ MOTYW BIALY: UKŁAD KLIENTA Z KAFELKAMI SPECYFIKACJI
-        // ═══════════════════════════════════════════════════════════
-        updateProgress(75, "🖨 Honorowanie układu białego...");
+        // ========================================================
+        // ⚪ SZATA GRAFICZNA: BIAŁA
+        // ========================================================
+        updateProgress(75, "🖨️ Formatowanie dokumentu PDF (Szata Biała)...");
         applyLightThemeAndFooter(1, t.title);
 
         doc.setFontSize(11); doc.setTextColor(50, 50, 50);
@@ -226,9 +247,9 @@ async function executePDFGeneration() {
         }
 
         // ═══════════════════════════════════════════════════════════
-        // STRONA 2 (WHITE THEME): CZTÓRDZIELNY UKŁAD KAFELKOWY (2x2)
+        // ⚪ STRONA 2: DWUKOLUMNOWY UKŁAD KAFELKOWY 2x2
         // ═══════════════════════════════════════════════════════════
-        updateProgress(85, "🗺️ Budowanie zintegrowanej specyfikacji technicznej...");
+        updateProgress(85, "🗺️ Generowanie rysunków technicznych i kafelków wizualizacji...");
         doc.addPage();
         applyLightThemeAndFooter(doc.internal.getNumberOfPages(), lang === 'PL' ? "WIZUALIZACJE I SPECYFIKACJE" : "VISUALIZATIONS & SPECS");
 
@@ -238,7 +259,6 @@ async function executePDFGeneration() {
         doc.setDrawColor(210, 215, 225); doc.setLineWidth(0.3);
         doc.setFontSize(10); doc.setTextColor(80, 80, 80);
 
-        // GÓRNA SFERA: Rendery poglądowe stoiska targowego
         if (imgDataLeft && imgDataRight) {
             doc.addImage(imgDataLeft, 'JPEG', leftX, 35, tileW, tileH);
             doc.rect(leftX, 35, tileW, tileH, 'S');
@@ -249,14 +269,12 @@ async function executePDFGeneration() {
             doc.text(lang === 'PL' ? "Wizualizacja poglądowa 2" : "Perspective View 2", rightX, 35 + tileH + 5);
         }
 
-        // DOLNA SFERA: Blueprint rzutu z góry oraz zwymiarowana bryła 3D
         const bottomY = 112;
 
-        // Izolacja elementów architektury 2D
-        const hiddenElements = document.querySelectorAll('.light-toggle-btn, .studio-light-2d, .turn-toggle-btn, .acc-controls, .sego-joint');
+        // ZMIANA: Dodano klasę '.man2DElement' (ikonka człowieka) do selektora ukrywania warstw interfejsu rzutu 2D
+        const hiddenElements = document.querySelectorAll('.light-toggle-btn, .studio-light-2d, .turn-toggle-btn, .acc-controls, .sego-joint, #man2DElement');
         hiddenElements.forEach(el => el.style.display = 'none');
 
-        // Wtrysk dynamicznych reguł CSS dla uzyskania białych obrysów rzutu
         const blueprintStyle = document.createElement('style');
         blueprintStyle.id = 'pdf-temp-blueprint-style';
         blueprintStyle.innerHTML = `
@@ -281,32 +299,28 @@ async function executePDFGeneration() {
             doc.text(t.layout, leftX, bottomY + tileH + 5);
         } catch (e) { doc.text("Brak danych rzutu 2D.", leftX, bottomY + 15); }
 
-        // Przywrócenie pierwotnych stylów interfejsu
         blueprintStyle.remove();
         hiddenElements.forEach(el => el.style.display = '');
 
-        // Kafelek 4: Specyfikacja wymiarowa 3D
         if (imgDataTech) {
             doc.addImage(imgDataTech, 'JPEG', rightX, bottomY, tileW, tileH);
             doc.setDrawColor(210, 215, 225); doc.rect(rightX, bottomY, tileW, tileH, 'S');
-            doc.text(lang === 'PL' ? "Specyfikacja wymiarowa 3D" : "Technical Dimensions 3D", rightX, bottomY + tileH + 5);
+            doc.text(lang === 'PL' ? "Rzut techniczny z wymiarami" : "Technical Dimensions 3D", rightX, bottomY + tileH + 5);
         }
 
     } else {
-        // ═══════════════════════════════════════════════════════════
-        // ⬛ MOTYW CIEMNY: STRUKTURA ORYGINALNA (ZDJĘCIA NA STRONIE 1)
-        // ═══════════════════════════════════════════════════════════
-        updateProgress(75, "🖨 Formatowanie dokumentu PDF (Szata Ciemna)...");
+        // ========================================================
+        // ⬛ SZATA GRAFICZNA: CZARNA
+        // ========================================================
+        updateProgress(75, "🖨️ Formatowanie dokumentu PDF (Szata Ciemna)...");
         applyDarkThemeAndFooter(1, t.title);
         doc.setFontSize(11); doc.setTextColor(200, 200, 200);
         doc.text(`${t.proj} ${pName}`, 15, 33); doc.text(`${t.date} ${new Date().toLocaleDateString()}`, 15, 39); doc.text(`${t.client} ${cName}`, pageWidth - 80, 33);
 
         if (imgDataLeft && imgDataRight) {
             const imgW = 180; let imgH = imgW * ratio; if (imgH > 105) imgH = 105;
-
             doc.addImage(imgDataLeft, 'JPEG', 15, 45, imgW, imgH);
             doc.setDrawColor(255, 0, 128); doc.setLineWidth(0.3); doc.rect(15, 45, imgW, imgH, 'S');
-
             const secondY = 45 + imgH + 8;
             doc.addImage(imgDataRight, 'JPEG', 15, secondY, imgW, imgH);
             doc.rect(15, secondY, imgW, imgH, 'S');
@@ -316,16 +330,14 @@ async function executePDFGeneration() {
 
         const origAddPage = doc.addPage.bind(doc);
         doc.addPage = function (...args) {
-            origAddPage(...args);
-            applyDarkThemeAndFooter(doc.internal.getNumberOfPages(), t.cost);
+            origAddPage(...args); applyDarkThemeAndFooter(doc.internal.getNumberOfPages(), t.cost);
         };
 
         doc.autoTable({
             startY: 35, head: isAgency ? [[t.elem, t.dim, t.qty, t.priceBase, t.priceDisc, t.val]] : [[t.elem, t.dim, t.qty, t.priceDisc, t.val]],
             body: tableData, theme: 'grid', styles: { font: 'Roboto', fontSize: 10, cellPadding: 4, valign: 'middle' },
             headStyles: { fillColor: [255, 0, 128], textColor: 255, fontStyle: 'normal', halign: 'center' }, bodyStyles: { fillColor: [30, 30, 30], textColor: 230, lineColor: [50, 50, 50] }, alternateRowStyles: { fillColor: [22, 22, 22] },
-            columnStyles: isAgency ? { 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right', textColor: [0, 210, 255] }, 5: { halign: 'right' } } : { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
-
+            columnStyles: isAgency ? { 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right', textColor: [255, 0, 128] }, 5: { halign: 'right' } } : { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
             didParseCell: (data) => {
                 if (data.section === 'body' && data.column.index === 1 && data.cell.text[0] === "Pobierz wytyczne") {
                     data.cell.styles.textColor = [0, 210, 255]; data.cell.styles.fontStyle = 'bold';
@@ -338,7 +350,6 @@ async function executePDFGeneration() {
                         let loc = (lang !== 'PL') ? (Object.values(DB).find(e => e.name === n)?.labelEN || n) : n;
                         return loc === rowItemName;
                     }) || rowItemName;
-
                     if (typeof guidelineLinks !== 'undefined' && guidelineLinks[origName]) {
                         doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: guidelineLinks[origName] });
                     }
@@ -362,7 +373,7 @@ async function executePDFGeneration() {
             doc.addPage(); applyDarkThemeAndFooter(doc.internal.getNumberOfPages(), t.tech);
             const maxW = 180; let finalH = maxW * ratio; if (finalH > 220) finalH = 220;
             doc.addImage(imgDataTech, 'JPEG', 15, 35, maxW, finalH);
-            doc.setDrawColor(0, 210, 255); doc.setLineWidth(0.3); doc.rect(15, 35, maxW, finalH, 'S');
+            doc.setDrawColor(255, 0, 128); doc.rect(15, 35, maxW, finalH, 'S');
         }
 
         updateProgress(85, "🗺️ Skanowanie czystej architektury 2D...");
@@ -376,18 +387,64 @@ async function executePDFGeneration() {
         try {
             const stageDiv = document.getElementById('stage');
             const canvas2D = await html2canvas(stageDiv, { scale: 2, backgroundColor: "#121212" });
-
             const ratio2D = canvas2D.height / canvas2D.width;
             const maxW = 180; let finalH = maxW * ratio2D; if (finalH > 220) finalH = 220;
             doc.addImage(canvas2D.toDataURL('image/png'), 'PNG', 15, 35, maxW, finalH);
             doc.setDrawColor(255, 0, 128); doc.rect(15, 35, maxW, finalH, 'S');
         } catch (e) { doc.text("Brak danych rzutu 2D.", 15, 45); }
-
         hiddenElements.forEach(el => el.style.display = '');
     }
 
-    updateProgress(100, "✅ Operacja zakończona! Pobieranie pliku...");
-    await new Promise(r => setTimeout(r, 300));
+    // =========================================================================
+    // AUTOMATYCZNE STAPLOWANIE ZAŁĄCZNIKA OFERTY Z GITHUB RAW
+    // =========================================================================
+    updateProgress(90, "📥 Pobieranie oficjalnych załączników firmy z repozytorium...");
+    const GITHUB_APPEND_URL = "https://raw.githubusercontent.com/MPZAdsystem/CONFIG/main/Oferta/OF%20SEGO.pdf.pdf";
+
+    try {
+        const response = await fetch(GITHUB_APPEND_URL, { cache: "no-store" });
+        if (!response.ok) throw new Error(`Serwer GitHub zwrócił status: ${response.status}`);
+
+        const externalBuffer = await response.arrayBuffer();
+        const externalPdf = await pdfjsLib.getDocument({ data: new Uint8Array(externalBuffer) }).promise;
+        const totalAppendPages = externalPdf.numPages;
+
+        for (let pageNum = 1; pageNum <= totalAppendPages; pageNum++) {
+            const currentProgress = 90 + Math.round((pageNum / totalAppendPages) * 9);
+            updateProgress(currentProgress, `📄 Scalanie dokumentów: Dołączanie strony ${pageNum} z ${totalAppendPages}...`);
+
+            const page = await externalPdf.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 2.0 });
+
+            const appendCanvas = document.createElement('canvas');
+            appendCanvas.width = viewport.width;
+            appendCanvas.height = viewport.height;
+            const appendCtx = appendCanvas.getContext('2d');
+
+            await page.render({ canvasContext: appendCtx, viewport: viewport }).promise;
+            const pageImgData = appendCanvas.toDataURL('image/jpeg', 0.92);
+
+            doc.addPage();
+            doc.addImage(pageImgData, 'JPEG', 0, 0, pageWidth, pageHeight);
+
+            appendCanvas.width = 0;
+            appendCanvas.height = 0;
+        }
+        updateProgress(100, "✅ Operacja zakończona! Pobieranie pliku...");
+        await new Promise(r => setTimeout(r, 300));
+
+    } catch (appendError) {
+        console.error("[Architect Fallback] Wykryto błąd podsystemu staplowania:", appendError);
+        doc.addPage();
+        doc.setFont("Roboto", "normal");
+        doc.setFontSize(13);
+        doc.setTextColor(235, 59, 90);
+        doc.text("⚠️ [BŁĄD SYSTEMU INTEGRACJI DOKUMENTÓW]:", 15, 45);
+        doc.setFontSize(10);
+        doc.setTextColor(170, 170, 170);
+        doc.text(`Nie udało się automatycznie dołączyć pliku specyfikacji handlowej: OF SEGO.pdf.pdf`, 15, 53);
+        doc.text(`Powód anomalii: ${appendError.message}`, 15, 59);
+    }
 
     doc.save(`Oferta_EXPO_${pName.replace(/\s+/g, '_')}.pdf`);
     abortPdf();
@@ -412,7 +469,6 @@ async function sendTicket() {
     btn.disabled = true;
 
     try {
-
         const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyXwLqKo2jTxHt4NryosZkRbwS2h4Ze8mLTWMR1xYX1Pt6UWAgexk4am4-sI8lA3rJEVg/exec';
 
         await fetch(SCRIPT_URL, {
@@ -448,10 +504,14 @@ async function exportToSheets() {
         else if (name === "łącznik prosty (Clamp)") catNo = DB.clamp.catNo;
         else if (name === "łącznik kątowy (wew/zew)") catNo = DB.wewzew.catNo;
         else if (name === "SEGO łącznik zewnętrzny L") catNo = DB.zewzew.catNo;
-        else if (name === "Mini Foot" || name === "Mini Foot (Kantorek)") catNo = DB.miniFoot.catNo; else if (name === "Extension Cable") catNo = DB.extCable.catNo;
-        else if (name === "AdTribune Expo 100x100") catNo = DB.adTribuneExpo.catNo; else if (name === "adUp Vario quadfloat") catNo = DB.adUpQuadfloat.catNo;
+        else if (name === "Mini Foot" || name === "Mini Foot (Kantorek)" || name === "SEGO Mini FOOT") catNo = DB.miniFoot.catNo; else if (name === "Extension Cable") catNo = DB.extCable.catNo;
+        else if (name === "AdTribune Expo 100x100") catNo = DB.adTribuneExpo.catNo;
+        else if (name === "Okrągły stół z 3 krzesłami") catNo = DB.tableChairs.catNo;
+        else if (name === "adUp Vario quadfloat") catNo = DB.adUpQuadfloat.catNo;
         else if (name === "adUp Vario Ringfloat dwustronne") catNo = DB.adUpRingfloat.catNo;
         else if (name === "Ścianka tekstylna Vario S-80") catNo = DB.adUpVarioS80.catNo;
+        else if (name === "Roślina doniczkowa") catNo = DB.pottedPlant.catNo;
+        else if (name === "adFolder A4") catNo = DB.adFolderA4.catNo;
         else if (name === "Wykładzina dywanowa (m2)") catNo = "FLOOR-CARPET";
         else if (name === "- Płyty Adfloor prosty (m2)") catNo = "FLOOR-ADFLOOR";
         else if (name === "Adfloor z najazdami LED" || name === "Adfloor prosty") continue;
@@ -934,6 +994,21 @@ async function checkEdgeMatching() {
 
 function redefineSystemRules(system) {
     switch (system) {
+        case 'LMSM':
+            window.currentSystemConfig = {
+                name: "LMSM",
+                prefix: "LMSM",
+                defaultWidth: 100,
+                defaultHeight: 250,
+                defWidth: 100,
+                defHeight: 250,
+                cornerType: "BI_FOLD_SLIM",
+                neonColorHex: 0x00FF88,
+                bomPrefix: "ALU-060-SLIM",
+                canDoubleSide: true
+            };
+            break;
+
         case 'SEGO':
             window.currentSystemConfig = {
                 name: "SEGO",
@@ -1831,6 +1906,10 @@ async function randomizeProjectGraphics(btnElement) {
             const conf = window.currentKasetonConfig;
             conf.textureFront = null; conf.textureFrontName = null;
             conf.textureBack = null; conf.textureBackName = null;
+            conf.textureLeft = null; conf.textureLeftName = null;
+            conf.textureRight = null; conf.textureRightName = null;
+            conf.textureTop = null; conf.textureTopName = null;
+            conf.textureBottom = null; conf.textureBottomName = null;
         }
 
         plan.forEach(item => {
@@ -1888,7 +1967,6 @@ async function randomizeProjectGraphics(btnElement) {
         const files = await response.json();
 
         const validExts = ['jpg', 'jpeg', 'png', 'pdf', 'tif', 'tiff'];
-        const sysLower = currentSystem.toLowerCase();
 
         const parsedGraphics = files
             .filter(f => f.type === 'file' && validExts.includes(f.name.split('.').pop().toLowerCase()))
@@ -1900,25 +1978,66 @@ async function randomizeProjectGraphics(btnElement) {
                     w = parseInt(dimMatch[1], 10);
                     h = parseInt(dimMatch[2], 10);
                 }
+
+                // Pobranie kategorii z końcówki nazwy pliku
+                const baseName = f.name.substring(0, f.name.lastIndexOf('.'));
+                const tokens = baseName.split(/[_-\s]+/);
+                const lastToken = tokens[tokens.length - 1].toLowerCase();
+                
+                const ignoreTokens = ['sego', 'foldable', 'adframe', 'multiframe', 'general', 'generic', 'uni', 'universal', 'brand'];
+                let category = null;
+                if (lastToken && isNaN(lastToken) && !ignoreTokens.includes(lastToken) && !lastToken.includes('x')) {
+                    category = lastToken;
+                }
+
                 return {
                     name: f.name,
                     url: f.download_url,
                     width: w,
                     height: h,
                     ratio: w / h,
-                    isGeneric: nameLower.includes('generic'),
-                    systems: ['sego', 'foldable', 'adframe', 'multiframe'].filter(sys => nameLower.includes(sys))
+                    isGeneric: nameLower.includes('general') || nameLower.includes('generic'),
+                    systems: ['sego', 'foldable', 'adframe', 'multiframe'].filter(sys => nameLower.includes(sys)),
+                    category: category,
+                    isUniversal: nameLower.includes('uni') || nameLower.includes('universal'),
+                    isBrand: nameLower.includes('brand')
                 };
             });
 
-        // Inteligentny Solver Proporcji z uwzględnieniem tolerancji
+        // Dobór spójnej tematyki dla całego stoiska
+        let chosenCategory = null;
+        const categories = parsedGraphics.map(g => g.category).filter(c => c !== null);
+        const uniqueCategories = [...new Set(categories)];
+        if (uniqueCategories.length > 0) {
+            chosenCategory = uniqueCategories[Math.floor(Math.random() * uniqueCategories.length)];
+            console.log("🎨 Wylosowany motyw graficzny dla stoiska:", chosenCategory);
+        }
+
+        let brandCount = 0;
+
+        // Inteligentny Solver Proporcji z uwzględnieniem tolerancji, kategorii i systemów
         const findBestGraphic = (targetW, targetH) => {
             const targetRatio = targetW / targetH;
+            const sysLower = currentSystem === 'kasetony_niestandardowe' ? 'adframe' : currentSystem.toLowerCase();
 
-            let pool = parsedGraphics.filter(g => g.isGeneric || g.systems.includes(sysLower));
-            if (pool.length === 0) pool = parsedGraphics.filter(g => g.isGeneric);
-            if (pool.length === 0) pool = parsedGraphics;
+            // Pula przefiltrowana pod kątem kompatybilności systemowej i limitu brandu
+            let pool = parsedGraphics.filter(g => {
+                const isSystemCompatible = g.systems.length === 0 || g.systems.includes(sysLower) || g.isGeneric;
+                if (!isSystemCompatible) return false;
+                if (brandCount >= 2 && g.isBrand) return false;
+                return true;
+            });
+
             if (pool.length === 0) return greenFallback;
+
+            // Próba dobrania tematycznego (kategoria wiodąca lub universalne)
+            if (chosenCategory) {
+                const themedPool = pool.filter(g => g.category === chosenCategory || g.isUniversal);
+                const hasMatchingThemed = themedPool.some(g => Math.abs(g.ratio - targetRatio) <= 0.4);
+                if (hasMatchingThemed) {
+                    pool = themedPool;
+                }
+            }
 
             let minDiff = Infinity;
             pool.forEach(g => {
@@ -1932,7 +2051,12 @@ async function randomizeProjectGraphics(btnElement) {
             }
 
             const bestMatches = pool.filter(g => Math.abs(Math.abs(g.ratio - targetRatio) - minDiff) < 0.02);
-            return bestMatches[Math.floor(Math.random() * bestMatches.length)];
+            const selected = bestMatches[Math.floor(Math.random() * bestMatches.length)];
+            
+            if (selected.isBrand) {
+                brandCount++;
+            }
+            return selected;
         };
 
         // ═══════════════════════════════════════════════════════════
@@ -1983,13 +2107,40 @@ async function randomizeProjectGraphics(btnElement) {
             const conf = window.currentKasetonConfig;
             const kw = parseFloat(conf.width) || 100;
             const kh = parseFloat(conf.depth) || 200;
+            const kd = parseFloat(conf.height3D) || 120;
+            const printOption = conf.print || '6_sides';
 
-            if (conf.print !== 'no_print') {
-                const gFront = findBestGraphic(kw, kh);
-                if (gFront) { conf.textureFront = gFront.url; conf.textureFrontName = gFront.name; updatedAny = true; }
-                if (['double', 'backlit_blockout', 'backlit_white'].includes(conf.print)) {
+            if (printOption !== 'no_print') {
+                const showFront = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides', 'front_back', 'single_front'].includes(printOption);
+                const showBack = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides', 'front_back'].includes(printOption);
+                const showLeft = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides'].includes(printOption);
+                const showRight = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides'].includes(printOption);
+                const showTop = ['6_sides', '5_sides_bottom_open'].includes(printOption);
+                const showBottom = ['6_sides', '5_sides_top_open'].includes(printOption);
+
+                if (showFront) {
+                    const gFront = findBestGraphic(kw, kh);
+                    if (gFront) { conf.textureFront = gFront.url; conf.textureFrontName = gFront.name; updatedAny = true; }
+                }
+                if (showBack) {
                     const gBack = findBestGraphic(kw, kh);
-                    if (gBack) { conf.textureBack = gBack.url; conf.textureBackName = gBack.name; }
+                    if (gBack) { conf.textureBack = gBack.url; conf.textureBackName = gBack.name; updatedAny = true; }
+                }
+                if (showLeft) {
+                    const gLeft = findBestGraphic(kd, kh);
+                    if (gLeft) { conf.textureLeft = gLeft.url; conf.textureLeftName = gLeft.name; updatedAny = true; }
+                }
+                if (showRight) {
+                    const gRight = findBestGraphic(kd, kh);
+                    if (gRight) { conf.textureRight = gRight.url; conf.textureRightName = gRight.name; updatedAny = true; }
+                }
+                if (showTop) {
+                    const gTop = findBestGraphic(kw, kd);
+                    if (gTop) { conf.textureTop = gTop.url; conf.textureTopName = gTop.name; updatedAny = true; }
+                }
+                if (showBottom) {
+                    const gBottom = findBestGraphic(kw, kd);
+                    if (gBottom) { conf.textureBottom = gBottom.url; conf.textureBottomName = gBottom.name; updatedAny = true; }
                 }
             }
         } else {

@@ -32,52 +32,121 @@ function handleLoginKey(e) {
 }
 
 function attemptLogin() {
-    const user = document.getElementById('loginUser').value.toLowerCase().trim();
+    const user = document.getElementById('loginUser').value.trim();
     const pass = document.getElementById('loginPass').value.trim();
     const err = document.getElementById('loginError');
     const remember = document.getElementById('rememberMe').checked;
+    const loginBtn = document.querySelector('#loginOverlay button[onclick="attemptLogin()"]');
 
-    if (user === 'klient' && pass === 'klient123') currentUserRole = 'klient';
-    else if (user === 'agencja' && pass === 'agencja123') currentUserRole = 'agencja';
-    else if (user === 'admin' && pass === 'admin123') currentUserRole = 'admin';
-    else {
+    if (!user || !pass) {
         err.style.display = 'block';
+        err.innerText = 'Wprowadź login i hasło!';
         return;
     }
 
-    // NOWE: Jeśli zaznaczono "Zapamiętaj mnie", zapisujemy rolę w przeglądarce
-    if (remember) {
-        try {
-            localStorage.setItem('expoBuilderRole', currentUserRole);
-        } catch (e) {
-            console.warn("Storage item write blocked:", e);
-        }
+    // Blokada przycisku na czas zapytania
+    if (loginBtn) {
+        loginBtn.disabled = true;
+        loginBtn.innerText = '⏳ Logowanie...';
     }
-    document.getElementById('loginOverlay').style.display = 'none';
-    runFlavorLoading(() => { applyRolePermissions(); });
+    err.style.display = 'none';
+
+    // AJAX POST do api_login.php (serwer PHP weryfikuje przez API CMS)
+    fetch('api_login.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'cms_login=' + encodeURIComponent(user) + '&cms_password=' + encodeURIComponent(pass)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'OK') {
+            // Logowanie pomyślne — ustawiamy domyślną rolę
+            // (API CMS nie zwraca ról, więc wszyscy zalogowani = admin)
+            currentUserRole = 'admin';
+
+            if (remember) {
+                try {
+                    localStorage.setItem('expoBuilderRole', currentUserRole);
+                    localStorage.setItem('expoBuilderUser', user);
+                } catch (e) {
+                    console.warn("Storage item write blocked:", e);
+                }
+            }
+
+            document.getElementById('loginOverlay').style.display = 'none';
+            runFlavorLoading(() => { applyRolePermissions(); });
+        } else {
+            // Logowanie nieudane
+            err.style.display = 'block';
+            err.innerText = data.message || 'Nieprawidłowy login lub hasło!';
+        }
+    })
+    .catch(error => {
+        console.error("Błąd połączenia z API logowania:", error);
+        err.style.display = 'block';
+        err.innerText = 'Błąd połączenia z serwerem. Spróbuj ponownie.';
+    })
+    .finally(() => {
+        if (loginBtn) {
+            loginBtn.disabled = false;
+            loginBtn.innerText = 'Zaloguj się';
+        }
+    });
 }
 
 function checkSavedLogin() {
-    let savedRole = null;
-    try {
-        savedRole = localStorage.getItem('expoBuilderRole');
-    } catch (e) {
-        console.warn("Storage read blocked:", e);
-    }
-    if (savedRole) {
-        currentUserRole = savedRole;
-        document.getElementById('loginOverlay').style.display = 'none';
-
-        // 🔥 ZMIANA: Zamiast od razu włączać uprawnienia, najpierw odpalamy ekran ładowania
-        runFlavorLoading(() => {
-            applyRolePermissions();
+    // Sprawdzamy sesję PHP na serwerze (zamiast localStorage)
+    fetch('api_check_session.php')
+        .then(response => response.json())
+        .then(data => {
+            if (data.logged_in === true) {
+                // Sesja PHP aktywna — wpuszczamy użytkownika
+                currentUserRole = 'admin';
+                document.getElementById('loginOverlay').style.display = 'none';
+                runFlavorLoading(() => { applyRolePermissions(); });
+            } else {
+                // Brak sesji PHP — sprawdzamy localStorage jako fallback
+                let savedRole = null;
+                try {
+                    savedRole = localStorage.getItem('expoBuilderRole');
+                } catch (e) {
+                    console.warn("Storage read blocked:", e);
+                }
+                // Nie logujemy automatycznie z localStorage — wymagamy sesji serwerowej
+                // Pokazujemy formularz logowania
+            }
+        })
+        .catch(error => {
+            // Brak dostępu do serwera (offline/lokalny dev) — fallback na localStorage
+            console.warn("Nie można sprawdzić sesji serwerowej, fallback na localStorage:", error);
+            let savedRole = null;
+            try {
+                savedRole = localStorage.getItem('expoBuilderRole');
+            } catch (e) {
+                console.warn("Storage read blocked:", e);
+            }
+            if (savedRole) {
+                currentUserRole = savedRole;
+                document.getElementById('loginOverlay').style.display = 'none';
+                runFlavorLoading(() => { applyRolePermissions(); });
+            }
         });
-    }
 }
 
 function logout() {
+    // Wylogowanie z serwera PHP
+    fetch('api_logout.php')
+        .then(() => {
+            console.log("Sesja serwerowa zakończona.");
+        })
+        .catch(err => {
+            console.warn("Błąd wylogowania z serwera:", err);
+        });
+
+    // Czyścimy localStorage
     try {
-        localStorage.removeItem('expoBuilderRole'); // Czyścimy pamięć
+        localStorage.removeItem('expoBuilderRole');
+        localStorage.removeItem('expoBuilderUser');
     } catch (e) {
         console.warn("Storage remove blocked:", e);
     }
@@ -92,6 +161,7 @@ function logout() {
     // Pokazujemy ekran logowania ponownie
     document.getElementById('loginOverlay').style.display = 'flex';
 }
+
 
 function applyRolePermissions() {
     const adminBtn = document.getElementById('btnAdminDB');
@@ -874,10 +944,14 @@ window.refreshBlueprintLegend = function () {
     const dim = window.blueprintDimensions;
     const dimsEl = document.getElementById('blDims');
     if (dimsEl) {
-        dimsEl.innerHTML =
+        let html =
             '<div class="bl-dim-row"><span class="bl-dim-label">Szerokość</span><span class="bl-dim-value">' + dim.W + ' cm</span></div>' +
-            '<div class="bl-dim-row"><span class="bl-dim-label">Wysokość</span><span class="bl-dim-value">' + dim.H + ' cm</span></div>' +
-            '<div class="bl-dim-row"><span class="bl-dim-label">System</span><span class="bl-dim-value" style="font-size:12px;">' + dim.sys + '</span></div>';
+            '<div class="bl-dim-row"><span class="bl-dim-label">Wysokość</span><span class="bl-dim-value">' + dim.H + ' cm</span></div>';
+        if (dim.D) {
+            html += '<div class="bl-dim-row"><span class="bl-dim-label">Głębokość</span><span class="bl-dim-value">' + dim.D + ' cm</span></div>';
+        }
+        html += '<div class="bl-dim-row"><span class="bl-dim-label">System</span><span class="bl-dim-value" style="font-size:12px;">' + dim.sys + '</span></div>';
+        dimsEl.innerHTML = html;
     }
     const listEl = document.getElementById('blList');
     if (listEl) {
@@ -987,6 +1061,41 @@ function switchSystem(newSystem) {
     }
 
     currentSystem = newSystem;
+
+    const blockedSystems = ['multiframe', 'Flex_noLEd', 'adframe', 'SEGO_2_0'];
+    const isBlocked = blockedSystems.includes(newSystem);
+    const overlay = document.getElementById('constructionOverlay');
+    if (overlay) {
+        overlay.style.display = isBlocked ? 'flex' : 'none';
+    }
+    if (isBlocked && typeof is3DMode !== 'undefined' && is3DMode && typeof toggle3D === 'function') {
+        toggle3D();
+    }
+
+    if (isBlocked) {
+        const collapsible = document.getElementById('sidebar-collapsible-content');
+        if (collapsible) collapsible.style.display = 'none';
+
+        const allPanels = document.querySelectorAll('.system-ui-panel');
+        allPanels.forEach(p => p.style.display = 'none');
+
+        const btnRadial = document.getElementById('btnToggleRadial');
+        if (btnRadial) btnRadial.style.display = 'none';
+        const btnSpakuj = document.getElementById('btnSpakuj');
+        if (btnSpakuj) btnSpakuj.style.display = 'none';
+        const btnRand = document.getElementById('btnRandomizeGraphics');
+        if (btnRand) btnRand.style.display = 'none';
+
+        const wydrukiBtns = ['btnWydrukiReport', 'btnWydrukiMatch', 'btnWydrukiClearStage', 'btnClearWydruki'];
+        wydrukiBtns.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+
+        if (typeof render === 'function') render();
+        console.log("🚀 System switched to BLOCKED: " + newSystem);
+        return;
+    }
 
     if (currentSystem === 'LMSM') {
         window.currentSystemConfig = { prefix: "LMSM", defWidth: 100, defHeight: 250, cornerType: "BI_FOLD_SLIM", neonColorHex: 0x00FF88 };
@@ -1241,7 +1350,7 @@ function onKasetonSystemChange(sel) {
     if (!sel) return;
     const sys = sel.value;
     const root = document.documentElement;
-    const isCTF = (sys === 'CTF');
+    const isCTF = (sys === 'CTF' || sys === 'CTF_LED');
 
     if (typeof KASETON_NEON_MAP !== 'undefined' && KASETON_NEON_MAP[sys]) {
         const map = KASETON_NEON_MAP[sys];
@@ -1269,7 +1378,10 @@ function onKasetonSystemChange(sel) {
         }
     }
 
-    // CTF-specific sections: 3rd dimension and top panel
+    // Aktualizacja opcji oświetlenia dla CTF LED
+    updateKasetonLightOptions();
+
+    // CTF:-specific sections: 3rd dimension and top panel
     const heightSec = document.getElementById('kasetonHeightSection');
     const topSec = document.getElementById('kasetonTopSection');
     if (heightSec) {
@@ -1328,10 +1440,11 @@ function onKasetonSystemChange(sel) {
     if (printSel) {
         printSel.innerHTML = '';
         if (isCTF) {
-            // CTF: box with 4 side walls
-            printSel.innerHTML = '<option value="all_sides">Wydruk na 4 ściany</option>' +
-                '<option value="front_back">Wydruk przód + tył</option>' +
-                '<option value="single_front">Wydruk tylko przód</option>' +
+            // CTF/CTF_LED: print options for 4, 5, 6 sides, default is 6 sides
+            printSel.innerHTML = '<option value="6_sides" selected>Wydruk na 6 ścian</option>' +
+                '<option value="4_sides">Wydruk na 4 ściany</option>' +
+                '<option value="5_sides_top_open">Wydruk na 5 ścian (otwarta góra)</option>' +
+                '<option value="5_sides_bottom_open">Wydruk na 5 ścian (otwarty dół)</option>' +
                 '<option value="no_print">Bez wydruku (sama rama)</option>';
         } else if (sys === 'LMS' || sys === 'LMSM') {
             // LMS / LMSM: kaseton jednostronny - ograniczone opcje
@@ -1358,6 +1471,47 @@ function onKasetonSystemChange(sel) {
     }
 
     console.log('🔲 Kaseton system changed to:', sys);
+}
+
+function updateKasetonLightOptions() {
+    const sysEl = document.getElementById('kasetonSystem');
+    const topEl = document.getElementById('kasetonTop');
+    const lightEl = document.getElementById('kasetonLight');
+    if (!sysEl || !lightEl) return;
+
+    const sys = sysEl.value;
+    const topVal = topEl ? topEl.value : 'none';
+    const currentVal = lightEl.value;
+
+    if (sys === 'CTF_LED') {
+        let html = '';
+        html += '<option value="zarowka">żarówka</option>';
+        html += '<option value="plafon_dol">Plafon LED (dół)</option>';
+        html += '<option value="plafon_gora">Plafon LED (góra)</option>';
+        if (topVal === 'mdf') {
+            html += '<option value="paski_led">paski LED obwodowo pod blatem</option>';
+        }
+        lightEl.innerHTML = html;
+
+        // Przywróć poprzednią wartość jeśli wciąż istnieje
+        if (html.includes('value="' + currentVal + '"')) {
+            lightEl.value = currentVal;
+        } else {
+            lightEl.value = 'zarowka';
+        }
+    } else {
+        // Standardowe opcje LED
+        lightEl.innerHTML = `
+            <option value="power_long">Krawędziowo - Długie boki (Góra/Dół)</option>
+            <option value="power_short">Krawędziowo - Krótkie boki (Lewo/Prawo)</option>
+            <option value="power_around">Po obwodzie (Wszystkie 4 boki)</option>
+        `;
+        if (['power_long', 'power_short', 'power_around'].includes(currentVal)) {
+            lightEl.value = currentVal;
+        } else {
+            lightEl.value = 'power_long';
+        }
+    }
 }
 
 function kasetonAfterglowTrigger(el) {
@@ -1387,7 +1541,7 @@ function submitKasetonConfig() {
     const print = printEl ? printEl.value : '';
     const usage = usageEl ? usageEl.value : '';
 
-    const isCTF = (sys === 'CTF');
+    const isCTF = (sys === 'CTF' || sys === 'CTF_LED');
     const minDim = isCTF ? 30 : 40;
     const maxDim = isCTF ? 800 : 1000;
 

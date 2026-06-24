@@ -1906,6 +1906,10 @@ async function randomizeProjectGraphics(btnElement) {
             const conf = window.currentKasetonConfig;
             conf.textureFront = null; conf.textureFrontName = null;
             conf.textureBack = null; conf.textureBackName = null;
+            conf.textureLeft = null; conf.textureLeftName = null;
+            conf.textureRight = null; conf.textureRightName = null;
+            conf.textureTop = null; conf.textureTopName = null;
+            conf.textureBottom = null; conf.textureBottomName = null;
         }
 
         plan.forEach(item => {
@@ -2103,13 +2107,40 @@ async function randomizeProjectGraphics(btnElement) {
             const conf = window.currentKasetonConfig;
             const kw = parseFloat(conf.width) || 100;
             const kh = parseFloat(conf.depth) || 200;
+            const kd = parseFloat(conf.height3D) || 120;
+            const printOption = conf.print || '6_sides';
 
-            if (conf.print !== 'no_print') {
-                const gFront = findBestGraphic(kw, kh);
-                if (gFront) { conf.textureFront = gFront.url; conf.textureFrontName = gFront.name; updatedAny = true; }
-                if (['double', 'backlit_blockout', 'backlit_white'].includes(conf.print)) {
+            if (printOption !== 'no_print') {
+                const showFront = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides', 'front_back', 'single_front'].includes(printOption);
+                const showBack = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides', 'front_back'].includes(printOption);
+                const showLeft = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides'].includes(printOption);
+                const showRight = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides'].includes(printOption);
+                const showTop = ['6_sides', '5_sides_bottom_open'].includes(printOption);
+                const showBottom = ['6_sides', '5_sides_top_open'].includes(printOption);
+
+                if (showFront) {
+                    const gFront = findBestGraphic(kw, kh);
+                    if (gFront) { conf.textureFront = gFront.url; conf.textureFrontName = gFront.name; updatedAny = true; }
+                }
+                if (showBack) {
                     const gBack = findBestGraphic(kw, kh);
-                    if (gBack) { conf.textureBack = gBack.url; conf.textureBackName = gBack.name; }
+                    if (gBack) { conf.textureBack = gBack.url; conf.textureBackName = gBack.name; updatedAny = true; }
+                }
+                if (showLeft) {
+                    const gLeft = findBestGraphic(kd, kh);
+                    if (gLeft) { conf.textureLeft = gLeft.url; conf.textureLeftName = gLeft.name; updatedAny = true; }
+                }
+                if (showRight) {
+                    const gRight = findBestGraphic(kd, kh);
+                    if (gRight) { conf.textureRight = gRight.url; conf.textureRightName = gRight.name; updatedAny = true; }
+                }
+                if (showTop) {
+                    const gTop = findBestGraphic(kw, kd);
+                    if (gTop) { conf.textureTop = gTop.url; conf.textureTopName = gTop.name; updatedAny = true; }
+                }
+                if (showBottom) {
+                    const gBottom = findBestGraphic(kw, kd);
+                    if (gBottom) { conf.textureBottom = gBottom.url; conf.textureBottomName = gBottom.name; updatedAny = true; }
                 }
             }
         } else {

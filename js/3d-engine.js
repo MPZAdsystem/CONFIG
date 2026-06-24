@@ -424,21 +424,16 @@ function init3D() {
           break;
         }
       } else if (mesh.userData && mesh.userData.isKasetonPrint) {
-        const side = mesh.userData.side;
+        const side = mesh.userData.side; // 'front', 'back', 'left', 'right', 'top', 'bottom'
         if (!window.currentKasetonConfig) window.currentKasetonConfig = {};
-        if (side === 'front') {
-          window.currentKasetonConfig.textureFrontName = file.name;
-        } else {
-          window.currentKasetonConfig.textureBackName = file.name;
-        }
+        const keySuffix = side.charAt(0).toUpperCase() + side.slice(1);
+        const nameKey = 'texture' + keySuffix + 'Name';
+        const texKey = 'texture' + keySuffix;
+        window.currentKasetonConfig[nameKey] = file.name;
         refreshGraphicsList();
         handleDroppedFile(file, fileExt, (source) => {
           let dataUrl = typeof source === 'string' ? source : source.toDataURL('image/jpeg', 0.95);
-          if (side === 'front') {
-            window.currentKasetonConfig.textureFront = dataUrl;
-          } else {
-            window.currentKasetonConfig.textureBack = dataUrl;
-          }
+          window.currentKasetonConfig[texKey] = dataUrl;
           update3DScene();
         });
         break;

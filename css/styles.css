@@ -2577,3 +2577,47 @@
     outline: 2px solid var(--highlight, #00d2ff);
     outline-offset: -2px;
 }
+
+/* --- CONSTRUCTION WARNING STRIPES OVERLAY --- */
+.warning-stripes {
+    width: 100%;
+    height: 60px;
+    background: repeating-linear-gradient(
+        45deg,
+        #ffea00,
+        #ffea00 20px,
+        #000000 20px,
+        #000000 40px
+    );
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+    flex-shrink: 0;
+}
+
+#constructionOverlay {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #0a1a35;
+    z-index: 9999;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.construction-message {
+    text-align: center;
+    color: #ffea00;
+    font-size: 36px;
+    font-weight: bold;
+    text-transform: uppercase;
+    text-shadow: 0 0 10px rgba(255, 234, 0, 0.4), 0 0 20px rgba(0, 0, 0, 0.8);
+    margin: auto;
+    padding: 20px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    letter-spacing: 1px;
+}

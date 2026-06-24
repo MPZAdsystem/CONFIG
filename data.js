@@ -6,47 +6,71 @@ const DB = {
 
     // --- SYSTEM SEGO ---
 
-    sego300x250: { name: "Moduł 300x250", labelEN: "Wall 300x250", catNo: "SEGO-LIG-BOX-300X250", type: "wall", length: 300, height: 250, price: 1341 },
+    sego300x250: { name: "Moduł 300x250", labelEN: "Wall 300x250", catNo: "SEGO-LIG-BOX-300X250", intranetId: 13694, type: "wall", length: 300, height: 250, price: 1341 },
 
-    sego200x250: { name: "Moduł 200x250", labelEN: "Wall 200x250", catNo: "SEGO-LIG-BOX-200X250", type: "wall", length: 200, height: 250, price: 1019 },
+    sego200x250: { name: "Moduł 200x250", labelEN: "Wall 200x250", catNo: "SEGO-LIG-BOX-200X250", intranetId: 18680, type: "wall", length: 200, height: 250, price: 1019 },
 
-    sego100x250: { name: "Moduł 100x250", labelEN: "Wall 100x250", catNo: "SEGO-LIG-BOX-100X250", type: "wall", length: 100, height: 250, price: 580 },
+    sego100x250: { name: "Moduł 100x250", labelEN: "Wall 100x250", catNo: "SEGO-LIG-BOX-100X250", intranetId: 13693, type: "wall", length: 100, height: 250, price: 580 },
 
-    sego85x250: { name: "Moduł 85x250", labelEN: "Wall 85x250", catNo: "SEGO-LIG-BOX-85X250", type: "wall", length: 85, height: 250, price: 512 },
+    sego85x250: { name: "Moduł 85x250", labelEN: "Wall 85x250", catNo: "SEGO-LIG-BOX-85X250", intranetId: 18347, type: "wall", length: 85, height: 250, price: 512 },
 
-    door100: { name: "SEGO Door 100 (H:250)", labelEN: "Door 100x250", catNo: "SEGO-DOOR-KIT-100X250", type: "wall", length: 100, height: 250, price: 191, color: "#00d2ff", isDoor: true },
+    door100: { name: "SEGO Door 100 (H:250)", labelEN: "Door 100x250", catNo: "SEGO-DOOR-KIT-100X250", intranetId: 17143, type: "wall", length: 100, height: 250, price: 191, color: "#00d2ff", isDoor: true },
 
-    sego300x300: { name: "Moduł 300x300", labelEN: "Wall 300x300", catNo: "SEGO-LIG-BOX-300X300", type: "wall", length: 300, height: 300, price: 1453, color: "var(--tall-color)" },
+    sego300x300: { name: "Moduł 300x300", labelEN: "Wall 300x300", catNo: "SEGO-LIG-BOX-300X300", intranetId: 18494, type: "wall", length: 300, height: 300, price: 1453, color: "var(--tall-color)" },
 
-    sego200x300: { name: "Moduł 200x300", labelEN: "Wall 200x300", catNo: "SEGO-LIG-BOX-200X300", type: "wall", length: 200, height: 300, price: 1107, color: "var(--tall-color)" },
+    sego200x300: { name: "Moduł 200x300", labelEN: "Wall 200x300", catNo: "SEGO-LIG-BOX-200X300", intranetId: 19727, type: "wall", length: 200, height: 300, price: 1107, color: "var(--tall-color)" },
 
-    sego100x300: { name: "Moduł 100x300", labelEN: "Wall 100x300", catNo: "SEGO-LIG-BOX-100X300", type: "wall", length: 100, height: 300, price: 644, color: "var(--tall-color)" },
+    sego100x300: { name: "Moduł 100x300", labelEN: "Wall 100x300", catNo: "SEGO-LIG-BOX-100X300", intranetId: 18493, type: "wall", length: 100, height: 300, price: 644, color: "var(--tall-color)" },
 
-    sego85x300: { name: "Moduł 85x300", labelEN: "Wall 85x300", catNo: "SEGO-LIG-BOX-85X300", type: "wall", length: 85, height: 300, price: 572, color: "var(--tall-color)" },
+    sego85x300: { name: "Moduł 85x300", labelEN: "Wall 85x300", catNo: "SEGO-LIG-BOX-85X300", intranetId: 18490, type: "wall", length: 85, height: 300, price: 572, color: "var(--tall-color)" },
 
-    tvPanel: { id: "tvPanel", name: "Panel TV", labelEN: "TV Mount", catNo: "SEGO-TV-PANEL", type: "accessory", price: 124, color: "#ffcc00", short: "TV" },
+    tvPanel: { id: "tvPanel", name: "Panel TV", labelEN: "TV Mount", catNo: "SEGO-TV-PANEL", intranetId: 13528, type: "accessory", price: 124, color: "#ffcc00", short: "TV" },
 
-    shelfKit: { id: "shelfKit", name: "Shelf Kit", labelEN: "Shelf Kit", catNo: "SEGO-SHELF-KIT", type: "accessory", price: 157, color: "#ff9900", short: "SH" },
+    shelfKit: { id: "shelfKit", name: "Shelf Kit", labelEN: "Shelf Kit", catNo: "SEGO-SHELF-KIT", intranetId: 13529, type: "accessory", price: 157, color: "#ff9900", short: "SH" },
 
     daszek: { id: "daszek", name: "Daszek", labelEN: "Roof Tunnel", catNo: "SEGO-ROOF-TUNNEL", type: "accessory", price: 0, color: "#cc00ff", short: "DSZ" },
 
-    clamp: { name: "Łącznik prosty (Clamp)", catNo: "SEGO-LAC-PRO", price: 7 },
+    clamp: { name: "Łącznik prosty (Clamp)", catNo: "SEGO-LAC-PRO", intranetId: 13530, price: 7 },
 
-    wewzew: { name: "Łącznik kątowy (wew/zew)", catNo: "SEGO-LAC-WEW-ZEW", price: 3 },
+    wewzew: { name: "Łącznik kątowy (wew/zew)", catNo: "SEGO-LAC-WEW-ZEW", intranetId: 13531, price: 3 },
 
-    zewzew: { name: "SEGO łącznik zewnętrzny L", catNo: "SEGO-LAC-ZEW-L", price: 3 },
+    zewzew: { name: "SEGO łącznik zewnętrzny L", catNo: "SEGO-LAC-ZEW-L", intranetId: 13532, price: 3 },
 
-    miniFoot: { name: "Mini Foot", catNo: "SEGO-MINI-FOOT", price: 5 },
+    miniFoot: { name: "SEGO Mini FOOT", catNo: "SEGO-MINI-FOOT", intranetId: 17145, price: 5 },
 
-    extCable: { name: "Extension Cable", catNo: "SEGO-EXT-CABLE", price: 9 },
+    extCable: { name: "Extension Cable", catNo: "SEGO-EXT-CABLE", intranetId: 13555, price: 9 },
 
-    bridge: { name: "Bridge Connector", catNo: "SEGO-BRIDGE-CONN", price: 8 },
+    bridge: { name: "Bridge Connector", catNo: "SEGO-BRIDGE-CONN", intranetId: 13533, price: 8 },
 
     adTribuneExpo: {
 
         id: "adTribuneExpo", name: "AdTribune Expo 100x100", labelEN: "White LED Counter", catNo: "AD-TRIBUNE-EXPO-W",
 
         type: "freestanding", width: 100, height: 95, depth: 40, price: 350, color: "#ffffff"
+
+    },
+
+    tableChairs: {
+
+        id: "tableChairs", name: "Okrągły stół z 3 krzesłami", labelEN: "Round Table and 3 Chairs", catNo: "TABLE-CHAIRS-SET",
+
+        type: "table_chairs", width: 160, height: 75, depth: 160, price: 0, color: "#ffffff"
+
+    },
+
+    pottedPlant: {
+
+        id: "pottedPlant", name: "Roślina doniczkowa", labelEN: "Potted Plant", catNo: "POTTED-PLANT",
+
+        type: "potted_plant", width: 60, height: 120, depth: 60, price: 0, color: "#00ff88"
+
+    },
+
+    adFolderA4: {
+
+        id: "adFolderA4", name: "adFolder A4", labelEN: "adFolder A4", catNo: "10094",
+
+        type: "adfolder", width: 27, height: 127, depth: 35, price: 88.76, color: "#c0c0c0"
 
     },
 
@@ -170,6 +194,20 @@ let computed3DData = [];
 
 // --- 🛒 LOGIKA DODAWANIA RĘCZNEGO ---
 
+// Intranet WBS Input Rule:
+// If target element === '#ordp_count' or '#sto_ch', stringify float values using .replace('.', ',').
+window.formatWBSValue = function (value, targetElement) {
+    if (targetElement === '#ordp_count' || targetElement === '#sto_ch') {
+        if (typeof value === 'number') {
+            return value.toString().replace('.', ',');
+        }
+        if (typeof value === 'string') {
+            return value.replace('.', ',');
+        }
+    }
+    return value;
+};
+
 let manualItems = {};
 
 let lastSystemForManual = null;
@@ -219,6 +257,7 @@ let cancelPdfGeneration = false;
 let mixer; // Mikser animacji Three.js
 let humanPos = { x: 0, z: 350 }; // Pozycja człowieka w układzie 3D (x, z)
 let human3DModel = null; // Referencja do obiektu 3D człowieka
+let isDraggingHuman3D = false; // Flaga przeciągania modelu ludzkiego w 3D
 
 
 const clock = new THREE.Clock(); // Zegar odmierzający czas między klatkami
@@ -457,7 +496,7 @@ document.addEventListener('keydown', function (e) {
 
         if (e.key.toLowerCase() === 'q') {
 
-            if (item.type === 'freestanding' || item.type === 'freestanding_s' || item.type === 'suspended') {
+            if (item.type === 'freestanding' || item.type === 'freestanding_s' || item.type === 'suspended' || item.type === 'table_chairs' || item.type === 'potted_plant' || item.type === 'adfolder') {
 
                 item.rotation = ((item.rotation || 0) + 90) % 360;
 
@@ -603,6 +642,52 @@ document.addEventListener('keydown', function (event) {
         event.preventDefault(); // Zapobiega domyślnym akcjom przeglądarki
 
         if (typeof undo === 'function') undo();
+
+    }
+
+    // 1b. CTRL + C -> Kopiuj element
+
+    if (event.ctrlKey && event.key.toLowerCase() === 'c') {
+
+        if (typeof selectedItemIndex !== 'undefined' && selectedItemIndex !== null && plan[selectedItemIndex]) {
+
+            event.preventDefault();
+
+            window.clipboardItem = JSON.parse(JSON.stringify(plan[selectedItemIndex]));
+
+        }
+
+    }
+
+    // 1c. CTRL + V -> Wklej element
+
+    if (event.ctrlKey && event.key.toLowerCase() === 'v') {
+
+        if (window.clipboardItem) {
+
+            event.preventDefault();
+
+            let newItem = JSON.parse(JSON.stringify(window.clipboardItem));
+
+            if (newItem.offsetX !== undefined) newItem.offsetX += 40;
+
+            if (newItem.offsetY !== undefined) newItem.offsetY += 40;
+
+            if (newItem.startX !== undefined) newItem.startX += 40;
+
+            if (newItem.startY !== undefined) newItem.startY += 40;
+
+            if (newItem.endX !== undefined) newItem.endX += 40;
+
+            if (newItem.endY !== undefined) newItem.endY += 40;
+
+            plan.push(newItem);
+
+            selectedItemIndex = plan.length - 1;
+
+            if (typeof render === 'function') render();
+
+        }
 
     }
 
@@ -927,6 +1012,8 @@ const KASETON_NEON_MAP = {
 
     'LMS': { neon: '#00ff88', alpha: 'rgba(0, 255, 136, @@)' },
 
+    'LMSM': { neon: '#00ff88', alpha: 'rgba(0, 255, 136, @@)' },
+
     'DTF': { neon: '#ff6600', alpha: 'rgba(255, 102, 0, @@)' },
 
     'STF': { neon: '#ffcc00', alpha: 'rgba(255, 204, 0, @@)' },
@@ -943,7 +1030,7 @@ const KASETON_NEON_MAP = {
 
 // Systems that have LED options (power supply + lighting)
 
-const KASETON_LED_SYSTEMS = ['LMD', 'LMS', 'CTF_LED', 'LCD_LMD'];
+const KASETON_LED_SYSTEMS = ['LMD', 'LMS', 'LMSM', 'CTF_LED', 'LCD_LMD'];
 
 // Close modal on backdrop click
 
@@ -1003,7 +1090,15 @@ const KASETON_WEIGHT_DATA = {
 
     LMS: { profile: 2.0, support: 0.6, accessories: 2.0, led: 0.2, feet: 1.0 },
 
-    LMSM: { profile: 1.3, support: 0.6, accessories: 2.0, led: 0.2, feet: 0 },
+    LMSM: {
+        profile: 1.3, support: 0.6, accessories: 2.0, led: 0.2, feet: 0,
+        getWeight: function(w, h) {
+            // w, h podane w metrach
+            const profileWeight = (2 * (w + h)) * 1.14;
+            const panelAndStabilizers = w * h * 0.45;
+            return parseFloat((profileWeight + panelAndStabilizers).toFixed(2));
+        }
+    },
 
     DTF: { profile: 2.4, support: 0.6, accessories: 2.0, led: 0.2, feet: 0 },
 
@@ -1012,6 +1107,19 @@ const KASETON_WEIGHT_DATA = {
     STFL: { profile: 2.0, support: 0.6, accessories: 2.0, led: 0.2, feet: 0 }
 
 };
+
+// Wstrzyknąć do istniejącego obiektu bazodanowego systemów profilowych
+window.PROFILE_DB = window.PROFILE_DB || {};
+window.PROFILE_DB["LMSM"] = {
+    depth: 6.0,
+    weightPerM: 1.14,
+    ledType: "SLIM_EDGE_24V",
+    maxLength: 600.0,
+    priceGroup: "SLIM",
+    skuBase: "ALU-060-SLIM"
+};
+
+window.KASETON_WEIGHT_DATA = KASETON_WEIGHT_DATA;
 
 const KASETON_PSU_WEIGHTS = {
 

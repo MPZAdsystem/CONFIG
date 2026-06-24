@@ -1159,7 +1159,7 @@ function drawKasetonScene() {
   const sys = config.system || 'LMD';
 
   // CTF: completely different 3D model (box/cuboid), delegate to dedicated function
-  if (sys === 'CTF') {
+  if (sys === 'CTF' || sys === 'CTF_LED') {
     return drawCTFScene(config);
   }
 
@@ -3017,7 +3017,14 @@ function drawCTFScene(config) {
   kGroup.userData = { isKaseton: true };
 
   // --- MATERIAŁY ---
-  const aluMat = new THREE.MeshStandardMaterial({
+  const aluMat = isBlueprintMode ? new THREE.MeshStandardMaterial({
+    color: 0x4488ff,
+    metalness: 0.7,
+    roughness: 0.2,
+    transparent: true,
+    opacity: 0.2,
+    name: 'ctf_aluminum_blueprint'
+  }) : new THREE.MeshStandardMaterial({
     color: 0xd0d4d9,
     metalness: 0.55,
     roughness: 0.45,
@@ -3050,7 +3057,14 @@ function drawCTFScene(config) {
   plasticTex.wrapS = THREE.RepeatWrapping;
   plasticTex.wrapT = THREE.RepeatWrapping;
 
-  const connMat = new THREE.MeshStandardMaterial({
+  const connMat = isBlueprintMode ? new THREE.MeshStandardMaterial({
+    color: 0x4488ff,
+    metalness: 0.7,
+    roughness: 0.2,
+    transparent: true,
+    opacity: 0.2,
+    name: 'ctf_connector_blueprint'
+  }) : new THREE.MeshStandardMaterial({
     map: plasticTex,
     color: 0xdddddd, // Rozjaśnienie tekstury bazowej do szarego koloru z próbki
     metalness: 0.05,
@@ -3408,60 +3422,79 @@ function drawCTFScene(config) {
   });
 
   // --- TKANINY REKLAMOWE (6 płacht od rowka do rowka z zagięciem) ---
-  const printOption = config.print || 'all_sides';
-  if (printOption !== 'no_print') {
+  const printOption = config.print || '6_sides';
+  if (printOption !== 'no_print' && !isBlueprintMode) {
+    const showFront = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides', 'front_back', 'single_front'].includes(printOption);
+    const showBack = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides', 'front_back'].includes(printOption);
+    const showLeft = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides'].includes(printOption);
+    const showRight = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides'].includes(printOption);
+    const showTop = ['6_sides', '5_sides_bottom_open'].includes(printOption);
+    const showBottom = ['6_sides', '5_sides_top_open'].includes(printOption);
+
     // 1. Przód (Z = -hd - cOffset)
-    const frontGeom = createFabricGeometry(W, H);
-    const frontMat = createFabricMaterial(config.textureFront, false);
-    const frontMesh = new THREE.Mesh(frontGeom, frontMat);
-    frontMesh.position.set(0, elevY + hh, -hd - cOffset);
-    frontMesh.rotation.y = Math.PI;
-    frontMesh.userData = { isKasetonPrint: true, side: 'front' };
-    kGroup.add(frontMesh);
+    if (showFront) {
+      const frontGeom = createFabricGeometry(W, H);
+      const frontMat = createFabricMaterial(config.textureFront, !config.textureFront);
+      const frontMesh = new THREE.Mesh(frontGeom, frontMat);
+      frontMesh.position.set(0, elevY + hh, -hd - cOffset);
+      frontMesh.rotation.y = Math.PI;
+      frontMesh.userData = { isKasetonPrint: true, side: 'front' };
+      kGroup.add(frontMesh);
+    }
 
     // 2. Tył (Z = hd + cOffset)
-    const backGeom = createFabricGeometry(W, H);
-    const backMat = createFabricMaterial(config.textureBack, !config.textureBack);
-    const backMesh = new THREE.Mesh(backGeom, backMat);
-    backMesh.position.set(0, elevY + hh, hd + cOffset);
-    backMesh.userData = { isKasetonPrint: true, side: 'back' };
-    kGroup.add(backMesh);
+    if (showBack) {
+      const backGeom = createFabricGeometry(W, H);
+      const backMat = createFabricMaterial(config.textureBack, !config.textureBack);
+      const backMesh = new THREE.Mesh(backGeom, backMat);
+      backMesh.position.set(0, elevY + hh, hd + cOffset);
+      backMesh.userData = { isKasetonPrint: true, side: 'back' };
+      kGroup.add(backMesh);
+    }
 
     // 3. Lewo (X = -hw - cOffset)
-    const leftGeom = createFabricGeometry(D, H);
-    const leftMat = createFabricMaterial(null, true);
-    const leftMesh = new THREE.Mesh(leftGeom, leftMat);
-    leftMesh.position.set(-hw - cOffset, elevY + hh, 0);
-    leftMesh.rotation.y = -Math.PI / 2;
-    leftMesh.userData = { isKasetonPrint: true, side: 'left' };
-    kGroup.add(leftMesh);
+    if (showLeft) {
+      const leftGeom = createFabricGeometry(D, H);
+      const leftMat = createFabricMaterial(config.textureLeft, !config.textureLeft);
+      const leftMesh = new THREE.Mesh(leftGeom, leftMat);
+      leftMesh.position.set(-hw - cOffset, elevY + hh, 0);
+      leftMesh.rotation.y = -Math.PI / 2;
+      leftMesh.userData = { isKasetonPrint: true, side: 'left' };
+      kGroup.add(leftMesh);
+    }
 
     // 4. Prawo (X = hw + cOffset)
-    const rightGeom = createFabricGeometry(D, H);
-    const rightMat = createFabricMaterial(null, true);
-    const rightMesh = new THREE.Mesh(rightGeom, rightMat);
-    rightMesh.position.set(hw + cOffset, elevY + hh, 0);
-    rightMesh.rotation.y = Math.PI / 2;
-    rightMesh.userData = { isKasetonPrint: true, side: 'right' };
-    kGroup.add(rightMesh);
+    if (showRight) {
+      const rightGeom = createFabricGeometry(D, H);
+      const rightMat = createFabricMaterial(config.textureRight, !config.textureRight);
+      const rightMesh = new THREE.Mesh(rightGeom, rightMat);
+      rightMesh.position.set(hw + cOffset, elevY + hh, 0);
+      rightMesh.rotation.y = Math.PI / 2;
+      rightMesh.userData = { isKasetonPrint: true, side: 'right' };
+      kGroup.add(rightMesh);
+    }
 
     // 5. Góra (Y = H + cOffset)
-    const topFabGeom = createFabricGeometry(W, D);
-    const topFabMat = createFabricMaterial(null, true);
-    const topFabMesh = new THREE.Mesh(topFabGeom, topFabMat);
-    topFabMesh.position.set(0, elevY + H + cOffset, 0);
-    topFabMesh.rotation.x = -Math.PI / 2;
-    topFabMesh.userData = { isKasetonPrint: true, side: 'top' };
-    kGroup.add(topFabMesh);
+    if (showTop) {
+      const topFabGeom = createFabricGeometry(W, D);
+      const topFabMat = createFabricMaterial(config.textureTop, !config.textureTop);
+      const topFabMesh = new THREE.Mesh(topFabGeom, topFabMat);
+      topFabMesh.position.set(0, elevY + H + cOffset, 0);
+      topFabMesh.rotation.x = -Math.PI / 2;
+      topFabMesh.userData = { isKasetonPrint: true, side: 'top' };
+      kGroup.add(topFabMesh);
+    }
 
     // 6. Dół (Y = -cOffset)
-    const bottomFabGeom = createFabricGeometry(W, D);
-    const bottomFabMat = createFabricMaterial(null, true);
-    const bottomFabMesh = new THREE.Mesh(bottomFabGeom, bottomFabMat);
-    bottomFabMesh.position.set(0, elevY - cOffset, 0);
-    bottomFabMesh.rotation.x = Math.PI / 2;
-    bottomFabMesh.userData = { isKasetonPrint: true, side: 'bottom' };
-    kGroup.add(bottomFabMesh);
+    if (showBottom) {
+      const bottomFabGeom = createFabricGeometry(W, D);
+      const bottomFabMat = createFabricMaterial(config.textureBottom, !config.textureBottom);
+      const bottomFabMesh = new THREE.Mesh(bottomFabGeom, bottomFabMat);
+      bottomFabMesh.position.set(0, elevY - cOffset, 0);
+      bottomFabMesh.rotation.x = Math.PI / 2;
+      bottomFabMesh.userData = { isKasetonPrint: true, side: 'bottom' };
+      kGroup.add(bottomFabMesh);
+    }
   }
 
   // =========================================================================
@@ -3621,27 +3654,48 @@ function drawCTFScene(config) {
   });
 
   // 5. 🗺️ PODŁOGA I SUFIT (Płaszczyzny XZ)
-  // Belki głębokości Z (Zapięte płasko na podłodze/suficie na liniach szerokości cutX)
-  cutX.forEach(cx => {
-    for (let j = 0; j < allZ.length - 1; j++) {
-      let startZ = allZ[j]; let endZ = allZ[j + 1];
-      let touchFront = (j === 0); let touchBack = (j === allZ.length - 2);
+  const sys = config.system || 'CTF';
 
-      if (!touchFront) startZ += 2.5;
-      if (!touchBack) endZ -= 2.5;
-      const segLen = endZ - startZ;
+  // Belki głębokości Z na dole (zBottom) - rysujemy jeśli brak plafonów na dole
+  if (config.light !== 'plafon_dol') {
+    cutX.forEach(cx => {
+      for (let j = 0; j < allZ.length - 1; j++) {
+        let startZ = allZ[j]; let endZ = allZ[j + 1];
+        let touchFront = (j === 0); let touchBack = (j === allZ.length - 2);
 
-      if (segLen > 0) {
-        const zBottom = createCustomSupportMesh(5, 1.5, segLen, 'Z_XY', touchFront, touchBack);
-        zBottom.position.set(cx, elevY + bottomY, startZ + segLen / 2);
-        kGroup.add(zBottom); totalSupportLengthM += segLen / 100;
+        if (!touchFront) startZ += 2.5;
+        if (!touchBack) endZ -= 2.5;
+        const segLen = endZ - startZ;
 
-        const zTop = createCustomSupportMesh(5, 1.5, segLen, 'Z_XY', touchFront, touchBack);
-        zTop.position.set(cx, elevY + topY, startZ + segLen / 2);
-        kGroup.add(zTop); totalSupportLengthM += segLen / 100;
+        if (segLen > 0) {
+          const zBottom = createCustomSupportMesh(5, 1.5, segLen, 'Z_XY', touchFront, touchBack);
+          zBottom.position.set(cx, elevY + bottomY, startZ + segLen / 2);
+          kGroup.add(zBottom); totalSupportLengthM += segLen / 100;
+        }
       }
-    }
-  });
+    });
+  }
+
+  // Belki głębokości Z na górze (zTop) - rysujemy jeśli brak plafonów na górze
+  if (config.light !== 'plafon_gora') {
+    const sufitCutX = (config.light === 'zarowka' && cutX.length === 0) ? [0] : cutX;
+    sufitCutX.forEach(cx => {
+      for (let j = 0; j < allZ.length - 1; j++) {
+        let startZ = allZ[j]; let endZ = allZ[j + 1];
+        let touchFront = (j === 0); let touchBack = (j === allZ.length - 2);
+
+        if (!touchFront) startZ += 2.5;
+        if (!touchBack) endZ -= 2.5;
+        const segLen = endZ - startZ;
+
+        if (segLen > 0) {
+          const zTop = createCustomSupportMesh(5, 1.5, segLen, 'Z_XY', touchFront, touchBack);
+          zTop.position.set(cx, elevY + topY, startZ + segLen / 2);
+          kGroup.add(zTop); totalSupportLengthM += segLen / 100;
+        }
+      }
+    });
+  }
 
   // Belki poziome X (Dla głębokich kasetonów leżące płasko na liniach cutZ)
   cutZ.forEach(cz => {
@@ -3654,25 +3708,292 @@ function drawCTFScene(config) {
       const segLen = endX - startX;
 
       if (segLen > 0) {
-        const hBottom = createCustomSupportMesh(segLen, 1.5, 5, 'H', touchLeft, touchRight);
-        hBottom.position.set(startX + segLen / 2, elevY + bottomY, cz);
-        kGroup.add(hBottom); totalSupportLengthM += segLen / 100;
+        // Dół (hBottom) - rysujemy jeśli brak plafonów na dole
+        if (config.light !== 'plafon_dol') {
+          const hBottom = createCustomSupportMesh(segLen, 1.5, 5, 'H', touchLeft, touchRight);
+          hBottom.position.set(startX + segLen / 2, elevY + bottomY, cz);
+          kGroup.add(hBottom); totalSupportLengthM += segLen / 100;
+        }
 
-        const hTop = createCustomSupportMesh(segLen, 1.5, 5, 'H', touchLeft, touchRight);
-        hTop.position.set(startX + segLen / 2, elevY + topY, cz);
-        kGroup.add(hTop); totalSupportLengthM += segLen / 100;
+        // Góra (hTop) - rysujemy jeśli brak plafonów na górze
+        if (config.light !== 'plafon_gora') {
+          const hTop = createCustomSupportMesh(segLen, 1.5, 5, 'H', touchLeft, touchRight);
+          hTop.position.set(startX + segLen / 2, elevY + topY, cz);
+          kGroup.add(hTop); totalSupportLengthM += segLen / 100;
+        }
       }
     }
   });
+
+  const topPanel = config.topPanel || 'none';
+
+  // =========================================================================
+  // MODELOWANIE ELEMENTÓW LIGHT CTF_LED
+  // =========================================================================
+
+  // 1. Opcja: żarówka (zarowka)
+  if (sys === 'CTF_LED' && config.light === 'zarowka') {
+    const cableLen = topY - (H / 2 + 14);
+    if (cableLen > 0) {
+      const cableGeo = new THREE.CylinderGeometry(0.15, 0.15, cableLen, 8);
+      const cableMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+      const cableMesh = new THREE.Mesh(cableGeo, cableMat);
+      cableMesh.position.set(0, elevY + topY - cableLen / 2, 0);
+      kGroup.add(cableMesh);
+    }
+
+    const baseGeo = new THREE.CylinderGeometry(1.2, 1.5, 3.5, 16);
+    const baseMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.8, roughness: 0.2 });
+    const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+    baseMesh.position.set(0, elevY + H / 2 + 12.25, 0);
+    kGroup.add(baseMesh);
+
+    const capGeo = new THREE.CylinderGeometry(1.5, 4.0, 3.0, 24);
+    const capMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+    const capMesh = new THREE.Mesh(capGeo, capMat);
+    capMesh.position.set(0, elevY + H / 2 + 9.0, 0);
+    kGroup.add(capMesh);
+
+    const bulbGeo = new THREE.CylinderGeometry(4.0, 4.0, 18.0, 24);
+    const bulbMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0xfff0dd,
+      emissiveIntensity: 1.5,
+      roughness: 0.2,
+      metalness: 0.1
+    });
+    const bulbMesh = new THREE.Mesh(bulbGeo, bulbMat);
+    bulbMesh.position.set(0, elevY + H / 2 - 1.5, 0);
+    kGroup.add(bulbMesh);
+
+    const tipGeo = new THREE.CylinderGeometry(4.0, 3.5, 1.5, 24);
+    const tipMesh = new THREE.Mesh(tipGeo, baseMat);
+    tipMesh.position.set(0, elevY + H / 2 - 11.25, 0);
+    kGroup.add(tipMesh);
+  }
+
+  // 2. Opcja: Plafony LED (plafon_dol / plafon_gora)
+  if (sys === 'CTF_LED' && (config.light === 'plafon_dol' || config.light === 'plafon_gora')) {
+    const isGora = (config.light === 'plafon_gora');
+    const railY = isGora ? topY : bottomY;
+
+    let numX = Math.floor((W - 5) / 35);
+    if (numX < 1 && W >= 40) numX = 1;
+    let numZ = Math.floor((D - 5) / 35);
+    if (numZ < 1 && D >= 40) numZ = 1;
+
+    const zStart = -D/2 + 20;
+    const zEnd = D/2 - 20;
+    const stepZ = (numZ > 1) ? (zEnd - zStart) / (numZ - 1) : 0;
+
+    const xStart = -W/2 + 20;
+    const xEnd = W/2 - 20;
+    const stepX = (numX > 1) ? (xEnd - xStart) / (numX - 1) : 0;
+
+    const railLen = W - 2 * innerAttachOffset;
+
+    for (let j = 0; j < numZ; j++) {
+      const zVal = (numZ > 1) ? (zStart + j * stepZ) : 0;
+
+      // Szyna z dwóch belek montażowych
+      const rail1 = createCustomSupportMesh(railLen, 1.5, 5, 'H', true, true);
+      rail1.position.set(0, elevY + railY, zVal - 10);
+      kGroup.add(rail1);
+      totalSupportLengthM += railLen / 100;
+
+      const rail2 = createCustomSupportMesh(railLen, 1.5, 5, 'H', true, true);
+      rail2.position.set(0, elevY + railY, zVal + 10);
+      kGroup.add(rail2);
+      totalSupportLengthM += railLen / 100;
+
+      for (let i = 0; i < numX; i++) {
+        const xVal = (numX > 1) ? (xStart + i * stepX) : 0;
+        const centerY = isGora ? (topY - 2.25) : (bottomY + 2.25);
+
+        // Świecąca część plafonu
+        const panelGeo = new THREE.BoxGeometry(28, 1.4, 28);
+        const panelMat = new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          emissive: 0xffffff,
+          emissiveIntensity: 1.5,
+          roughness: 0.1,
+          metalness: 0.1
+        });
+        const panelMesh = new THREE.Mesh(panelGeo, panelMat);
+        panelMesh.position.set(xVal, elevY + centerY, zVal);
+        kGroup.add(panelMesh);
+
+        // Ramka metalowa obwódki
+        const frameGeo = new THREE.BoxGeometry(30, 1.5, 30);
+        const frameMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4, metalness: 0.8 });
+        const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+        frameMesh.position.set(xVal, elevY + centerY, zVal);
+        frameMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(frameGeo), edgeMat));
+        kGroup.add(frameMesh);
+      }
+    }
+  }
+
+  // Helpery do pasków LED pod blatem
+  function getCTFLedSegments(lineLength) {
+    const totalCornerSpace = 10;
+    const totalAvailable = lineLength - totalCornerSpace;
+    if (totalAvailable <= 0) return [];
+    return [{ start: 5, end: lineLength - 5, length: totalAvailable }];
+  }
+
+  function getCTFBestLedCombo(maxLength) {
+    const sizes = [50, 30, 24, 20];
+    let bestCombo = [];
+    let bestSum = 0;
+
+    function search(index, currentCombo, currentSum) {
+      if (currentSum > maxLength) return;
+      if (currentSum > bestSum) {
+        bestSum = currentSum;
+        bestCombo = [...currentCombo];
+      } else if (currentSum === bestSum) {
+        if (currentCombo.length < bestCombo.length) {
+          bestCombo = [...currentCombo];
+        }
+      }
+      for (let i = index; i < sizes.length; i++) {
+        currentCombo.push(sizes[i]);
+        search(i, currentCombo, currentSum + sizes[i]);
+        currentCombo.pop();
+      }
+    }
+    search(0, [], 0);
+    return bestCombo;
+  }
+
+  function createCTFLedStripeMesh(size) {
+    const stripeGroup = new THREE.Group();
+    const pcbGeom = new THREE.BoxGeometry(2.4, 0.15, size);
+    const pcbMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.8,
+      metalness: 0.1
+    });
+    const pcb = new THREE.Mesh(pcbGeom, pcbMat);
+    pcb.position.set(0, 0.075, 0);
+    stripeGroup.add(pcb);
+
+    const numLenses = Math.floor(size / 5);
+    const lensGeom = new THREE.CylinderGeometry(1.1, 1.1, 2.0, 16);
+    const lensMat = new THREE.MeshStandardMaterial({
+      color: 0xffcc00,
+      transparent: true,
+      opacity: 0.6,
+      roughness: 0.1,
+      metalness: 0.8
+    });
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+    const glowSphereGeom = new THREE.SphereGeometry(0.2, 8, 8);
+
+    for (let i = 0; i < numLenses; i++) {
+      const zPos = -size / 2 + 2.5 + i * 5;
+      const lens = new THREE.Mesh(lensGeom, lensMat);
+      lens.position.set(0, 1.15, zPos);
+      stripeGroup.add(lens);
+
+      const glow = new THREE.Mesh(glowSphereGeom, glowMat);
+      glow.position.set(0, 1.15, zPos);
+      stripeGroup.add(glow);
+    }
+    return stripeGroup;
+  }
+
+  function drawUnderCounterLedLine(startX, startZ, endX, endZ, isHorizontal) {
+    const dx = endX - startX;
+    const dz = endZ - startZ;
+    const len = Math.sqrt(dx * dx + dz * dz);
+    if (len <= 0) return;
+
+    const segments = getCTFLedSegments(len);
+    const ledY = H + cOffset - 0.2; // Underside of MDF counter
+    const angle = Math.atan2(endZ - startZ, endX - startX);
+
+    // Kierujemy wszystkie paski pionowo w dół (rotacja wokół lokalnej osi Z o 180 stopni)
+    const rotZ = Math.PI;
+
+    segments.forEach(seg => {
+      const combo = getCTFBestLedCombo(seg.length);
+      const totalStripesLength = combo.reduce((sum, val) => sum + val, 0);
+      const startOffset = seg.start + (seg.length - totalStripesLength) / 2;
+
+      let currentOffset = startOffset;
+      combo.forEach((size, idx) => {
+        const stripe = createCTFLedStripeMesh(size);
+        const dOffset = currentOffset + size / 2;
+        const posX = startX + (dx / len) * dOffset;
+        const posZ = startZ + (dz / len) * dOffset;
+
+        stripe.position.set(posX, elevY + ledY, posZ);
+        stripe.rotation.y = Math.PI / 2 - angle;
+        stripe.rotation.z = rotZ;
+        kGroup.add(stripe);
+
+        if (idx < combo.length - 1) {
+          const connGeom = new THREE.BoxGeometry(0.3, 0.4, 1.2);
+          const connMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.5 });
+          const conn = new THREE.Mesh(connGeom, connMat);
+          const connOffset = currentOffset + size;
+          const cX = startX + (dx / len) * connOffset;
+          const cZ = startZ + (dz / len) * connOffset;
+          conn.position.set(cX, elevY + ledY + 0.1, cZ);
+          conn.rotation.y = Math.PI / 2 - angle;
+          conn.rotation.z = rotZ;
+          kGroup.add(conn);
+        }
+        currentOffset += size;
+      });
+    });
+  }
+
+  // 3. Opcja: Paski LED pod blatem (paski_led)
+  if (sys === 'CTF_LED' && config.light === 'paski_led' && topPanel === 'mdf') {
+    const W_blat = W + 2 * eOffset;
+    const D_blat = D + 2 * eOffset;
+
+    // Zasilacz na środku
+    const psuGeo = new THREE.BoxGeometry(15, 3, 5);
+    const psuMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8, roughness: 0.3 });
+    const psuMesh = new THREE.Mesh(psuGeo, psuMat);
+    psuMesh.position.set(0, elevY + H + cOffset - 1.5, 0);
+    kGroup.add(psuMesh);
+
+    // X Lines
+    if (D_blat <= 60) {
+      drawUnderCounterLedLine(-W_blat/2 + 14, 0, W_blat/2 - 14, 0, true);
+    } else {
+      drawUnderCounterLedLine(-W_blat/2 + 14, -D_blat/2 + 10, W_blat/2 - 14, -D_blat/2 + 10, true);
+      drawUnderCounterLedLine(-W_blat/2 + 14, D_blat/2 - 10, W_blat/2 - 14, D_blat/2 - 10, true);
+    }
+
+    // Z Lines
+    if (W_blat <= 60) {
+      drawUnderCounterLedLine(0, -D_blat/2 + 14, 0, D_blat/2 - 14, false);
+    } else {
+      drawUnderCounterLedLine(-W_blat/2 + 10, -D_blat/2 + 14, -W_blat/2 + 10, D_blat/2 - 14, false);
+      drawUnderCounterLedLine(W_blat/2 - 10, -D_blat/2 + 14, W_blat/2 - 10, D_blat/2 - 14, false);
+    }
+  }
 
   window.currentKasetonConfig.totalSupportLengthM = totalSupportLengthM;
   // =========================================================================
 
   // --- BLAT GÓRNY ---
-  const topPanel = config.topPanel || 'none';
   if (topPanel !== 'none') {
     let topMat;
-    if (topPanel === 'mdf') {
+    if (isBlueprintMode) {
+      topMat = new THREE.MeshStandardMaterial({
+        color: 0x4488ff,
+        transparent: true,
+        opacity: 0.1,
+        side: THREE.DoubleSide
+      });
+    } else if (topPanel === 'mdf') {
       topMat = new THREE.MeshStandardMaterial({
         color: 0xf0ece0,
         roughness: 0.9,
@@ -3740,6 +4061,124 @@ function drawCTFScene(config) {
       eye.rotation.x = Math.PI / 2;
       kGroup.add(eye);
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // TRYB TECHNICZNY DLA CTF/CTF_LED — MARKERY I MIARKI
+  // ═══════════════════════════════════════════════════════════
+  if (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) {
+    const BADGE_COLORS = ['#00e5ff', '#00ff99', '#ffcc00', '#ff8c00', '#ff4466', '#aa66ff', '#66ccff', '#ccff66'];
+    const labelRegistry = new Map();
+    const legendItems = [];
+
+    function addNumberedMarker(key, targetPt, name, desc) {
+      if (labelRegistry.has(key)) return;
+      const idx = legendItems.length;
+      labelRegistry.set(key, idx);
+      const color = BADGE_COLORS[idx % BADGE_COLORS.length];
+      legendItems.push({ num: idx + 1, name, desc: desc || '', color });
+
+      // Numbered circle sprite
+      const cvs = document.createElement('canvas');
+      cvs.width = 128; cvs.height = 128;
+      const cx = cvs.getContext('2d');
+      // Glow
+      const grad = cx.createRadialGradient(64, 64, 20, 64, 64, 60);
+      grad.addColorStop(0, color + 'cc'); grad.addColorStop(1, color + '00');
+      cx.fillStyle = grad;
+      cx.beginPath(); cx.arc(64, 64, 60, 0, Math.PI * 2); cx.fill();
+      // Solid circle
+      cx.fillStyle = color;
+      cx.beginPath(); cx.arc(64, 64, 36, 0, Math.PI * 2); cx.fill();
+      // Number
+      cx.fillStyle = '#000'; cx.font = 'bold 42px Arial';
+      cx.textAlign = 'center'; cx.textBaseline = 'middle';
+      cx.fillText(String(idx + 1), 64, 65);
+
+      const tex = new THREE.CanvasTexture(cvs);
+      const spMat = new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, transparent: true });
+      const sprite = new THREE.Sprite(spMat);
+      sprite.scale.set(14, 14, 1);
+      const spritePos = targetPt.clone().add(new THREE.Vector3(0, 4, 4));
+      sprite.position.copy(spritePos);
+      sprite.renderOrder = 1001;
+      kGroup.add(sprite);
+
+      // Thin leader line
+      const lMat = new THREE.LineBasicMaterial({ color: parseInt(color.replace('#', ''), 16), depthTest: false, transparent: true, opacity: 0.6 });
+      const lGeo = new THREE.BufferGeometry().setFromPoints([targetPt, spritePos.clone().add(new THREE.Vector3(0, -7, -4))]);
+      kGroup.add(new THREE.Line(lGeo, lMat));
+    }
+
+    // 1. Profil główny
+    addNumberedMarker('MAIN_PROFILE',
+      new THREE.Vector3(-W / 3, elevY, -hd),
+      'Profil CTF',
+      'Profil obwodowy kasetonu (aluminiowy)');
+
+    // 2. Łącznik narożny
+    addNumberedMarker('CONNECTOR',
+      new THREE.Vector3(-hw, elevY, -hd),
+      'adFrame CTF Plastic connector',
+      'Łącznik plastikowy 3-kierunkowy (8 szt.)');
+
+    // 3. Belki poprzeczne (supporty)
+    if (totalSupportLengthM > 0) {
+      addNumberedMarker('SUPPORT',
+        new THREE.Vector3(0, elevY + H / 2, frontZ),
+        'Profil Support Light',
+        'Belki wzmacniające konstrukcję');
+    }
+
+    // 4. Elementy oświetlenia dla CTF_LED
+    if (sys === 'CTF_LED') {
+      if (config.light === 'zarowka') {
+        addNumberedMarker('LIGHT_BULB',
+          new THREE.Vector3(0, elevY + H / 2 - 1.5, 0),
+          'Żarówka LED 40W',
+          'Oświetlenie wiszące (wisząca kukurydza)');
+      } else if (config.light === 'plafon_dol' || config.light === 'plafon_gora') {
+        const isGora = (config.light === 'plafon_gora');
+        addNumberedMarker('LIGHT_PLAFON',
+          new THREE.Vector3(0, elevY + (isGora ? (topY - 2.25) : (bottomY + 2.25)), 0),
+          'Plafon LED 30x30',
+          'Kasetonowy panel oświetleniowy montowany na szynach');
+      } else if (config.light === 'paski_led' && topPanel === 'mdf') {
+        addNumberedMarker('LIGHT_STRIP',
+          new THREE.Vector3(0, elevY + H + cOffset - 1.5, 0),
+          'Paski LED obwodowe',
+          'Oświetlenie krawędziowe podblatowe z zasilaczem');
+      }
+    }
+
+    // 5. Blat górny
+    if (topPanel !== 'none') {
+      let panelName = 'Blat MDF';
+      if (topPanel === 'plexi') panelName = 'Blat PLEXI';
+      else if (topPanel === 'polycarbonate') panelName = 'Blat Poliwęglan';
+
+      addNumberedMarker('TOP_PANEL',
+        new THREE.Vector3(0, elevY + H + cOffset + 0.5, 0),
+        panelName,
+        'Wykończenie górne kasetonu');
+    }
+
+    // Zapis do rejestru
+    window.blueprintLegendItems = legendItems;
+    window.blueprintDimensions = { W, H, D, sys };
+
+    // Miarki wymiarowe w 3D (W, H, D)
+    const pW1 = new THREE.Vector3(-W / 2, elevY, -hd);
+    const pW2 = new THREE.Vector3(W / 2, elevY, -hd);
+    kGroup.add(addDimension3D(pW1, pW2, W + ' cm', new THREE.Vector3(0, -25, 0), 1.3));
+
+    const pH1 = new THREE.Vector3(W / 2, elevY, -hd);
+    const pH2 = new THREE.Vector3(W / 2, elevY + H, -hd);
+    kGroup.add(addDimension3D(pH1, pH2, H + ' cm', new THREE.Vector3(25, 0, 0), 1.3));
+
+    const pD1 = new THREE.Vector3(W / 2, elevY, -hd);
+    const pD2 = new THREE.Vector3(W / 2, elevY, hd);
+    kGroup.add(addDimension3D(pD1, pD2, D + ' cm', new THREE.Vector3(20, 0, 20), 1.3));
   }
 
   kGroup.rotation.y = Math.PI;

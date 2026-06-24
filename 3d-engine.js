@@ -424,21 +424,16 @@ function init3D() {
           break;
         }
       } else if (mesh.userData && mesh.userData.isKasetonPrint) {
-        const side = mesh.userData.side;
+        const side = mesh.userData.side; // 'front', 'back', 'left', 'right', 'top', 'bottom'
         if (!window.currentKasetonConfig) window.currentKasetonConfig = {};
-        if (side === 'front') {
-          window.currentKasetonConfig.textureFrontName = file.name;
-        } else {
-          window.currentKasetonConfig.textureBackName = file.name;
-        }
+        const keySuffix = side.charAt(0).toUpperCase() + side.slice(1);
+        const nameKey = 'texture' + keySuffix + 'Name';
+        const texKey = 'texture' + keySuffix;
+        window.currentKasetonConfig[nameKey] = file.name;
         refreshGraphicsList();
         handleDroppedFile(file, fileExt, (source) => {
           let dataUrl = typeof source === 'string' ? source : source.toDataURL('image/jpeg', 0.95);
-          if (side === 'front') {
-            window.currentKasetonConfig.textureFront = dataUrl;
-          } else {
-            window.currentKasetonConfig.textureBack = dataUrl;
-          }
+          window.currentKasetonConfig[texKey] = dataUrl;
           update3DScene();
         });
         break;
@@ -476,6 +471,19 @@ function init3D() {
   // =================================================================
   // LISTENERY INTERAKCJI (Ruch i upuszczenie ludzika w 3D)
   // =================================================================
+  container.addEventListener('mousedown', (e) => {
+    if (!is3DMode || !human3DModel) return;
+    const rect = container.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObject(human3DModel, true);
+    if (intersects.length > 0) {
+      isDraggingHuman3D = true;
+      controls.enabled = false;
+    }
+  });
+
   container.addEventListener('mousemove', (e) => {
     // Jeśli nie jesteśmy w trybie 3D, nie przeciągamy ludzika lub model nie istnieje - przerywamy
     if (!is3DMode || !isDraggingHuman3D || !human3DModel) return;
@@ -603,6 +611,7 @@ function update3DScene() {
 
   if (!scene) return;
 
+  // 1. CZYSZCZENIE BUFORÓW I GEOMETRII (Twój obecny kod)
   sceneObjects.forEach(obj => {
     if (scene) scene.remove(obj);
     if (arGroup) arGroup.remove(obj);
@@ -644,6 +653,25 @@ function update3DScene() {
       });
     }
   });
+
+  // =========================================================================
+  // 🔄 TUTAJ ZNAJDUJE SIĘ TWÓJ ISTNIEJĄCY KOD ODBUDOWYWANIA SCENY (REBUILD)
+  // (Pętla typu plan.forEach(item => { ... }) generująca ramy na nowo)
+  // =========================================================================
+
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // 🔥 KROK 2: Automatyczna kontrola widoczności anatomii wewnętrznej SEGO
+  // ═════════════════════════════════════════════════════════════════════════
+  if (typeof scene !== 'undefined' && scene) {
+    scene.traverse(obj => {
+      if (obj.userData && obj.userData.isInternalAnatomy) {
+        // Wyświetlaj rury i paski LED tylko, gdy włączony jest tryb pokazywania wymiarów
+        obj.visible = (typeof showDimensions !== 'undefined' && showDimensions);
+      }
+    });
+  }
+  ;
 
   sceneObjects = [];
   window.activeLedMaterials = [];
@@ -743,7 +771,6 @@ function update3DScene() {
       const baseLedColor = currentLedMode === 'static' ? new THREE.Color(currentLedColor) : new THREE.Color(0xffffff);
       const ledMat = new THREE.MeshStandardMaterial({
         color: 0x000000,
-        mouseemissive: baseLedColor,
         emissive: baseLedColor,
         emissiveIntensity: currentLedIntensity,
         side: THREE.DoubleSide,
@@ -860,9 +887,14 @@ function update3DScene() {
         frameGroup.add(s1, s2);
         const footG = new THREE.BoxGeometry(6, 0.6, 40);
         const footM = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9, roughness: 0.5 });
-        const fL = new THREE.Mesh(footG, footM); fL.position.set(-len / 2 + th / 2, 0.3, 0);
-        const fR = new THREE.Mesh(footG, footM); fR.position.set(len / 2 - th / 2, 0.3, 0);
-        frameGroup.add(fL, fR);
+        if (item.leftFoot !== false) {
+          const fL = new THREE.Mesh(footG, footM); fL.position.set(-len / 2 + th / 2, 0.3, 0);
+          frameGroup.add(fL);
+        }
+        if (item.rightFoot !== false) {
+          const fR = new THREE.Mesh(footG, footM); fR.position.set(len / 2 - th / 2, 0.3, 0);
+          frameGroup.add(fR);
+        }
 
         let existingPlane = foldablePlanes.find(p => Math.abs(p.angle - item.angle) < 1 && p.walls.some(w => Math.sqrt(Math.pow(w.cx - item.cx, 2) + Math.pow(w.cz - item.cz, 2)) <= item.length + 15));
         if (existingPlane) {
@@ -875,7 +907,16 @@ function update3DScene() {
       else {
         const geom = new THREE.BoxGeometry(item.length, item.height, 12);
         let hexColor = item.isDoor ? 0x004466 : 0x999999;
-        const frameMat = new THREE.MeshStandardMaterial({ color: hexColor, metalness: 0.7, roughness: 0.2 });
+
+        // POPRAWKA: frameMat reaguje teraz na tryb Blueprint (staje się półprzezroczysty, by odsłonić supporty)
+        const frameMat = new THREE.MeshStandardMaterial({
+          color: isBlueprintMode ? 0x4488ff : hexColor,
+          metalness: 0.7,
+          roughness: 0.2,
+          transparent: isBlueprintMode,
+          opacity: isBlueprintMode ? 0.2 : 1.0
+        });
+
         const texLoader = new THREE.TextureLoader();
         const getWallMat = (texUrl) => {
           if (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) return new THREE.MeshStandardMaterial({ color: 0x4488ff, transparent: true, opacity: 0.1 });
@@ -965,9 +1006,38 @@ function update3DScene() {
           const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geom), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 }));
           edges.position.y = item.height / 2;
           group.add(edges);
+
+          // POPRAWKA: Dynamiczne generowanie wewnętrznych rur i krzyżaków MP w trybie inżynieryjnym
+          // ═════════════════════════════════════════════════════════════════════════
+          // 🔥 NOWOŚĆ: Wywołanie zaawansowanej geometrii anatomii wewnętrznej SEGO
+          // ═════════════════════════════════════════════════════════════════════════
+          if (typeof currentSystem !== 'undefined' && (currentSystem === 'SEGO' || currentSystem === 'SEGO_2_0')) {
+            buildSegoInternalAnatomy(item, group);
+          }
+        }
+
+        if (item.quadIdx === undefined) {
+          const footG = new THREE.BoxGeometry(6, 0.6, 40);
+          const footM = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.9, roughness: 0.5 });
+          const th = item.thickness || 12;
+          const len = item.length;
+          
+          if (item.leftFoot !== false) {
+            const fL = new THREE.Mesh(footG, footM);
+            fL.position.set(-len / 2 + th / 2, 0.3, 0);
+            group.add(fL);
+          }
+          if (item.rightFoot !== false) {
+            const fR = new THREE.Mesh(footG, footM);
+            fR.position.set(len / 2 - th / 2, 0.3, 0);
+            group.add(fR);
+          }
         }
       }
 
+      // ─────────────────────────────────────────────────────────────────
+      // BLOK ETYKIETOWANIA I GENEROWANIA MIAR (Niezmieniony potok)
+      // ─────────────────────────────────────────────────────────────────
       const labelCol = (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? "#8bb3ff" : "#ffffff";
       const labelSprite = createTextSprite(item.labelEN || item.name, labelCol, 16);
       labelSprite.position.set(0, item.height + 25, 0);
@@ -975,13 +1045,14 @@ function update3DScene() {
       group.add(createLeaderLine(item.height, item.height + 15, 0));
 
       if (typeof showDimensions !== 'undefined' && showDimensions) {
-        const p1W = new THREE.Vector3(-item.length / 2, 0, 0); const p2W = new THREE.Vector3(item.length / 2, 0, 0);
+        const p1W = new THREE.Vector3(-item.length / 2, 0, 0);
+        const p2W = new THREE.Vector3(item.length / 2, 0, 0);
         group.add(addDimension3D(p1W, p2W, `${item.length} cm`, new THREE.Vector3(0, -25, 0), 0.5));
       }
+
       scene.add(group);
       sceneObjects.push(group);
     }
-
     else if (item.type === 'daszek') {
       const group = new THREE.Group();
       group.position.set(item.cx, globalElevationY, item.cz);
@@ -1206,6 +1277,576 @@ function update3DScene() {
         group.add(addDimension3D(p1, p2, `Ø ${item.diameter} cm`, new THREE.Vector3(0, 40, 0), 1.5));
       }
     }
+    else if (item.type === 'table_chairs') {
+      const group = new THREE.Group();
+      group.position.set(item.cx, globalElevationY, item.cz);
+      group.rotation.y = -(item.rotation || 0) * Math.PI / 180;
+      
+      const woodColor = 0xd7a15c;
+      const woodMat = new THREE.MeshStandardMaterial({ color: woodColor, roughness: 0.6, metalness: 0.1 });
+      const metalMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.5, metalness: 0.8 });
+      const whitePlasticMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, metalness: 0.1 });
+
+      const tableGroup = new THREE.Group();
+      
+      const tabletopGeom = new THREE.CylinderGeometry(40, 40, 3, 32);
+      const tabletopMesh = new THREE.Mesh(tabletopGeom, whitePlasticMat);
+      tabletopMesh.position.set(0, 73.5, 0);
+      tabletopMesh.castShadow = true;
+      tabletopMesh.receiveShadow = true;
+      tableGroup.add(tabletopMesh);
+      
+      const bracketX = new THREE.Mesh(new THREE.BoxGeometry(30, 1.5, 4), metalMat);
+      bracketX.position.set(0, 71.25, 0);
+      const bracketZ = new THREE.Mesh(new THREE.BoxGeometry(4, 1.5, 30), metalMat);
+      bracketZ.position.set(0, 71.25, 0);
+      tableGroup.add(bracketX, bracketZ);
+
+      const createLeg = (startX, startZ, endX, endZ, height, legRadius, legMat) => {
+        const midX = (startX + endX) / 2;
+        const midZ = (startZ + endZ) / 2;
+        const dx = endX - startX;
+        const dz = endZ - startZ;
+        const dist2D = Math.sqrt(dx*dx + dz*dz);
+        const legLen = Math.sqrt(dist2D*dist2D + height*height);
+        
+        const legGeom = new THREE.CylinderGeometry(legRadius * 0.6, legRadius, legLen, 16);
+        const legMesh = new THREE.Mesh(legGeom, legMat);
+        legMesh.castShadow = true;
+        legMesh.position.set(midX, height / 2, midZ);
+        
+        const pitchAngle = Math.atan2(dist2D, height);
+        const yawAngle = Math.atan2(dx, dz);
+        
+        legMesh.rotation.set(0, yawAngle, 0);
+        legMesh.rotateX(-pitchAngle);
+        
+        return legMesh;
+      };
+      
+      tableGroup.add(createLeg(10, 10, 18, 18, 71.25, 2.2, woodMat));
+      tableGroup.add(createLeg(-10, 10, -18, 18, 71.25, 2.2, woodMat));
+      tableGroup.add(createLeg(10, -10, 18, -18, 71.25, 2.2, woodMat));
+      tableGroup.add(createLeg(-10, -10, -18, -18, 71.25, 2.2, woodMat));
+
+      const wire1 = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 30), metalMat);
+      wire1.position.set(0, 36, 14);
+      wire1.rotation.z = Math.PI / 4;
+      tableGroup.add(wire1);
+      
+      const wire2 = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 30), metalMat);
+      wire2.position.set(0, 36, 14);
+      wire2.rotation.z = -Math.PI / 4;
+      tableGroup.add(wire2);
+
+      const wire3 = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 30), metalMat);
+      wire3.position.set(0, 36, -14);
+      wire3.rotation.z = Math.PI / 4;
+      tableGroup.add(wire3);
+      
+      const wire4 = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 30), metalMat);
+      wire4.position.set(0, 36, -14);
+      wire4.rotation.z = -Math.PI / 4;
+      tableGroup.add(wire4);
+
+      const wire5 = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 30), metalMat);
+      wire5.position.set(-14, 36, 0);
+      wire5.rotation.x = Math.PI / 4;
+      tableGroup.add(wire5);
+      
+      const wire6 = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 30), metalMat);
+      wire6.position.set(-14, 36, 0);
+      wire6.rotation.x = -Math.PI / 4;
+      tableGroup.add(wire6);
+
+      const wire7 = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 30), metalMat);
+      wire7.position.set(14, 36, 0);
+      wire7.rotation.x = Math.PI / 4;
+      tableGroup.add(wire7);
+      
+      const wire8 = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 30), metalMat);
+      wire8.position.set(14, 36, 0);
+      wire8.rotation.x = -Math.PI / 4;
+      tableGroup.add(wire8);
+
+      group.add(tableGroup);
+
+      const angles = [0, 120, 240];
+      angles.forEach(angDeg => {
+        const chairGroup = new THREE.Group();
+        const angRad = angDeg * Math.PI / 180;
+        
+        chairGroup.position.set(60 * Math.sin(angRad), 0, 60 * Math.cos(angRad));
+        chairGroup.rotation.y = angRad;
+        
+        chairGroup.add(createLeg(5, 5, 9, 9, 43, 1.2, woodMat));
+        chairGroup.add(createLeg(-5, 5, -9, 9, 43, 1.2, woodMat));
+        chairGroup.add(createLeg(5, -5, 9, -9, 43, 1.2, woodMat));
+        chairGroup.add(createLeg(-5, -5, -9, -9, 43, 1.2, woodMat));
+
+        const chairWire1 = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 15), metalMat);
+        chairWire1.position.set(0, 22, 7);
+        chairWire1.rotation.z = Math.PI / 4;
+        chairGroup.add(chairWire1);
+        
+        const chairWire2 = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 15), metalMat);
+        chairWire2.position.set(0, 22, 7);
+        chairWire2.rotation.z = -Math.PI / 4;
+        chairGroup.add(chairWire2);
+        
+        const chairWire3 = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 15), metalMat);
+        chairWire3.position.set(0, 22, -7);
+        chairWire3.rotation.z = Math.PI / 4;
+        chairGroup.add(chairWire3);
+        
+        const chairWire4 = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 15), metalMat);
+        chairWire4.position.set(0, 22, -7);
+        chairWire4.rotation.z = -Math.PI / 4;
+        chairGroup.add(chairWire4);
+
+        const seatGroup = new THREE.Group();
+        seatGroup.position.set(0, 44, 0);
+        
+        // 1. Rounded Seat Base Shape
+        const seatShape = new THREE.Shape();
+        const sw = 38, sd = 38, sr = 6;
+        seatShape.moveTo(-sw/2 + sr, -sd/2);
+        seatShape.lineTo(sw/2 - sr, -sd/2);
+        seatShape.quadraticCurveTo(sw/2, -sd/2, sw/2, -sd/2 + sr);
+        seatShape.lineTo(sw/2, sd/2 - sr);
+        seatShape.quadraticCurveTo(sw/2, sd/2, sw/2 - sr, sd/2);
+        seatShape.lineTo(-sw/2 + sr, sd/2);
+        seatShape.quadraticCurveTo(-sw/2, sd/2, -sw/2, sd/2 - sr);
+        seatShape.lineTo(-sw/2, -sd/2 + sr);
+        seatShape.quadraticCurveTo(-sw/2, -sd/2, -sw/2 + sr, -sd/2);
+
+        const seatBaseGeom = new THREE.ExtrudeGeometry(seatShape, {
+          depth: 1.2,
+          bevelEnabled: true,
+          bevelThickness: 0.4,
+          bevelSize: 0.4,
+          bevelSegments: 3
+        });
+        const seatBase = new THREE.Mesh(seatBaseGeom, whitePlasticMat);
+        seatBase.castShadow = true;
+        seatBase.receiveShadow = true;
+        seatBase.rotation.x = Math.PI / 2;
+        seatBase.position.set(0, 0.8, 0);
+        seatGroup.add(seatBase);
+        
+        // 2. Rounded Backrest Shape (Trapezoidal with rounded top corners)
+        const backShape = new THREE.Shape();
+        const bw = 38, tw = 28, bh = 38, br = 6;
+        backShape.moveTo(-bw/2, 0);
+        backShape.lineTo(bw/2, 0);
+        backShape.lineTo(tw/2, bh - br);
+        backShape.quadraticCurveTo(tw/2, bh, tw/2 - br, bh);
+        backShape.lineTo(-tw/2 + br, bh);
+        backShape.quadraticCurveTo(-tw/2, bh, -tw/2, bh - br);
+        backShape.lineTo(-bw/2, 0);
+
+        const backGeom = new THREE.ExtrudeGeometry(backShape, {
+          depth: 1.0,
+          bevelEnabled: true,
+          bevelThickness: 0.4,
+          bevelSize: 0.4,
+          bevelSegments: 3
+        });
+        const backrest = new THREE.Mesh(backGeom, whitePlasticMat);
+        backrest.castShadow = true;
+        backrest.receiveShadow = true;
+        backrest.position.set(0, 0, 17);
+        backrest.rotation.x = 15 * Math.PI / 180;
+        seatGroup.add(backrest);
+
+        // 3. Rounded Side Wings
+        const wingShape = new THREE.Shape();
+        const wl = 34, wh = 8, wr = 4;
+        wingShape.moveTo(-wl/2, 0);
+        wingShape.lineTo(wl/2, 0);
+        wingShape.quadraticCurveTo(wl/2, wh, wl/2 - wr, wh);
+        wingShape.lineTo(-wl/2 + wr, wh);
+        wingShape.quadraticCurveTo(-wl/2, wh, -wl/2, 0);
+
+        const wingGeom = new THREE.ExtrudeGeometry(wingShape, {
+          depth: 1.0,
+          bevelEnabled: true,
+          bevelThickness: 0.3,
+          bevelSize: 0.3,
+          bevelSegments: 3
+        });
+
+        const leftWing = new THREE.Mesh(wingGeom, whitePlasticMat);
+        leftWing.castShadow = true;
+        leftWing.receiveShadow = true;
+        leftWing.position.set(-18, 0.8, 0);
+        leftWing.rotation.y = Math.PI / 2;
+        leftWing.rotateX(8 * Math.PI / 180);
+        seatGroup.add(leftWing);
+        
+        const rightWing = new THREE.Mesh(wingGeom, whitePlasticMat);
+        rightWing.castShadow = true;
+        rightWing.receiveShadow = true;
+        rightWing.position.set(18, 0.8, 0);
+        rightWing.rotation.y = Math.PI / 2;
+        rightWing.rotateX(-8 * Math.PI / 180);
+        seatGroup.add(rightWing);
+
+        // 4. Soft Rounded Cushion
+        const cushionShape = new THREE.Shape();
+        const cw = 34, cd = 34, cr = 6;
+        cushionShape.moveTo(-cw/2 + cr, -cd/2);
+        cushionShape.lineTo(cw/2 - cr, -cd/2);
+        cushionShape.quadraticCurveTo(cw/2, -cd/2, cw/2, -cd/2 + cr);
+        cushionShape.lineTo(cw/2, cd/2 - cr);
+        cushionShape.quadraticCurveTo(cw/2, cd/2, cw/2 - cr, cd/2);
+        cushionShape.lineTo(-cw/2 + cr, cd/2);
+        cushionShape.quadraticCurveTo(-cw/2, cd/2, -cw/2, cd/2 - cr);
+        cushionShape.lineTo(-cw/2, -cd/2 + cr);
+        cushionShape.quadraticCurveTo(-cw/2, -cd/2, -cw/2 + cr, -cd/2);
+
+        const cushionGeom = new THREE.ExtrudeGeometry(cushionShape, {
+          depth: 0.8,
+          bevelEnabled: true,
+          bevelThickness: 0.5,
+          bevelSize: 0.5,
+          bevelSegments: 3
+        });
+        const cushion = new THREE.Mesh(cushionGeom, new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.8 }));
+        cushion.castShadow = true;
+        cushion.receiveShadow = true;
+        cushion.rotation.x = Math.PI / 2;
+        cushion.position.set(0, 1.8, -1);
+        seatGroup.add(cushion);
+
+        chairGroup.add(seatGroup);
+        group.add(chairGroup);
+      });
+
+      const labelSprite = createTextSprite(item.labelEN || item.name);
+      labelSprite.position.set(0, 75 + 40, 0);
+      group.add(labelSprite);
+      group.add(createLeaderLine(75, 75 + 30, 0));
+
+      scene.add(group);
+      sceneObjects.push(group);
+    }
+    else if (item.type === 'potted_plant') {
+      const group = new THREE.Group();
+      group.position.set(item.cx, globalElevationY, item.cz);
+      group.rotation.y = -(item.rotation || 0) * Math.PI / 180;
+
+      // --- Leaf texture with veins, dark edges, lighter center ---
+      function createLeafTexture(baseR, baseG, baseB) {
+        const c = document.createElement('canvas');
+        c.width = 128; c.height = 64;
+        const ctx = c.getContext('2d');
+
+        // Gradient: darker edges, lighter center
+        const grad = ctx.createLinearGradient(0, 0, 0, 64);
+        grad.addColorStop(0, `rgb(${Math.max(0,baseR-30)},${Math.max(0,baseG-20)},${Math.max(0,baseB-20)})`);
+        grad.addColorStop(0.35, `rgb(${baseR+15},${baseG+25},${baseB+10})`);
+        grad.addColorStop(0.5, `rgb(${baseR+25},${baseG+40},${baseB+15})`);
+        grad.addColorStop(0.65, `rgb(${baseR+15},${baseG+25},${baseB+10})`);
+        grad.addColorStop(1, `rgb(${Math.max(0,baseR-30)},${Math.max(0,baseG-20)},${Math.max(0,baseB-20)})`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 128, 64);
+
+        // Central vein (midrib)
+        ctx.strokeStyle = `rgba(${Math.max(0,baseR-50)},${Math.max(0,baseG-30)},${Math.max(0,baseB-30)}, 0.6)`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(0, 32);
+        ctx.lineTo(128, 32);
+        ctx.stroke();
+
+        // Secondary veins branching from center
+        ctx.strokeStyle = `rgba(${Math.max(0,baseR-40)},${Math.max(0,baseG-20)},${Math.max(0,baseB-20)}, 0.35)`;
+        ctx.lineWidth = 0.8;
+        for (let v = 10; v < 125; v += 8 + Math.random() * 6) {
+          ctx.beginPath();
+          ctx.moveTo(v, 32);
+          ctx.lineTo(v + 8, 10 + Math.random() * 8);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(v, 32);
+          ctx.lineTo(v + 8, 46 + Math.random() * 8);
+          ctx.stroke();
+        }
+
+        const tex = new THREE.CanvasTexture(c);
+        tex.wrapS = THREE.ClampToEdgeWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+        return tex;
+      }
+
+      // --- Materials ---
+      const potMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3, metalness: 0.1 });
+      const soilMat = new THREE.MeshStandardMaterial({ color: 0x6B5B3A, roughness: 1.0, metalness: 0 });
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5A7A1A, roughness: 0.85, metalness: 0 });
+      const pebbleMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.5, metalness: 0.1 });
+
+      // Leaf materials with veins — dark and medium green variants
+      const leafTexDark = createLeafTexture(20, 90, 20);
+      const leafTexMed = createLeafTexture(30, 110, 25);
+      const leafTexLight = createLeafTexture(40, 130, 30);
+      const leafMatDark = new THREE.MeshStandardMaterial({ map: leafTexDark, roughness: 0.55, metalness: 0, side: THREE.DoubleSide });
+      const leafMatMed = new THREE.MeshStandardMaterial({ map: leafTexMed, roughness: 0.55, metalness: 0, side: THREE.DoubleSide });
+      const leafMatLight = new THREE.MeshStandardMaterial({ map: leafTexLight, roughness: 0.55, metalness: 0, side: THREE.DoubleSide });
+      const leafMats = [leafMatDark, leafMatDark, leafMatMed, leafMatMed, leafMatLight];
+
+      // --- White square pot (30x30x30 cm) ---
+      const potH = 30, potW = 30;
+      const potShape = new THREE.Shape();
+      const pr = 2;
+      potShape.moveTo(-potW/2 + pr, 0);
+      potShape.lineTo(potW/2 - pr, 0);
+      potShape.quadraticCurveTo(potW/2, 0, potW/2, pr);
+      potShape.lineTo(potW/2, potH - pr);
+      potShape.quadraticCurveTo(potW/2, potH, potW/2 - pr, potH);
+      potShape.lineTo(-potW/2 + pr, potH);
+      potShape.quadraticCurveTo(-potW/2, potH, -potW/2, potH - pr);
+      potShape.lineTo(-potW/2, pr);
+      potShape.quadraticCurveTo(-potW/2, 0, -potW/2 + pr, 0);
+
+      const potGeom = new THREE.ExtrudeGeometry(potShape, { depth: potW, bevelEnabled: false });
+      const potMesh = new THREE.Mesh(potGeom, potMat);
+      potMesh.castShadow = true;
+      potMesh.receiveShadow = true;
+      potMesh.rotation.x = -Math.PI / 2;
+      potMesh.position.set(0, 0, potW / 2);
+      group.add(potMesh);
+
+      // Soil — raised above pot rim to avoid z-fighting
+      const soilGeom = new THREE.BoxGeometry(potW - 3, 3, potW - 3);
+      const soilMesh = new THREE.Mesh(soilGeom, soilMat);
+      soilMesh.position.set(0, potH + 0.5, 0);
+      soilMesh.receiveShadow = true;
+      group.add(soilMesh);
+
+      // Decorative white pebbles on soil
+      for (let p = 0; p < 15; p++) {
+        const pebGeom = new THREE.SphereGeometry(1 + Math.random() * 1.5, 8, 6);
+        const peb = new THREE.Mesh(pebGeom, pebbleMat);
+        peb.position.set(
+          (Math.random() - 0.5) * (potW - 8),
+          potH + 2,
+          (Math.random() - 0.5) * (potW - 8)
+        );
+        peb.scale.y = 0.5;
+        peb.castShadow = true;
+        group.add(peb);
+      }
+
+      // --- Helper: create a single palm frond ---
+      function createFrond(fLen, fWidth) {
+        const s = new THREE.Shape();
+        s.moveTo(0, 0);
+        s.quadraticCurveTo(fLen * 0.25, fWidth, fLen * 0.5, fWidth * 0.8);
+        s.quadraticCurveTo(fLen * 0.75, fWidth * 0.4, fLen, 0);
+        s.quadraticCurveTo(fLen * 0.75, -fWidth * 0.4, fLen * 0.5, -fWidth * 0.8);
+        s.quadraticCurveTo(fLen * 0.25, -fWidth, 0, 0);
+        return new THREE.ShapeGeometry(s);
+      }
+
+      // --- Palm stems with drooping + upward fronds ---
+      const stemCount = 6;
+      for (let s = 0; s < stemCount; s++) {
+        const stemAngle = (s / stemCount) * Math.PI * 2 + Math.random() * 0.3;
+        const stemLean = 0.06 + Math.random() * 0.14;
+        const stemH = 45 + Math.random() * 35;
+        const stemR = 0.8 + Math.random() * 0.5;
+
+        const stemGeom = new THREE.CylinderGeometry(stemR * 0.5, stemR, stemH, 8);
+        const stemMesh = new THREE.Mesh(stemGeom, trunkMat);
+        const stemX = Math.cos(stemAngle) * 5;
+        const stemZ = Math.sin(stemAngle) * 5;
+        stemMesh.position.set(stemX, potH + stemH / 2, stemZ);
+        stemMesh.rotation.x = Math.cos(stemAngle) * stemLean;
+        stemMesh.rotation.z = -Math.sin(stemAngle) * stemLean;
+        stemMesh.castShadow = true;
+        group.add(stemMesh);
+
+        const topY = potH + stemH;
+        const topX = stemX;
+        const topZ = stemZ;
+
+        // A) Drooping fronds (outward and down) — the classic palm look
+        const droopCount = 5 + Math.floor(Math.random() * 3);
+        for (let f = 0; f < droopCount; f++) {
+          const fAngle = (f / droopCount) * Math.PI * 2 + Math.random() * 0.6;
+          const fLen = 28 + Math.random() * 22;
+          const fDroop = 0.35 + Math.random() * 0.55;
+
+          const geom = createFrond(fLen, 2.5 + Math.random());
+          const mat = leafMats[Math.floor(Math.random() * leafMats.length)];
+          const mesh = new THREE.Mesh(geom, mat);
+          mesh.castShadow = true;
+          mesh.position.set(topX, topY, topZ);
+          mesh.rotation.y = fAngle;
+          mesh.rotation.z = -fDroop;
+          mesh.rotation.x = (Math.random() - 0.5) * 0.25;
+          group.add(mesh);
+        }
+
+        // B) Upward fronds (pointing up at various angles) — makes it bushy
+        const upCount = 3 + Math.floor(Math.random() * 3);
+        for (let u = 0; u < upCount; u++) {
+          const uAngle = (u / upCount) * Math.PI * 2 + Math.random() * 0.8;
+          const uLen = 18 + Math.random() * 15;
+          const uLift = 0.15 + Math.random() * 0.45;
+
+          const geom = createFrond(uLen, 2 + Math.random() * 0.8);
+          const mat = leafMats[Math.floor(Math.random() * leafMats.length)];
+          const mesh = new THREE.Mesh(geom, mat);
+          mesh.castShadow = true;
+          mesh.position.set(topX, topY + 2, topZ);
+          mesh.rotation.y = uAngle;
+          mesh.rotation.z = uLift;  // positive = upward tilt
+          mesh.rotation.x = (Math.random() - 0.5) * 0.3;
+          group.add(mesh);
+        }
+      }
+
+      // C) Extra central upward burst — tall young leaves in the center
+      for (let c = 0; c < 5; c++) {
+        const cAngle = (c / 5) * Math.PI * 2 + Math.random() * 0.5;
+        const cLen = 12 + Math.random() * 10;
+        const cLift = 0.6 + Math.random() * 0.5;
+
+        const geom = createFrond(cLen, 1.5 + Math.random() * 0.5);
+        const mat = leafMats[Math.floor(Math.random() * leafMats.length)];
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.castShadow = true;
+        mesh.position.set(0, potH + 75, 0);
+        mesh.rotation.y = cAngle;
+        mesh.rotation.z = cLift;
+        group.add(mesh);
+      }
+
+      // Label
+      const labelSprite = createTextSprite(item.labelEN || 'Plant');
+      labelSprite.position.set(0, 140, 0);
+      group.add(labelSprite);
+      group.add(createLeaderLine(120, 135, 0));
+
+      scene.add(group);
+      sceneObjects.push(group);
+    }
+    else if (item.type === 'adfolder') {
+      const group = new THREE.Group();
+      group.position.set(item.cx, globalElevationY, item.cz);
+      group.rotation.y = -(item.rotation || 0) * Math.PI / 180;
+
+      // Base
+      const baseGeom = new THREE.BoxGeometry(27, 2, 35);
+      const baseMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.8, roughness: 0.2 });
+      const baseMesh = new THREE.Mesh(baseGeom, baseMat);
+      baseMesh.position.set(0, 1, 0);
+      baseMesh.castShadow = true;
+      baseMesh.receiveShadow = true;
+      group.add(baseMesh);
+
+      // Scissor rails / X-frames (Left & Right)
+      const levelsCount = 3;
+      const levelHeight = 123 / levelsCount;
+      const D = 30; // depth
+
+      // Material for aluminum struts
+      const aluMat = new THREE.MeshStandardMaterial({ color: 0xd0d4d9, metalness: 0.85, roughness: 0.2 });
+      
+      function createStrut(x, y1, z1, y2, z2) {
+        const p1 = new THREE.Vector3(x, y1, z1);
+        const p2 = new THREE.Vector3(x, y2, z2);
+        const distance = p1.distanceTo(p2);
+        const strutGeom = new THREE.CylinderGeometry(0.5, 0.5, distance, 6);
+        const strutMesh = new THREE.Mesh(strutGeom, aluMat);
+        strutMesh.position.copy(p1).add(p2).multiplyScalar(0.5);
+        
+        const direction = new THREE.Vector3().subVectors(p2, p1).normalize();
+        const alignAxis = new THREE.Vector3(0, 1, 0);
+        strutMesh.quaternion.setFromUnitVectors(alignAxis, direction);
+        strutMesh.castShadow = true;
+        group.add(strutMesh);
+      }
+
+      for (let xSide of [-13, 13]) {
+        for (let lvl = 0; lvl < levelsCount; lvl++) {
+          const y1 = 2 + lvl * levelHeight;
+          const y2 = 2 + (lvl + 1) * levelHeight;
+          createStrut(xSide, y1, -D/2, y2, D/2);
+          createStrut(xSide, y1, D/2, y2, -D/2);
+        }
+      }
+
+      // Horizontal pins linking sides
+      for (let lvl = 0; lvl <= levelsCount; lvl++) {
+        const y = 2 + lvl * levelHeight;
+        for (let zSide of [-D/2, D/2]) {
+          const crossGeom = new THREE.CylinderGeometry(0.4, 0.4, 25.5, 6);
+          const crossMesh = new THREE.Mesh(crossGeom, aluMat);
+          crossMesh.rotation.z = Math.PI / 2;
+          crossMesh.position.set(0, y, zSide);
+          crossMesh.castShadow = true;
+          group.add(crossMesh);
+        }
+      }
+
+      // Shelves (6 pockets)
+      const shelfCount = 6;
+      const shelfSpacing = 110 / (shelfCount - 1);
+      const acrylicMat = new THREE.MeshStandardMaterial({ 
+        color: 0xffffff, 
+        transparent: true, 
+        opacity: 0.4, 
+        roughness: 0.1, 
+        metalness: 0.8,
+        side: THREE.DoubleSide 
+      });
+
+      for (let s = 0; s < shelfCount; s++) {
+        const y = 8 + s * shelfSpacing;
+        const isEven = (s % 2 === 0);
+        const angle = isEven ? 25 * Math.PI / 180 : -25 * Math.PI / 180;
+        const lipZ = isEven ? -14 : 14;
+
+        const shelfGroup = new THREE.Group();
+        shelfGroup.position.set(0, y, 0);
+
+        // Shelf board
+        const board = new THREE.Mesh(new THREE.BoxGeometry(24, 0.5, 28), acrylicMat);
+        board.castShadow = true;
+        board.receiveShadow = true;
+        shelfGroup.add(board);
+
+        // Metal lip
+        const lip = new THREE.Mesh(new THREE.BoxGeometry(24, 1.8, 0.5), aluMat);
+        lip.position.set(0, 0.9, lipZ);
+        lip.castShadow = true;
+        shelfGroup.add(lip);
+
+        shelfGroup.rotation.x = angle;
+        group.add(shelfGroup);
+
+        // Add some brochure sheets to some shelves
+        if (s === 1 || s === 3 || s === 4) {
+          const brColor = s === 1 ? 0x0066cc : (s === 3 ? 0xff4400 : 0x00b359);
+          const brochureMat = new THREE.MeshStandardMaterial({ color: brColor, roughness: 0.8 });
+          const brochure = new THREE.Mesh(new THREE.BoxGeometry(21, 0.3, 26), brochureMat);
+          brochure.position.set(0, 0.4, isEven ? -2 : 2);
+          shelfGroup.add(brochure);
+        }
+      }
+
+      // Label
+      const labelSprite = createTextSprite(item.labelEN || 'adFolder A4');
+      labelSprite.position.set(0, 145, 0);
+      group.add(labelSprite);
+      group.add(createLeaderLine(127, 140, 0));
+
+      scene.add(group);
+      sceneObjects.push(group);
+    }
   });
 
   foldablePlanes.forEach(plane => {
@@ -1366,7 +2007,84 @@ function update3DScene() {
   }
   if (human3DModel) {
     human3DModel.position.x = humanPos.x;
-    human3DModel.position.z = humanPos.z;
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // 🔥 NOWOŚĆ: Automatyczna kontrola widoczności + Dynamiczna Legenda SEGO (Wzór LMD)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  // 1. Czyszczenie starego panelu legendy przed ewentualną przebudową
+  const oldLegend = document.getElementById('segoBlueprintLegend');
+  if (oldLegend) oldLegend.remove();
+
+  // 2. Kontrola widoczności obiektów 3D anatomii wewnętrznej w scenie WebGL
+  if (typeof scene !== 'undefined' && scene) {
+    scene.traverse(obj => {
+      if (obj.userData && obj.userData.isInternalAnatomy) {
+        obj.visible = (typeof showDimensions !== 'undefined' && showDimensions);
+      }
+    });
+  }
+
+  // 3. Wstrzykiwanie panelu legendy inżynieryjnej do interfejsu (lewy górny róg)
+  if (typeof showDimensions !== 'undefined' && showDimensions && window.blueprintLegendItems && window.blueprintLegendItems.length > 0) {
+    const container3D = document.getElementById('stage3DContainer');
+    if (container3D) {
+      const legendDiv = document.createElement('div');
+      legendDiv.id = 'segoBlueprintLegend';
+
+      // Nadanie panelowi luksusowego, ciemnego wyglądu z cienką ramką
+      legendDiv.style.cssText = `
+        position: absolute;
+        top: 20px;
+        left: 20px;
+        background: rgba(10, 10, 20, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        padding: 15px;
+        color: #ffffff;
+        font-family: 'Segoe UI', sans-serif;
+        font-size: 12px;
+        z-index: 100;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+        pointer-events: none;
+        min-width: 260px;
+        backdrop-filter: blur(4px);
+      `;
+
+      // Nagłówek legendy technicznej
+      let legendHTML = '<div style="font-weight: bold; font-size: 13px; margin-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.15); padding-bottom: 6px; letter-spacing: 1px; color: #8bb3ff;">LEGENDA TECHNICZNA</div>';
+
+      // Dynamiczne mapowanie zarejestrowanych punktów konstrukcyjnych SEGO
+      window.blueprintLegendItems.forEach(item => {
+        legendHTML += `
+          <div style="display: flex; align-items: flex-start; margin-bottom: 10px;">
+            <div style="
+              background: ${item.color};
+              color: #000000;
+              font-weight: bold;
+              border-radius: 50%;
+              width: 18px;
+              height: 18px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 10px;
+              margin-right: 12px;
+              flex-shrink: 0;
+              box-shadow: 0 0 8px ${item.color}88;
+            ">${item.num}</div>
+            <div>
+              <div style="font-weight: bold; color: #ffffff; font-size: 11px; letter-spacing: 0.5px;">${item.name.toUpperCase()}</div>
+              <div style="color: #aaaaaa; font-size: 10.5px; margin-top: 2px; line-height: 1.2;">${item.desc}</div>
+            </div>
+          </div>
+        `;
+      });
+
+      legendDiv.innerHTML = legendHTML;
+      container3D.appendChild(legendDiv);
+    }
   }
 }
 
@@ -1378,9 +2096,14 @@ function render() {
   layer.innerHTML = ''; computed3DData = [];
   let sWidth = stage.clientWidth || window.innerWidth - 400; let sHeight = stage.clientHeight || window.innerHeight;
   const stageCenterStartX = sWidth / 2 - 100; const stageCenterStartY = sHeight / 2 + 100;
+
+  if (typeof applyTransform2D === 'function') {
+    applyTransform2D();
+  }
+
   let x = stageCenterStartX, y = stageCenterStartY; let currentAngle = 0; let prevWallAngle = 0;
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity; let baseCost = 0; let counts = {}; let lastItemType = null;
-  let pendingTurn90 = false; let pendingTurnItem = null; let placedWalls = []; let kantorekCount = 0; let floorBounds = null; let currentDrawingFlipped = false;
+  let pendingTurn90 = false; let pendingTurnItem = null; let placedWalls = []; let kantorekCount = 0; let floorBounds = null; let currentDrawingFlipped = false; let manualKantorekWallIndices = new Set();
 
   if (currentSystem === 'wydruki') {
     renderWydruki(layer);
@@ -1449,6 +2172,7 @@ function render() {
     }
   }
 
+  const feetFlags = computeWallFeetFlags(plan);
   let nodes = []; nodes.push({ x: x, y: y, angle: currentAngle, isFlipped: false }); createJoint(layer, x, y, 0);
 
   for (let index = 0; index < plan.length; index++) {
@@ -1495,6 +2219,278 @@ function render() {
         document.addEventListener('mousemove', onMouseMove); document.onmouseup = function () { document.removeEventListener('mousemove', onMouseMove); document.onmouseup = null; render(); };
       };
       layer.appendChild(freeEl); addItemToBom(item.name, 1, item.price, counts); baseCost += item.price; continue;
+    }
+    else if (item.type === 'table_chairs') {
+      let fx = stageCenterStartX + item.offsetX; let fy = stageCenterStartY + item.offsetY;
+      computed3DData.push({ type: 'table_chairs', planIndex: index, id: item.id, cx: item.offsetX, cz: item.offsetY, width: item.width, height: item.height, depth: item.depth, rotation: item.rotation || 0, labelEN: item.labelEN });
+      
+      let containerEl = document.createElement('div');
+      containerEl.className = 'sego-table-chairs' + (selectedItemIndex === index ? ' selected' : '');
+      containerEl.style.position = 'absolute';
+      containerEl.style.width = '160px';
+      containerEl.style.height = '160px';
+      containerEl.style.left = (fx - 80) + 'px';
+      containerEl.style.top = (fy - 80) + 'px';
+      containerEl.style.transform = `rotate(${item.rotation || 0}deg)`;
+      containerEl.style.cursor = 'move';
+      containerEl.style.zIndex = '90';
+      containerEl.style.display = 'flex';
+      containerEl.style.alignItems = 'center';
+      containerEl.style.justifyContent = 'center';
+
+      let isSel = (selectedItemIndex === index);
+      let highlightStroke = isSel ? 'var(--highlight)' : '#ff0080';
+      let highlightShadow = isSel ? '0px 0px 12px var(--highlight)' : '0px 0px 5px rgba(255, 0, 128, 0.4)';
+      let highlightBorder = isSel ? '2px dashed var(--highlight)' : 'none';
+
+      let svgHtml = `
+        <svg width="160" height="160" viewBox="0 0 160 160" style="pointer-events: none;">
+          <!-- Chair 1 (top/0 deg) -->
+          <path d="M 60,35 Q 80,15 100,35 L 95,50 Q 80,45 65,50 Z" fill="rgba(255,255,255,0.9)" stroke="#333" stroke-width="2"/>
+          <!-- Chair 2 (120 deg) -->
+          <path d="M 60,35 Q 80,15 100,35 L 95,50 Q 80,45 65,50 Z" fill="rgba(255,255,255,0.9)" stroke="#333" stroke-width="2" transform="rotate(120, 80, 80)"/>
+          <!-- Chair 3 (240 deg) -->
+          <path d="M 60,35 Q 80,15 100,35 L 95,50 Q 80,45 65,50 Z" fill="rgba(255,255,255,0.9)" stroke="#333" stroke-width="2" transform="rotate(240, 80, 80)"/>
+
+          <!-- Table: Circle of diameter 80 at center -->
+          <circle cx="80" cy="80" r="40" fill="#ffffff" stroke="${highlightStroke}" stroke-width="3" style="filter: drop-shadow(${highlightShadow});"/>
+          
+          <!-- Wooden base cross under table -->
+          <line x1="60" y1="60" x2="100" y2="100" stroke="#d7a15c" stroke-width="3"/>
+          <line x1="100" y1="60" x2="60" y2="100" stroke="#d7a15c" stroke-width="3"/>
+          <circle cx="80" cy="80" r="8" fill="#222"/>
+          
+          <text x="80" y="84" font-size="10" font-family="sans-serif" font-weight="bold" fill="#333" text-anchor="middle">STÓŁ</text>
+        </svg>
+        <div class="acc-controls" style="position: absolute; bottom: -5px; right: -5px; display: ${isSel ? 'flex' : 'none'};">
+          <span class="acc-btn" onclick="rotateFreestanding(${index}, event)">🔄</span>
+          <span class="acc-btn" onclick="removeFreestanding(${index}, event)" style="color:#ff5555">❌</span>
+        </div>
+      `;
+      containerEl.innerHTML = svgHtml;
+      
+      if (isSel) {
+        containerEl.style.border = highlightBorder;
+        containerEl.style.borderRadius = '50%';
+        containerEl.style.boxShadow = '0 0 10px rgba(0, 210, 255, 0.3)';
+      }
+
+      containerEl.onclick = (e) => {
+        e.stopPropagation();
+        selectItem(index, e);
+      };
+      
+      containerEl.onmousedown = function (e) {
+        if (e.target.classList.contains('acc-btn')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        selectItem(index, e);
+        
+        let startX = e.clientX;
+        let startY = e.clientY;
+        let initX = item.offsetX;
+        let initY = item.offsetY;
+        let vs = typeof viewScale !== 'undefined' ? viewScale : 1;
+        
+        function onMouseMove(event) {
+          item.offsetX = initX + (event.clientX - startX) / vs;
+          item.offsetY = initY + (event.clientY - startY) / vs;
+          let newFx = stageCenterStartX + item.offsetX;
+          let newFy = stageCenterStartY + item.offsetY;
+          containerEl.style.left = (newFx - 80) + 'px';
+          containerEl.style.top = (newFy - 80) + 'px';
+        }
+        
+        document.addEventListener('mousemove', onMouseMove);
+        document.onmouseup = function () {
+          document.removeEventListener('mousemove', onMouseMove);
+          document.onmouseup = null;
+          render();
+        };
+      };
+      
+      layer.appendChild(containerEl);
+      addItemToBom(item.name, 1, item.price, counts);
+      baseCost += item.price;
+      continue;
+    }
+    else if (item.type === 'potted_plant') {
+      let fx = stageCenterStartX + item.offsetX; let fy = stageCenterStartY + item.offsetY;
+      computed3DData.push({ type: 'potted_plant', planIndex: index, id: item.id, cx: item.offsetX, cz: item.offsetY, width: item.width, height: item.height, depth: item.depth, rotation: item.rotation || 0, labelEN: item.labelEN });
+      
+      let containerEl = document.createElement('div');
+      containerEl.className = 'sego-potted-plant' + (selectedItemIndex === index ? ' selected' : '');
+      containerEl.style.position = 'absolute';
+      containerEl.style.width = '60px';
+      containerEl.style.height = '60px';
+      containerEl.style.left = (fx - 30) + 'px';
+      containerEl.style.top = (fy - 30) + 'px';
+      containerEl.style.transform = `rotate(${item.rotation || 0}deg)`;
+      containerEl.style.cursor = 'move';
+      containerEl.style.zIndex = '90';
+      containerEl.style.display = 'flex';
+      containerEl.style.alignItems = 'center';
+      containerEl.style.justifyContent = 'center';
+
+      let isSel = (selectedItemIndex === index);
+      let highlightStroke = isSel ? 'var(--highlight)' : '#00ff88';
+      let highlightShadow = isSel ? '0px 0px 12px var(--highlight)' : '0px 0px 5px rgba(0, 255, 136, 0.4)';
+      let highlightBorder = isSel ? '2px dashed var(--highlight)' : 'none';
+
+      let svgHtml = `
+        <svg width="60" height="60" viewBox="0 0 60 60" style="pointer-events: none;">
+          <!-- Green plant leaves (protruding) -->
+          <path d="M 30,30 Q 15,10 5,20 Q 20,25 30,30" fill="#00ff88" opacity="0.8"/>
+          <path d="M 30,30 Q 45,10 55,20 Q 40,25 30,30" fill="#00ff88" opacity="0.8"/>
+          <path d="M 30,30 Q 10,45 20,55 Q 25,40 30,30" fill="#00ff88" opacity="0.8"/>
+          <path d="M 30,30 Q 50,45 40,55 Q 35,40 30,30" fill="#00ff88" opacity="0.8"/>
+          <path d="M 30,30 Q 30,5 30,0 Q 35,15 30,30" fill="#00ff88" opacity="0.8"/>
+
+          <!-- White square pot in the center -->
+          <rect x="15" y="15" width="30" height="30" rx="3" fill="#ffffff" stroke="${highlightStroke}" stroke-width="2" style="filter: drop-shadow(${highlightShadow});"/>
+          
+          <!-- Pebbles inside the pot -->
+          <circle cx="22" cy="22" r="2.5" fill="#ddd"/>
+          <circle cx="27" cy="25" r="2" fill="#bbb"/>
+          <circle cx="33" cy="22" r="3" fill="#eee"/>
+          <circle cx="38" cy="27" r="2.5" fill="#ccc"/>
+          <circle cx="25" cy="35" r="3" fill="#ddd"/>
+          <circle cx="35" cy="35" r="2" fill="#bbb"/>
+          
+          <text x="30" y="33" font-size="7" font-family="sans-serif" font-weight="bold" fill="#333" text-anchor="middle">🌿</text>
+        </svg>
+        <div class="acc-controls" style="position: absolute; bottom: -15px; right: -15px; display: ${isSel ? 'flex' : 'none'};">
+          <span class="acc-btn" onclick="rotateFreestanding(${index}, event)">🔄</span>
+          <span class="acc-btn" onclick="removeFreestanding(${index}, event)" style="color:#ff5555">❌</span>
+        </div>
+      `;
+      containerEl.innerHTML = svgHtml;
+      
+      if (isSel) {
+        containerEl.style.border = highlightBorder;
+        containerEl.style.boxShadow = '0 0 10px rgba(0, 255, 136, 0.3)';
+      }
+
+      containerEl.onclick = (e) => {
+        e.stopPropagation();
+        selectItem(index, e);
+      };
+      
+      containerEl.onmousedown = function (e) {
+        if (e.target.classList.contains('acc-btn')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        selectItem(index, e);
+        
+        let startX = e.clientX;
+        let startY = e.clientY;
+        let initX = item.offsetX;
+        let initY = item.offsetY;
+        let vs = typeof viewScale !== 'undefined' ? viewScale : 1;
+        
+        function onMouseMove(event) {
+          item.offsetX = initX + (event.clientX - startX) / vs;
+          item.offsetY = initY + (event.clientY - startY) / vs;
+          let newFx = stageCenterStartX + item.offsetX;
+          let newFy = stageCenterStartY + item.offsetY;
+          containerEl.style.left = (newFx - 30) + 'px';
+          containerEl.style.top = (newFy - 30) + 'px';
+        }
+        
+        document.addEventListener('mousemove', onMouseMove);
+        document.onmouseup = function () {
+          document.removeEventListener('mousemove', onMouseMove);
+          document.onmouseup = null;
+          render();
+        };
+      };
+      
+      layer.appendChild(containerEl);
+      addItemToBom(item.name, 1, item.price, counts);
+      baseCost += item.price;
+      continue;
+    }
+    else if (item.type === 'adfolder') {
+      let fx = stageCenterStartX + item.offsetX; let fy = stageCenterStartY + item.offsetY;
+      computed3DData.push({ type: 'adfolder', planIndex: index, id: item.id, cx: item.offsetX, cz: item.offsetY, width: item.width, height: item.height, depth: item.depth, rotation: item.rotation || 0, labelEN: item.labelEN });
+      
+      let containerEl = document.createElement('div');
+      containerEl.className = 'sego-adfolder' + (selectedItemIndex === index ? ' selected' : '');
+      containerEl.style.position = 'absolute';
+      containerEl.style.width = '30px';
+      containerEl.style.height = '40px';
+      containerEl.style.left = (fx - 15) + 'px';
+      containerEl.style.top = (fy - 20) + 'px';
+      containerEl.style.transform = `rotate(${item.rotation || 0}deg)`;
+      containerEl.style.cursor = 'move';
+      containerEl.style.zIndex = '90';
+      containerEl.style.display = 'flex';
+      containerEl.style.alignItems = 'center';
+      containerEl.style.justifyContent = 'center';
+
+      let isSel = (selectedItemIndex === index);
+      let highlightStroke = isSel ? 'var(--highlight)' : '#c0c0c0';
+      let highlightShadow = isSel ? '0px 0px 12px var(--highlight)' : '0px 0px 5px rgba(192, 192, 192, 0.4)';
+      let highlightBorder = isSel ? '2px dashed var(--highlight)' : 'none';
+
+      let svgHtml = `
+        <svg width="30" height="40" viewBox="0 0 30 40" style="pointer-events: none;">
+          <!-- Steel base -->
+          <rect x="2" y="4" width="26" height="32" rx="2" fill="#c0c0c0" stroke="${highlightStroke}" stroke-width="2" style="filter: drop-shadow(${highlightShadow});"/>
+          <!-- Inner divider or zigzag lines -->
+          <path d="M 5,8 L 25,12 L 5,18 L 25,24 L 5,30 L 25,34" fill="none" stroke="#666" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <text x="15" y="24" font-size="9" font-family="sans-serif" font-weight="bold" fill="#333" text-anchor="middle">📰</text>
+        </svg>
+        <div class="acc-controls" style="position: absolute; bottom: -15px; right: -15px; display: ${isSel ? 'flex' : 'none'};">
+          <span class="acc-btn" onclick="rotateFreestanding(${index}, event)">🔄</span>
+          <span class="acc-btn" onclick="removeFreestanding(${index}, event)" style="color:#ff5555">❌</span>
+        </div>
+      `;
+      containerEl.innerHTML = svgHtml;
+      
+      if (isSel) {
+        containerEl.style.border = highlightBorder;
+        containerEl.style.boxShadow = '0 0 10px rgba(192, 192, 192, 0.3)';
+      }
+
+      containerEl.onclick = (e) => {
+        e.stopPropagation();
+        selectItem(index, e);
+      };
+      
+      containerEl.onmousedown = function (e) {
+        if (e.target.classList.contains('acc-btn')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        selectItem(index, e);
+        
+        let startX = e.clientX;
+        let startY = e.clientY;
+        let initX = item.offsetX;
+        let initY = item.offsetY;
+        let vs = typeof viewScale !== 'undefined' ? viewScale : 1;
+        
+        function onMouseMove(event) {
+          item.offsetX = initX + (event.clientX - startX) / vs;
+          item.offsetY = initY + (event.clientY - startY) / vs;
+          let newFx = stageCenterStartX + item.offsetX;
+          let newFy = stageCenterStartY + item.offsetY;
+          containerEl.style.left = (newFx - 15) + 'px';
+          containerEl.style.top = (newFy - 20) + 'px';
+        }
+        
+        document.addEventListener('mousemove', onMouseMove);
+        document.onmouseup = function () {
+          document.removeEventListener('mousemove', onMouseMove);
+          document.onmouseup = null;
+          render();
+        };
+      };
+      
+      layer.appendChild(containerEl);
+      addItemToBom(item.name, 1, item.price, counts);
+      baseCost += item.price;
+      continue;
     }
     if (item.type === 'kantorek_1x1') {
       if (item.rotation === undefined) {
@@ -1581,10 +2577,13 @@ function render() {
         let cz3D = item.offsetY + (locX * Math.sin(rad) + locZ * Math.cos(rad));
         let globAngle = ((item.rotation || 0) + rotOffset) % 360;
         if (globAngle < 0) globAngle += 360;
+        let key = index + '_' + subIdx;
+        let wFlags = feetFlags[key] || { leftFoot: true, rightFoot: true };
         computed3DData.push({
           type: 'wall', planIndex: index, quadIdx: subIdx, cx: cx3D, cz: cz3D, length: 100, height: 250, angle: globAngle, color: isDoor ? "#00d2ff" : "#ff00ff",
           isDoor: isDoor, labelEN: isDoor ? "Kantorek Door" : "Kantorek Wall", textureFront: item.quadTextures['Out' + subIdx], textureBack: item.quadTextures['In' + subIdx],
-          textureFrontName: item.quadTextures['Out' + subIdx + 'Name'], textureBackName: item.quadTextures['In' + subIdx + 'Name'], isFoldable: false, thickness: 12, isFlipped: false
+          textureFrontName: item.quadTextures['Out' + subIdx + 'Name'], textureBackName: item.quadTextures['In' + subIdx + 'Name'], isFoldable: false, thickness: 12, isFlipped: false,
+          leftFoot: wFlags.leftFoot, rightFoot: wFlags.rightFoot
         });
       };
 
@@ -1596,9 +2595,10 @@ function render() {
       addVirtualWall(false, -56, 0, 90, 4);
 
       if (DB['sego100x250'] && DB['door100']) {
-        addItemToBom(DB['sego100x250'].name, 3, DB['sego100x250'].price, counts);
+        addItemToBom(DB['sego100x250'].name, 4, DB['sego100x250'].price, counts);
         addItemToBom(DB['door100'].name, 1, DB['door100'].price, counts);
-        baseCost += (DB['sego100x250'].price * 3) + DB['door100'].price;
+        addItemToBom(DB.miniFoot.name, 4, DB.miniFoot.price, counts);
+        baseCost += (DB['sego100x250'].price * 4) + DB['door100'].price + (DB.miniFoot.price * 4);
       }
 
       x = nextX;
@@ -1725,7 +2725,6 @@ function render() {
       let radForDim = currentAngle * Math.PI / 180;
       let currentThick = item.thickness || 12;
       let halfThick = currentThick / 2;
-
       let perpX = Math.abs(Math.sin(radForDim)) * halfThick;
       let perpY = Math.abs(Math.cos(radForDim)) * halfThick;
 
@@ -1749,16 +2748,31 @@ function render() {
           } else {
             addItemToBom("Foldable set 90deg connector", 2, 4, counts); baseCost += (2 * 4);
           }
-          if (currentWallIndex - i === 3) { let doorFound = item.isDoor; for (let j = i; j <= currentWallIndex; j++) if (placedWalls[j] && placedWalls[j].isDoor) doorFound = true; if (doorFound) kantorekCount++; }
+          if (currentWallIndex - i === 3) {
+            let doorFound = item.isDoor;
+            for (let j = i; j <= currentWallIndex; j++) {
+              if (placedWalls[j] && placedWalls[j].isDoor) doorFound = true;
+            }
+            if (doorFound) {
+              kantorekCount++;
+              manualKantorekWallIndices.add(index);
+              for (let j = i; j < currentWallIndex; j++) {
+                if (placedWalls[j] && placedWalls[j].planIndex !== undefined) {
+                  manualKantorekWallIndices.add(placedWalls[j].planIndex);
+                }
+              }
+            }
+          }
         }
       }
 
-      placedWalls.push({ startX: wallStartX, startY: wallStartY, endX: x, endY: y, isDoor: item.isDoor });
+      placedWalls.push({ startX: wallStartX, startY: wallStartY, endX: x, endY: y, isDoor: item.isDoor, planIndex: index });
 
       let cx = wallStartX + (x - wallStartX) / 2;
       let cy = wallStartY + (y - wallStartY) / 2;
 
-      computed3DData.push({ type: 'wall', planIndex: index, cx: cx - stageCenterStartX, cz: cy - stageCenterStartY, length: item.length, height: item.height, angle: currentAngle, color: item.color, isDoor: item.isDoor, labelEN: item.labelEN, textureFront: item.textureFront, textureBack: item.textureBack, isFoldable: item.isFoldable, thickness: item.thickness, isFlipped: item.isFlipped });
+      let wFlags = feetFlags[index] || { leftFoot: true, rightFoot: true };
+      computed3DData.push({ type: 'wall', planIndex: index, cx: cx - stageCenterStartX, cz: cy - stageCenterStartY, length: item.length, height: item.height, angle: currentAngle, color: item.color, isDoor: item.isDoor, labelEN: item.labelEN, textureFront: item.textureFront, textureBack: item.textureBack, isFoldable: item.isFoldable, thickness: item.thickness, isFlipped: item.isFlipped, leftFoot: wFlags.leftFoot, rightFoot: wFlags.rightFoot });
 
       let thick = item.thickness || 12;
       let wall = document.createElement('div');
@@ -1868,6 +2882,19 @@ function render() {
 
       lastItemType = 'wall'; addItemToBom(item.name, 1, item.price, counts); baseCost += item.price;
       if (item.isDoor) { addItemToBom(DB.sego100x250.name, 1, DB.sego100x250.price, counts); baseCost += DB.sego100x250.price; }
+      if (!item.isFoldable) {
+        let wFlags = feetFlags[index] || { leftFoot: true, rightFoot: true };
+        let feetCount = 0;
+        if (wFlags.leftFoot !== false) feetCount++;
+        if (wFlags.rightFoot !== false) feetCount++;
+        if (manualKantorekWallIndices.has(index)) {
+          feetCount = 0;
+        }
+        if (feetCount > 0) {
+          addItemToBom(DB.miniFoot.name, feetCount, DB.miniFoot.price, counts);
+          baseCost += feetCount * DB.miniFoot.price;
+        }
+      }
 
     } else if (item.type === 'turn') {
       if (!item.cornerType) item.cornerType = 'wew-zew-1';
@@ -1875,16 +2902,31 @@ function render() {
       lastItemType = 'turn'; if (Math.abs(item.angle) === 90) pendingTurn90 = true; pendingTurnItem = item;
 
     } else if (item.type === 'jump') {
-      let targetNode = nodes[item.target]; x = targetNode.x; y = targetNode.y; currentAngle = targetNode.angle; prevWallAngle = currentAngle;
+      if (item.x !== undefined && item.y !== undefined) {
+        x = item.x;
+        y = item.y;
+        currentAngle = item.angle !== undefined ? item.angle : 0;
+        prevWallAngle = currentAngle;
+        currentDrawingFlipped = false;
+        
+        nodes.push({ x: x, y: y, angle: currentAngle, isFlipped: false });
+        let thisNodeIndex = nodes.length - 1;
+        createJoint(layer, x, y, thisNodeIndex);
+      } else {
+        let targetNode = nodes[item.target];
+        if (targetNode) {
+          x = targetNode.x; y = targetNode.y; currentAngle = targetNode.angle; prevWallAngle = currentAngle;
 
-      currentDrawingFlipped = targetNode.isFlipped || false;
-      let isStartNode = false;
-      for (let w of placedWalls) {
-        if (Math.abs(x - w.startX) < 1 && Math.abs(y - w.startY) < 1) {
-          isStartNode = true; break;
+          currentDrawingFlipped = targetNode.isFlipped || false;
+          let isStartNode = false;
+          for (let w of placedWalls) {
+            if (Math.abs(x - w.startX) < 1 && Math.abs(y - w.startY) < 1) {
+              isStartNode = true; break;
+            }
+          }
+          if (isStartNode) currentDrawingFlipped = !currentDrawingFlipped;
         }
       }
-      if (isStartNode) currentDrawingFlipped = !currentDrawingFlipped;
 
       lastItemType = 'jump'; pendingTurn90 = false;
       pendingTurnItem = null;
@@ -1896,6 +2938,7 @@ function render() {
     let targetNode = nodes[plan[selectedItemIndex].endNodeIndex];
     if (targetNode) { cursorX = targetNode.x; cursorY = targetNode.y; cursorAngle = targetNode.angle; }
   }
+  window.currentCursorAngle = cursorAngle;
 
   let cursor = document.createElement('div'); cursor.className = 'build-cursor';
   cursor.style.left = cursorX + 'px'; cursor.style.top = cursorY + 'px';
@@ -2031,7 +3074,7 @@ function render() {
         if (!intranetId && typeof DB !== 'undefined') {
           for (let key in DB) {
             if (DB[key].name === name) {
-              intranetId = DB[key].catNo || DB[key].intranetId || null;
+              intranetId = DB[key].intranetId || DB[key].catNo || null;
               break;
             }
           }
@@ -2197,4 +3240,202 @@ function recoverEngine() {
   }
 
   console.log("Silnik 3D zrestartowany pomyślnie.");
+}
+
+function getWallPositions(testPlan) {
+  const stage = document.getElementById('stage');
+  const sWidth = stage ? (stage.clientWidth || window.innerWidth - 400) : (window.innerWidth - 400);
+  const sHeight = stage ? (stage.clientHeight || window.innerHeight) : window.innerHeight;
+  const stageCenterStartX = sWidth / 2 - 100;
+  const stageCenterStartY = sHeight / 2 + 100;
+
+  let x = stageCenterStartX, y = stageCenterStartY, angle = 0;
+  let nodes = [{ x: x, y: y, angle: angle }];
+  let walls = [];
+  let pendingTurnItem = null;
+
+  for (let index = 0; index < testPlan.length; index++) {
+    let item = testPlan[index];
+    if (item.type === 'turn') {
+      item.prevAngle = angle;
+      angle += item.angle;
+      item.currAngle = angle;
+      item.cornerX = x;
+      item.cornerY = y;
+      pendingTurnItem = item;
+    } else if (item.type === 'jump') {
+      if (item.x !== undefined && item.y !== undefined) {
+        x = item.x;
+        y = item.y;
+        angle = item.angle !== undefined ? item.angle : 0;
+        nodes.push({ x: x, y: y, angle: angle });
+      } else {
+        let targetNode = nodes[item.target];
+        if (targetNode) { x = targetNode.x; y = targetNode.y; angle = targetNode.angle; }
+      }
+    } else if (item.type === 'wall') {
+      let tempX = x, tempY = y;
+      if (pendingTurnItem) {
+        let rad1 = pendingTurnItem.prevAngle * Math.PI / 180;
+        let rad2 = pendingTurnItem.currAngle * Math.PI / 180;
+        let offset = (item.thickness || 12) / 2;
+        let sV1 = 0, sV2 = 0;
+        let cType = pendingTurnItem.cornerType || 'wew-zew-1';
+
+        if (cType === 'zew-zew') { sV1 = offset; sV2 = offset; }
+        else if (cType === 'wew-zew-1') { sV1 = -offset; sV2 = offset; }
+        else if (cType === 'wew-zew-2') { sV1 = offset; sV2 = -offset; }
+
+        let isBranchingFromStart = false;
+        for (let w of walls) {
+          if (Math.abs(pendingTurnItem.cornerX - w.startX) < 1 && Math.abs(pendingTurnItem.cornerY - w.startY) < 1) {
+            isBranchingFromStart = true; break;
+          }
+        }
+        if (isBranchingFromStart) sV1 = -sV1;
+
+        tempX = pendingTurnItem.cornerX + sV1 * Math.cos(rad1) + sV2 * Math.cos(rad2);
+        tempY = pendingTurnItem.cornerY + sV1 * Math.sin(rad1) + sV2 * Math.sin(rad2);
+        pendingTurnItem = null;
+      }
+      let rad = angle * Math.PI / 180;
+      let nX = tempX + item.length * Math.cos(rad);
+      let nY = tempY + item.length * Math.sin(rad);
+
+      walls.push({
+        planIndex: index,
+        startX: tempX,
+        startY: tempY,
+        endX: nX,
+        endY: nY,
+        angle: angle,
+        length: item.length,
+        isFoldable: !!item.isFoldable
+      });
+      x = nX;
+      y = nY;
+      nodes.push({ x: x, y: y, angle: angle });
+    } else if (item.type === 'kantorek_1x1') {
+      if (item.rotation === undefined) {
+        item.rotation = (angle === 270 || angle === -90) ? -90 : 0;
+      }
+
+      let dOp = item.doorOpposite || false;
+      let fx, fy, nextX, nextY, nextAngle;
+
+      if (item.rotation === 0) {
+        fx = x + 62;
+        fy = y + 44;
+        nextX = fx + 56;
+        nextY = fy + 50;
+        nextAngle = 90;
+      } else {
+        fx = x + 44;
+        fy = y - 62;
+        nextX = fx + 50;
+        nextY = fy - 56;
+        nextAngle = 0;
+      }
+
+      let rad = item.rotation * Math.PI / 180;
+
+      const addVirtualWallPos = (locX, locZ, rotOffset, subIdx) => {
+        let cx = fx + (locX * Math.cos(rad) - locZ * Math.sin(rad));
+        let cy = fy + (locX * Math.sin(rad) + locZ * Math.cos(rad));
+        let globAngle = ((item.rotation || 0) + rotOffset) % 360;
+        if (globAngle < 0) globAngle += 360;
+        
+        let length = 100;
+        let radW = globAngle * Math.PI / 180;
+        
+        let startX = cx - (length / 2) * Math.cos(radW);
+        let startY = cy - (length / 2) * Math.sin(radW);
+        let endX = cx + (length / 2) * Math.cos(radW);
+        let endY = cy + (length / 2) * Math.sin(radW);
+        
+        walls.push({
+          planIndex: index,
+          quadIdx: subIdx,
+          startX: startX,
+          startY: startY,
+          endX: endX,
+          endY: endY,
+          angle: globAngle,
+          length: 100,
+          isFoldable: false
+        });
+      };
+
+      addVirtualWallPos(0, -44, 180, 1);
+      addVirtualWallPos(56, 0, 270, 2);
+      addVirtualWallPos(0, 44, 0, 3);
+      addVirtualWallPos(-56, 0, 90, 4);
+
+      x = nextX;
+      y = nextY;
+      angle = nextAngle;
+      nodes.push({ x: x, y: y, angle: angle });
+    }
+  }
+  return walls;
+}
+
+function computeWallFeetFlags(testPlan) {
+  let walls = getWallPositions(testPlan);
+  let flags = {};
+  
+  for (let w of walls) {
+    let key = w.quadIdx !== undefined ? (w.planIndex + '_' + w.quadIdx) : w.planIndex;
+    flags[key] = { leftFoot: true, rightFoot: true };
+  }
+  
+  for (let i = 0; i < walls.length; i++) {
+    let w1 = walls[i];
+    for (let j = i + 1; j < walls.length; j++) {
+      let w2 = walls[j];
+      
+      let diff = Math.abs(w1.angle - w2.angle) % 180;
+      let is90deg = Math.abs(diff - 90) < 5 || Math.abs(diff - 270) < 5;
+      
+      if (is90deg) {
+        let key1 = w1.quadIdx !== undefined ? (w1.planIndex + '_' + w1.quadIdx) : w1.planIndex;
+        let key2 = w2.quadIdx !== undefined ? (w2.planIndex + '_' + w2.quadIdx) : w2.planIndex;
+
+        let dSS = Math.hypot(w1.startX - w2.startX, w1.startY - w2.startY);
+        let dSE = Math.hypot(w1.startX - w2.endX, w1.startY - w2.endY);
+        let dES = Math.hypot(w1.endX - w2.startX, w1.endY - w2.startY);
+        let dEE = Math.hypot(w1.endX - w2.endX, w1.endY - w2.endY);
+        
+        let conn = null;
+        if (dSS < 15) conn = { w1Side: 'left', w2Side: 'left' };
+        else if (dSE < 15) conn = { w1Side: 'left', w2Side: 'right' };
+        else if (dES < 15) conn = { w1Side: 'right', w2Side: 'left' };
+        else if (dEE < 15) conn = { w1Side: 'right', w2Side: 'right' };
+        
+        if (conn) {
+          let w1Length = w1.length || 0;
+          let w2Length = w2.length || 0;
+          
+          let removeW1 = false;
+          if (w1Length < w2Length) {
+            removeW1 = true;
+          } else if (w2Length < w1Length) {
+            removeW1 = false;
+          } else {
+            removeW1 = (w1.planIndex <= w2.planIndex);
+          }
+          
+          if (removeW1) {
+            if (conn.w1Side === 'left') flags[key1].leftFoot = false;
+            else flags[key1].rightFoot = false;
+          } else {
+            if (conn.w2Side === 'left') flags[key2].leftFoot = false;
+            else flags[key2].rightFoot = false;
+          }
+        }
+      }
+    }
+  }
+  
+  return flags;
 }

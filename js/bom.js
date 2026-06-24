@@ -20,7 +20,7 @@ function generateKasetonBOM() {
 
   const bomItems = [];
 
-  if (sys === 'CTF') {
+  if (sys === 'CTF' || sys === 'CTF_LED') {
     const D = parseFloat(config.height3D) || 120; // Głębokość przestrzenna ramy 3D
     const wMeters = W / 100;
     const hMeters = H / 100;
@@ -105,6 +105,24 @@ function generateKasetonBOM() {
       bomItems.push({ name: "adFrame CTF - zestaw do podwieszenia 2m (4 PKT) do MO", qty: 1, unit: "szt", intranetId: 17790 });
     }
 
+    // 6a. Plafony LED dla systemu CTF LED
+    if (sys === 'CTF_LED' && (config.light === 'plafon_dol' || config.light === 'plafon_gora')) {
+      let numX = Math.floor((W - 5) / 35);
+      if (numX < 1 && W >= 40) numX = 1;
+      let numZ = Math.floor((D - 5) / 35);
+      if (numZ < 1 && D >= 40) numZ = 1;
+
+      const totalPlafonds = (numX >= 1 && numZ >= 1) ? (numX * numZ) : 0;
+      if (totalPlafonds > 0) {
+        bomItems.push({
+          name: "Plafon LED 30x30",
+          qty: totalPlafonds,
+          unit: "szt",
+          intranetId: 18957
+        });
+      }
+    }
+
     // 7. Kartony i pianki (Dobór matematyczny skopiowany 1:1 z algorytmu LMD)
     let numCutsW = 0, numCutsH = 0;
     if (config.cut && config.cut.includes('half_w')) numCutsW = 1;
@@ -152,18 +170,35 @@ function generateKasetonBOM() {
     config.cartonQty = finalCartonQty;
 
     // 8. Rozbicie wydruków na pojedyncze pozycje (Dla ERP/DTP - unikalne pliki graficzne)
-    const printOption = config.print || 'all_sides';
+    const printOption = config.print || '6_sides';
     if (printOption !== 'no_print') {
       const facesTemp = [];
 
       // Definiujemy każdą płaszczyznę bryły 3D od razu z jej fizyczną rolą/kierunkiem
-      if (printOption === 'all_sides') {
+      if (printOption === '6_sides' || printOption === 'all_sides') {
         facesTemp.push({ w: W, h: H, isBlockout: false, side: 'przód' });
         facesTemp.push({ w: W, h: H, isBlockout: false, side: 'tył' });
         facesTemp.push({ w: D, h: H, isBlockout: false, side: 'bok lewy' });
         facesTemp.push({ w: D, h: H, isBlockout: false, side: 'bok prawy' });
         facesTemp.push({ w: W, h: D, isBlockout: false, side: 'góra' });
         facesTemp.push({ w: W, h: D, isBlockout: false, side: 'dół' });
+      } else if (printOption === '4_sides') {
+        facesTemp.push({ w: W, h: H, isBlockout: false, side: 'przód' });
+        facesTemp.push({ w: W, h: H, isBlockout: false, side: 'tył' });
+        facesTemp.push({ w: D, h: H, isBlockout: false, side: 'bok lewy' });
+        facesTemp.push({ w: D, h: H, isBlockout: false, side: 'bok prawy' });
+      } else if (printOption === '5_sides_top_open') {
+        facesTemp.push({ w: W, h: H, isBlockout: false, side: 'przód' });
+        facesTemp.push({ w: W, h: H, isBlockout: false, side: 'tył' });
+        facesTemp.push({ w: D, h: H, isBlockout: false, side: 'bok lewy' });
+        facesTemp.push({ w: D, h: H, isBlockout: false, side: 'bok prawy' });
+        facesTemp.push({ w: W, h: D, isBlockout: false, side: 'dół' });
+      } else if (printOption === '5_sides_bottom_open') {
+        facesTemp.push({ w: W, h: H, isBlockout: false, side: 'przód' });
+        facesTemp.push({ w: W, h: H, isBlockout: false, side: 'tył' });
+        facesTemp.push({ w: D, h: H, isBlockout: false, side: 'bok lewy' });
+        facesTemp.push({ w: D, h: H, isBlockout: false, side: 'bok prawy' });
+        facesTemp.push({ w: W, h: D, isBlockout: false, side: 'góra' });
       } else if (printOption === 'front_back') {
         facesTemp.push({ w: W, h: H, isBlockout: false, side: 'przód' });
         facesTemp.push({ w: W, h: H, isBlockout: false, side: 'tył' });
@@ -1188,7 +1223,7 @@ function generateKasetonBOM() {
   }
 
   finishKasetonBOM(bomItems, W, H, sys, config);
-  if (sys === 'CTF') {
+  if (sys === 'CTF' || sys === 'CTF_LED') {
     if (Array.isArray(window.lastGeneratedBOM)) {
       // Krok A: Usuwamy pozycję składową "adFrame CTF" (18337), aby nie dublowała się jako dziecko
       let filteredBOM = window.lastGeneratedBOM.filter(function (item) {
@@ -1212,6 +1247,7 @@ function generateKasetonBOM() {
 
 // 9. DATABASE & CURRENCY LOGIC
 const KASETON_PRICES = {
+  "Plafon LED 30x30": { plnPrice: 150, plnMargin: 50, intranetId: 18957, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "profil LMSM poziomy (ALU-060-SLIM)": { plnPrice: 120, plnMargin: 40, intranetId: 10936, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "profil LMSM pionowy (ALU-060-SLIM)": { plnPrice: 120, plnMargin: 40, intranetId: 10936, category: "ramy tekstylne akcesoria", origin: "Polska" },
   "Łącznik narożny wsuwany L-Slim (SL-06)": { plnPrice: 15, plnMargin: 5, intranetId: 17452, category: "ramy tekstylne akcesoria", origin: "Chiny" },

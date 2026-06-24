@@ -33,7 +33,107 @@ function saveProjectLocal() {
 
     // Czyszczenie pamięci tymczasowej
     URL.revokeObjectURL(url);
+
+    // Próba zapisu na serwerze (w tle)
+    uploadProjectToServer(projectData.projectName, jsonString);
 }
+
+function generateBOMCSV() {
+    let csv = "Index/SKU;Nazwa;Wymiary;Ilosc;Cena jedn. (EUR);Razem (EUR)\r\n";
+    if (typeof globalCounts === 'undefined' || !globalCounts) {
+        return csv;
+    }
+    for (let name in globalCounts) {
+        let item = globalCounts[name];
+        let baseObj = typeof DB !== 'undefined' ? Object.values(DB).find(e => e.name === name) : null;
+        let catNo = baseObj ? (baseObj.catNo || "-") : "-";
+        
+        let dimText = "-";
+        if (baseObj && (baseObj.width || baseObj.length)) {
+            dimText = `${baseObj.width || baseObj.length} x ${baseObj.height || baseObj.depth} cm`;
+        }
+
+        let cleanName = name.replace(/"/g, '""');
+        let qty = item.qty;
+        let unitPrice = item.unitPrice || 0;
+        let total = item.total || (qty * unitPrice);
+
+        csv += `"${catNo}";"${cleanName}";"${dimText}";${qty};${unitPrice.toFixed(2)};${total.toFixed(2)}\r\n`;
+    }
+    return csv;
+}
+
+function uploadProjectToServer(projectName, jsonString) {
+    let csvString = "";
+    if (typeof generateBOMCSV === 'function') {
+        csvString = generateBOMCSV();
+    }
+
+    fetch('api_save.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            projectName: projectName || 'BezNazwy',
+            jsonData: jsonString,
+            csvData: csvString
+        })
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.status === 'OK') {
+            console.log("Projekt został automatycznie zapisany na serwerze:", data.files);
+            showNotification("Zapisano na serwerze", "Zaktualizowano pliki projektu (.json i .csv).");
+        } else {
+            console.warn("Błąd zapisu na serwerze:", data.message);
+        }
+    })
+    .catch(err => {
+        console.warn("Brak zapisu na serwerze (lokalny dev lub brak sesji):", err);
+    });
+}
+
+function showNotification(title, message) {
+    let toast = document.getElementById('expo-toast-notification');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'expo-toast-notification';
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #1a1a1a;
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 8px;
+            border-left: 4px solid #00e5ff;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            z-index: 100000;
+            font-family: sans-serif;
+            font-size: 13px;
+            opacity: 0;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            transform: translateY(20px);
+            pointer-events: none;
+        `;
+        document.body.appendChild(toast);
+    }
+    toast.innerHTML = `<strong style="color: #00e5ff; display: block; margin-bottom: 4px;">${title}</strong>${message}`;
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(20px)';
+    }, 4000);
+}
+
 
 function loadProjectLocal() {
     // Wywołujemy kliknięcie w nasz ukryty input typu file
