@@ -1738,6 +1738,120 @@ function update3DScene() {
       scene.add(group);
       sceneObjects.push(group);
     }
+    else if (item.type === 'adfolder') {
+      const group = new THREE.Group();
+      group.position.set(item.cx, globalElevationY, item.cz);
+      group.rotation.y = -(item.rotation || 0) * Math.PI / 180;
+
+      // Base
+      const baseGeom = new THREE.BoxGeometry(27, 2, 35);
+      const baseMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.8, roughness: 0.2 });
+      const baseMesh = new THREE.Mesh(baseGeom, baseMat);
+      baseMesh.position.set(0, 1, 0);
+      baseMesh.castShadow = true;
+      baseMesh.receiveShadow = true;
+      group.add(baseMesh);
+
+      // Scissor rails / X-frames (Left & Right)
+      const levelsCount = 3;
+      const levelHeight = 123 / levelsCount;
+      const D = 30; // depth
+
+      // Material for aluminum struts
+      const aluMat = new THREE.MeshStandardMaterial({ color: 0xd0d4d9, metalness: 0.85, roughness: 0.2 });
+      
+      function createStrut(x, y1, z1, y2, z2) {
+        const p1 = new THREE.Vector3(x, y1, z1);
+        const p2 = new THREE.Vector3(x, y2, z2);
+        const distance = p1.distanceTo(p2);
+        const strutGeom = new THREE.CylinderGeometry(0.5, 0.5, distance, 6);
+        const strutMesh = new THREE.Mesh(strutGeom, aluMat);
+        strutMesh.position.copy(p1).add(p2).multiplyScalar(0.5);
+        
+        const direction = new THREE.Vector3().subVectors(p2, p1).normalize();
+        const alignAxis = new THREE.Vector3(0, 1, 0);
+        strutMesh.quaternion.setFromUnitVectors(alignAxis, direction);
+        strutMesh.castShadow = true;
+        group.add(strutMesh);
+      }
+
+      for (let xSide of [-13, 13]) {
+        for (let lvl = 0; lvl < levelsCount; lvl++) {
+          const y1 = 2 + lvl * levelHeight;
+          const y2 = 2 + (lvl + 1) * levelHeight;
+          createStrut(xSide, y1, -D/2, y2, D/2);
+          createStrut(xSide, y1, D/2, y2, -D/2);
+        }
+      }
+
+      // Horizontal pins linking sides
+      for (let lvl = 0; lvl <= levelsCount; lvl++) {
+        const y = 2 + lvl * levelHeight;
+        for (let zSide of [-D/2, D/2]) {
+          const crossGeom = new THREE.CylinderGeometry(0.4, 0.4, 25.5, 6);
+          const crossMesh = new THREE.Mesh(crossGeom, aluMat);
+          crossMesh.rotation.z = Math.PI / 2;
+          crossMesh.position.set(0, y, zSide);
+          crossMesh.castShadow = true;
+          group.add(crossMesh);
+        }
+      }
+
+      // Shelves (6 pockets)
+      const shelfCount = 6;
+      const shelfSpacing = 110 / (shelfCount - 1);
+      const acrylicMat = new THREE.MeshStandardMaterial({ 
+        color: 0xffffff, 
+        transparent: true, 
+        opacity: 0.4, 
+        roughness: 0.1, 
+        metalness: 0.8,
+        side: THREE.DoubleSide 
+      });
+
+      for (let s = 0; s < shelfCount; s++) {
+        const y = 8 + s * shelfSpacing;
+        const isEven = (s % 2 === 0);
+        const angle = isEven ? 25 * Math.PI / 180 : -25 * Math.PI / 180;
+        const lipZ = isEven ? -14 : 14;
+
+        const shelfGroup = new THREE.Group();
+        shelfGroup.position.set(0, y, 0);
+
+        // Shelf board
+        const board = new THREE.Mesh(new THREE.BoxGeometry(24, 0.5, 28), acrylicMat);
+        board.castShadow = true;
+        board.receiveShadow = true;
+        shelfGroup.add(board);
+
+        // Metal lip
+        const lip = new THREE.Mesh(new THREE.BoxGeometry(24, 1.8, 0.5), aluMat);
+        lip.position.set(0, 0.9, lipZ);
+        lip.castShadow = true;
+        shelfGroup.add(lip);
+
+        shelfGroup.rotation.x = angle;
+        group.add(shelfGroup);
+
+        // Add some brochure sheets to some shelves
+        if (s === 1 || s === 3 || s === 4) {
+          const brColor = s === 1 ? 0x0066cc : (s === 3 ? 0xff4400 : 0x00b359);
+          const brochureMat = new THREE.MeshStandardMaterial({ color: brColor, roughness: 0.8 });
+          const brochure = new THREE.Mesh(new THREE.BoxGeometry(21, 0.3, 26), brochureMat);
+          brochure.position.set(0, 0.4, isEven ? -2 : 2);
+          shelfGroup.add(brochure);
+        }
+      }
+
+      // Label
+      const labelSprite = createTextSprite(item.labelEN || 'adFolder A4');
+      labelSprite.position.set(0, 145, 0);
+      group.add(labelSprite);
+      group.add(createLeaderLine(127, 140, 0));
+
+      scene.add(group);
+      sceneObjects.push(group);
+    }
   });
 
   foldablePlanes.forEach(plane => {
@@ -2286,6 +2400,88 @@ function render() {
           let newFy = stageCenterStartY + item.offsetY;
           containerEl.style.left = (newFx - 30) + 'px';
           containerEl.style.top = (newFy - 30) + 'px';
+        }
+        
+        document.addEventListener('mousemove', onMouseMove);
+        document.onmouseup = function () {
+          document.removeEventListener('mousemove', onMouseMove);
+          document.onmouseup = null;
+          render();
+        };
+      };
+      
+      layer.appendChild(containerEl);
+      addItemToBom(item.name, 1, item.price, counts);
+      baseCost += item.price;
+      continue;
+    }
+    else if (item.type === 'adfolder') {
+      let fx = stageCenterStartX + item.offsetX; let fy = stageCenterStartY + item.offsetY;
+      computed3DData.push({ type: 'adfolder', planIndex: index, id: item.id, cx: item.offsetX, cz: item.offsetY, width: item.width, height: item.height, depth: item.depth, rotation: item.rotation || 0, labelEN: item.labelEN });
+      
+      let containerEl = document.createElement('div');
+      containerEl.className = 'sego-adfolder' + (selectedItemIndex === index ? ' selected' : '');
+      containerEl.style.position = 'absolute';
+      containerEl.style.width = '30px';
+      containerEl.style.height = '40px';
+      containerEl.style.left = (fx - 15) + 'px';
+      containerEl.style.top = (fy - 20) + 'px';
+      containerEl.style.transform = `rotate(${item.rotation || 0}deg)`;
+      containerEl.style.cursor = 'move';
+      containerEl.style.zIndex = '90';
+      containerEl.style.display = 'flex';
+      containerEl.style.alignItems = 'center';
+      containerEl.style.justifyContent = 'center';
+
+      let isSel = (selectedItemIndex === index);
+      let highlightStroke = isSel ? 'var(--highlight)' : '#c0c0c0';
+      let highlightShadow = isSel ? '0px 0px 12px var(--highlight)' : '0px 0px 5px rgba(192, 192, 192, 0.4)';
+      let highlightBorder = isSel ? '2px dashed var(--highlight)' : 'none';
+
+      let svgHtml = `
+        <svg width="30" height="40" viewBox="0 0 30 40" style="pointer-events: none;">
+          <!-- Steel base -->
+          <rect x="2" y="4" width="26" height="32" rx="2" fill="#c0c0c0" stroke="${highlightStroke}" stroke-width="2" style="filter: drop-shadow(${highlightShadow});"/>
+          <!-- Inner divider or zigzag lines -->
+          <path d="M 5,8 L 25,12 L 5,18 L 25,24 L 5,30 L 25,34" fill="none" stroke="#666" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <text x="15" y="24" font-size="9" font-family="sans-serif" font-weight="bold" fill="#333" text-anchor="middle">📰</text>
+        </svg>
+        <div class="acc-controls" style="position: absolute; bottom: -15px; right: -15px; display: ${isSel ? 'flex' : 'none'};">
+          <span class="acc-btn" onclick="rotateFreestanding(${index}, event)">🔄</span>
+          <span class="acc-btn" onclick="removeFreestanding(${index}, event)" style="color:#ff5555">❌</span>
+        </div>
+      `;
+      containerEl.innerHTML = svgHtml;
+      
+      if (isSel) {
+        containerEl.style.border = highlightBorder;
+        containerEl.style.boxShadow = '0 0 10px rgba(192, 192, 192, 0.3)';
+      }
+
+      containerEl.onclick = (e) => {
+        e.stopPropagation();
+        selectItem(index, e);
+      };
+      
+      containerEl.onmousedown = function (e) {
+        if (e.target.classList.contains('acc-btn')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        selectItem(index, e);
+        
+        let startX = e.clientX;
+        let startY = e.clientY;
+        let initX = item.offsetX;
+        let initY = item.offsetY;
+        let vs = typeof viewScale !== 'undefined' ? viewScale : 1;
+        
+        function onMouseMove(event) {
+          item.offsetX = initX + (event.clientX - startX) / vs;
+          item.offsetY = initY + (event.clientY - startY) / vs;
+          let newFx = stageCenterStartX + item.offsetX;
+          let newFy = stageCenterStartY + item.offsetY;
+          containerEl.style.left = (newFx - 15) + 'px';
+          containerEl.style.top = (newFy - 20) + 'px';
         }
         
         document.addEventListener('mousemove', onMouseMove);

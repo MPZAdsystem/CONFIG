@@ -66,6 +66,14 @@ const DB = {
 
     },
 
+    adFolderA4: {
+
+        id: "adFolderA4", name: "adFolder A4", labelEN: "adFolder A4", catNo: "10094",
+
+        type: "adfolder", width: 27, height: 127, depth: 35, price: 88.76, color: "#c0c0c0"
+
+    },
+
     adUpVarioS80: {
 
         id: "adUpVarioS80", name: "Ścianka tekstylna Vario S-80", labelEN: "Vario S-80", catNo: "AD-VARIO-S80",
@@ -488,7 +496,7 @@ document.addEventListener('keydown', function (e) {
 
         if (e.key.toLowerCase() === 'q') {
 
-            if (item.type === 'freestanding' || item.type === 'freestanding_s' || item.type === 'suspended' || item.type === 'table_chairs' || item.type === 'potted_plant') {
+            if (item.type === 'freestanding' || item.type === 'freestanding_s' || item.type === 'suspended' || item.type === 'table_chairs' || item.type === 'potted_plant' || item.type === 'adfolder') {
 
                 item.rotation = ((item.rotation || 0) + 90) % 360;
 

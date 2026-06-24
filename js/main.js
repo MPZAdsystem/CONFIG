@@ -511,6 +511,7 @@ async function exportToSheets() {
         else if (name === "adUp Vario Ringfloat dwustronne") catNo = DB.adUpRingfloat.catNo;
         else if (name === "Ścianka tekstylna Vario S-80") catNo = DB.adUpVarioS80.catNo;
         else if (name === "Roślina doniczkowa") catNo = DB.pottedPlant.catNo;
+        else if (name === "adFolder A4") catNo = DB.adFolderA4.catNo;
         else if (name === "Wykładzina dywanowa (m2)") catNo = "FLOOR-CARPET";
         else if (name === "- Płyty Adfloor prosty (m2)") catNo = "FLOOR-ADFLOOR";
         else if (name === "Adfloor z najazdami LED" || name === "Adfloor prosty") continue;
