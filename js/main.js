@@ -272,7 +272,7 @@ async function executePDFGeneration() {
         const bottomY = 112;
 
         // ZMIANA: Dodano klasę '.man2DElement' (ikonka człowieka) do selektora ukrywania warstw interfejsu rzutu 2D
-        const hiddenElements = document.querySelectorAll('.light-toggle-btn, .studio-light-2d, .turn-toggle-btn, .acc-controls, .sego-joint, #man2DElement');
+        const hiddenElements = document.querySelectorAll('.light-toggle-btn, .studio-light-2d, .turn-toggle-btn, .clip-corner-btn, .acc-controls, .sego-joint, #man2DElement');
         hiddenElements.forEach(el => el.style.display = 'none');
 
         const blueprintStyle = document.createElement('style');
@@ -377,7 +377,7 @@ async function executePDFGeneration() {
         }
 
         updateProgress(85, "🗺️ Skanowanie czystej architektury 2D...");
-        const hiddenElements = document.querySelectorAll('.light-toggle-btn, .studio-light-2d, .turn-toggle-btn, .acc-controls, .sego-joint');
+        const hiddenElements = document.querySelectorAll('.light-toggle-btn, .studio-light-2d, .turn-toggle-btn, .clip-corner-btn, .acc-controls, .sego-joint');
         hiddenElements.forEach(el => el.style.display = 'none');
 
         await new Promise(r => setTimeout(r, 200));

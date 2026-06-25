@@ -933,6 +933,10 @@ function toggle3D() {
         if (btnRand) {
             btnRand.style.display = (is3DMode && !['wydruki', 'mframe_pallet'].includes(currentSystem)) ? 'flex' : 'none';
         }
+        const btnMagnet = document.getElementById('btnMagnetPull');
+        if (btnMagnet) {
+            btnMagnet.style.display = is3DMode ? 'none' : 'flex';
+        }
 
         if (is3DMode) {
             if (container) container.style.display = 'block';
@@ -1124,6 +1128,8 @@ function switchSystem(newSystem) {
         if (btnSpakuj) btnSpakuj.style.display = 'none';
         const btnRand = document.getElementById('btnRandomizeGraphics');
         if (btnRand) btnRand.style.display = 'none';
+        const btnMagnet = document.getElementById('btnMagnetPull');
+        if (btnMagnet) btnMagnet.style.display = 'none';
 
         const wydrukiBtns = ['btnWydrukiReport', 'btnWydrukiMatch', 'btnWydrukiClearStage', 'btnClearWydruki'];
         wydrukiBtns.forEach(id => {
@@ -1181,6 +1187,11 @@ function switchSystem(newSystem) {
     const btnRand = document.getElementById('btnRandomizeGraphics');
     if (btnRand) {
         btnRand.style.display = (is3DMode && !['wydruki', 'mframe_pallet'].includes(newSystem)) ? 'flex' : 'none';
+    }
+
+    const btnMagnet = document.getElementById('btnMagnetPull');
+    if (btnMagnet) {
+        btnMagnet.style.display = is3DMode ? 'none' : 'flex';
     }
 
     const allPanels = document.querySelectorAll('.system-ui-panel');

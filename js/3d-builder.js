@@ -618,62 +618,802 @@ function rotateFreestanding(index, e) {
   render();
 }
 
-function addSuspended(id) { let newItem = JSON.parse(JSON.stringify(DB[id])); newItem.offsetX = 0; newItem.offsetY = 0; newItem.quadTextures = {}; plan.push(newItem); render(); }
+function selectItem(index, e) {
 
-function jumpTo(nodeIndex) { plan.push({ type: 'jump', target: nodeIndex }); selectedItemIndex = null; render(); }
+  e.stopPropagation();
+  if (e && e.ctrlKey) {
+    // Ctrl+Klik – multi-select
+    if (typeof selectedItemIndices !== 'undefined') {
+      if (selectedItemIndices.has(index)) {
+        selectedItemIndices.delete(index);
+      } else {
+        selectedItemIndices.add(index);
+      }
+    }
+    selectedItemIndex = index;
+  } else {
+    // Zwykłe kliknięcie – singiel
+    if (typeof selectedItemIndices !== 'undefined') selectedItemIndices.clear();
+    selectedItemIndex = index;
+    if (typeof selectedItemIndices !== 'undefined') selectedItemIndices.add(index);
+  }
 
-function selectItem(index, e) { e.stopPropagation(); selectedItemIndex = index; render(); }
+  if (typeof selectedItemIndices !== 'undefined' && selectedItemIndices.size >= 2) {
+    if (typeof autoClipSelectedCollinear === 'function') {
+      autoClipSelectedCollinear(Array.from(selectedItemIndices));
+    }
+  }
+
+  render();
+}
+
+function undo() {
+  plan.pop();
+  selectedItemIndex = null;
+  if (typeof selectedItemIndices !== 'undefined') selectedItemIndices.clear();
+  render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔓 WYRWANIE ŚCIANY Z ŁAŃCUCHA (detachWallFromChain)
+// Zmienia ścianę z 'wall' w łańcuchu na 'freeWall' z własną pozycją i kątem.
+// ─────────────────────────────────────────────────────────────────────────────
+function detachElementFromChain(index) {
+  const item = plan[index];
+  if (!item) return;
+
+  const stageEl = document.getElementById('stage');
+  const sWidth = stageEl ? (stageEl.clientWidth || window.innerWidth - 400) : (window.innerWidth - 400);
+  const sHeight = stageEl ? (stageEl.clientHeight || window.innerHeight) : window.innerHeight;
+  const stageCenterStartX = sWidth / 2 - 100;
+  const stageCenterStartY = sHeight / 2 + 100;
+
+  if (item.type === 'wall') {
+    if (item.offsetX !== undefined) return; // Już wyrwana
+    let offsetX = 0, offsetY = 0, angle = 0;
+
+    // Oblicz pozycję z computed3DData (aktualizowanej przez render)
+    if (typeof computed3DData !== 'undefined') {
+      const found3D = computed3DData.find(d => d.type === 'wall' && d.planIndex === index && d.quadIdx === undefined);
+      if (found3D) {
+        offsetX = found3D.cx;
+        offsetY = found3D.cz;
+        angle = found3D.angle || 0;
+      }
+    }
+
+    item.offsetX = offsetX;
+    item.offsetY = offsetY;
+    item.freeAngle = angle;
+
+    // Zamień poprzedni turn na jump, by nie zaburzać łańcucha
+    // const prevItem = plan[index - 1];
+    // if (prevItem && prevItem.type === 'turn') {
+    //   plan[index - 1] = { type: 'jump', target: prevItem.prevNodeIndex || 0 };
+    // }
+  } else if (item.type === 'kantorek_1x1') {
+    if (item.isFree) return;
+    let offsetX = 0, offsetY = 0;
+    if (typeof computed3DData !== 'undefined') {
+      const found3D = computed3DData.find(d => d.type === 'kantorek_1x1' && d.planIndex === index);
+      if (found3D) {
+        offsetX = found3D.cx;
+        offsetY = found3D.cz;
+      }
+    }
+    item.offsetX = offsetX;
+    item.offsetY = offsetY;
+    item.isFree = true;
+
+    // const prevItem = plan[index - 1];
+    // if (prevItem && prevItem.type === 'turn') {
+    //   plan[index - 1] = { type: 'jump', target: prevItem.prevNodeIndex || 0 };
+    // }
+  }
+}
+    // ─────────────────────────────────────────────────────────────────────────────
+// 🔗 POMOCNIK: Końce dowolnej ściany (worldspace)
+// Zwraca { x1,y1, x2,y2 } – start i koniec ściany (standardowej lub wolnej)
+// ─────────────────────────────────────────────────────────────────────────────
+function getWallEndpoints(index, item) {
+  if (typeof getWallPositions === 'function') {
+    const all = getWallPositions(plan);
+    const pos = all.find(w => w.planIndex === index && w.quadIdx === undefined);
+    if (pos) {
+      return { x1: pos.startX, y1: pos.startY, x2: pos.endX, y2: pos.endY };
+    }
+  }
+  return _wallEndpoints(item);
+}
+
+function _wallEndpoints(item) {
+  const rad = ((item.freeAngle || 0) * Math.PI) / 180;
+  const halfL = item.length / 2;
+  const stage = document.getElementById('stage');
+  const sWidth = stage ? (stage.clientWidth || window.innerWidth - 400) : (window.innerWidth - 400);
+  const sHeight = stage ? (stage.clientHeight || window.innerHeight) : window.innerHeight;
+  const stageCenterStartX = sWidth / 2 - 100;
+  const stageCenterStartY = sHeight / 2 + 100;
+  return {
+    x1: stageCenterStartX + item.offsetX - halfL * Math.cos(rad),
+    y1: stageCenterStartY + item.offsetY - halfL * Math.sin(rad),
+    x2: stageCenterStartX + item.offsetX + halfL * Math.cos(rad),
+    y2: stageCenterStartY + item.offsetY + halfL * Math.sin(rad),
+  };
+}
+
+function getWallAngle(index, item) {
+  if (item.offsetX !== undefined) {
+    return ((item.freeAngle || 0) + 360) % 360;
+  }
+  if (typeof getWallPositions === 'function') {
+    const all = getWallPositions(plan);
+    const pos = all.find(w => w.planIndex === index && w.quadIdx === undefined);
+    if (pos) {
+      return ((pos.angle || 0) + 360) % 360;
+    }
+  }
+  return 0;
+}
+
+
+function undo() {
+  plan.pop();
+  selectedItemIndex = null;
+  if (typeof selectedItemIndices !== 'undefined') selectedItemIndices.clear();
+  render();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔓 WYRWANIE ŚCIANY Z ŁAŃCUCHA (detachWallFromChain)
+// Zmienia ścianę z 'wall' w łańcuchu na 'freeWall' z własną pozycją i kątem.
+// ─────────────────────────────────────────────────────────────────────────────
+function detachElementFromChain(index) {
+  const item = plan[index];
+  if (!item) return;
+
+  const stageEl = document.getElementById('stage');
+  const sWidth = stageEl ? (stageEl.clientWidth || window.innerWidth - 400) : (window.innerWidth - 400);
+  const sHeight = stageEl ? (stageEl.clientHeight || window.innerHeight) : window.innerHeight;
+  const stageCenterStartX = sWidth / 2 - 100;
+  const stageCenterStartY = sHeight / 2 + 100;
+
+  if (item.type === 'wall') {
+    if (item.offsetX !== undefined) return; // Już wyrwana
+    let offsetX = 0, offsetY = 0, angle = 0;
+
+    // Oblicz pozycję z computed3DData (aktualizowanej przez render)
+    if (typeof computed3DData !== 'undefined') {
+      const found3D = computed3DData.find(d => d.type === 'wall' && d.planIndex === index && d.quadIdx === undefined);
+      if (found3D) {
+        offsetX = found3D.cx;
+        offsetY = found3D.cz;
+        angle = found3D.angle || 0;
+      }
+    }
+
+    item.offsetX = offsetX;
+    item.offsetY = offsetY;
+    item.freeAngle = angle;
+
+    // Zamień poprzedni turn na jump, by nie zaburzać łańcucha
+    // const prevItem = plan[index - 1];
+    // if (prevItem && prevItem.type === 'turn') {
+    //   plan[index - 1] = { type: 'jump', target: prevItem.prevNodeIndex || 0 };
+    // }
+  } else if (item.type === 'kantorek_1x1') {
+    if (item.isFree) return;
+    let offsetX = 0, offsetY = 0;
+    if (typeof computed3DData !== 'undefined') {
+      const found3D = computed3DData.find(d => d.type === 'kantorek_1x1' && d.planIndex === index);
+      if (found3D) {
+        offsetX = found3D.cx;
+        offsetY = found3D.cz;
+      }
+    }
+    item.offsetX = offsetX;
+    item.offsetY = offsetY;
+    item.isFree = true;
+
+    // const prevItem = plan[index - 1];
+    // if (prevItem && prevItem.type === 'turn') {
+    //   plan[index - 1] = { type: 'jump', target: prevItem.prevNodeIndex || 0 };
+    // }
+  }
+}
+
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔗 AUTOMATYCZNE POŁĄCZENIE ZAZNACZONYCH ŚCIAN KOLINEARNYCH (MAGNES)
+// ─────────────────────────────────────────────────────────────────────────────
+function autoClipSelectedCollinear(indices) {
+  const freeWalls = indices
+    .map(idx => ({ idx, item: plan[idx] }))
+    .filter(w => w.item && w.item.type === 'wall' && w.item.offsetX !== undefined);
+
+  if (freeWalls.length < 2) return;
+
+  const SNAP_THRESHOLD = 10; // 10cm
+
+  for (let i = 0; i < freeWalls.length; i++) {
+    const wA = freeWalls[i];
+    for (let j = i + 1; j < freeWalls.length; j++) {
+      const wB = freeWalls[j];
+      
+      const angleA = ((wA.item.freeAngle || 0) + 360) % 360;
+      const angleB = ((wB.item.freeAngle || 0) + 360) % 360;
+      let diff = Math.abs(angleA - angleB) % 360;
+      if (diff > 180) diff = 360 - diff;
+
+      // Jeśli pod tym samym kątem (kolinearnie)
+      if (diff < 15 || Math.abs(diff - 180) < 15) {
+        const epA = getWallEndpoints(wA.idx, wA.item);
+        const epB = getWallEndpoints(wB.idx, wB.item);
+
+        const pairs = [
+          [epA.x2, epA.y2, epB.x1, epB.y1],
+          [epA.x2, epA.y2, epB.x2, epB.y2],
+          [epA.x1, epA.y1, epB.x1, epB.y1],
+          [epA.x1, epA.y1, epB.x2, epB.y2],
+        ];
+        const minD = Math.min(...pairs.map(([ax, ay, bx, by]) => Math.hypot(ax - bx, ay - by)));
+
+        if (minD <= SNAP_THRESHOLD) {
+          _snapAndClipPair(wA.idx, wA.item, wB.idx, wB.item, true);
+        }
+      }
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🔗 CLIPPING WIELU ŚCIAN (C) – każdą ścianę z selekcji łączy z NAJBLIŻSZĄ
+// ─────────────────────────────────────────────────────────────────────────────
+function clipSelectedWalls(indices) {
+  if (!indices || indices.length < 1) return;
+
+  const freeWalls = indices
+    .map(idx => ({ idx, item: plan[idx] }))
+    .filter(w => w.item && w.item.type === 'wall' && w.item.offsetX !== undefined);
+
+  if (freeWalls.length === 0) return;
+
+  freeWalls.forEach(({ idx: idxA, item: itemA }) => {
+    let best = null, bestDist = Infinity;
+    const epA = getWallEndpoints(idxA, itemA);
+
+    if (typeof getWallPositions === 'function') {
+      const allPositions = getWallPositions(plan);
+      for (let wB of allPositions) {
+        if (wB.planIndex === idxA) continue;
+        
+        const pairs = [
+          [epA.x2, epA.y2, wB.startX, wB.startY],
+          [epA.x2, epA.y2, wB.endX, wB.endY],
+          [epA.x1, epA.y1, wB.startX, wB.startY],
+          [epA.x1, epA.y1, wB.endX, wB.endY],
+        ];
+        pairs.forEach(([ax, ay, bx, by]) => {
+          const d = Math.hypot(ax - bx, ay - by);
+          if (d < bestDist) {
+            bestDist = d;
+            best = { idx: wB.planIndex, item: plan[wB.planIndex] };
+          }
+        });
+      }
+    }
+
+    if (best !== null) {
+      _snapAndClipPair(idxA, itemA, best.idx, best.item, true);
+    }
+  });
+  render();
+}
+
+function _autoClipProximity(movedIdx) {
+  const movedItem = plan[movedIdx];
+  if (!movedItem || movedItem.offsetX === undefined) return;
+
+  const SNAP_THRESHOLD = 10;
+  let bestDist = SNAP_THRESHOLD;
+  let bestOtherIdx = null;
+
+  const epMoved = getWallEndpoints(movedIdx, movedItem);
+
+  if (typeof getWallPositions === 'function') {
+    const allPositions = getWallPositions(plan);
+    for (let wB of allPositions) {
+      if (wB.planIndex === movedIdx) continue;
+      
+      const pairs = [
+        [epMoved.x2, epMoved.y2, wB.startX, wB.startY],
+        [epMoved.x2, epMoved.y2, wB.endX, wB.endY],
+        [epMoved.x1, epMoved.y1, wB.startX, wB.startY],
+        [epMoved.x1, epMoved.y1, wB.endX, wB.endY],
+      ];
+      const minPairDist = Math.min(...pairs.map(([ax, ay, bx, by]) => Math.hypot(ax - bx, ay - by)));
+      if (minPairDist < bestDist) {
+        bestDist = minPairDist;
+        bestOtherIdx = wB.planIndex;
+      }
+    }
+  }
+
+  if (bestOtherIdx !== null) {
+    _snapAndClipPair(movedIdx, movedItem, bestOtherIdx, plan[bestOtherIdx], false);
+  }
+}
+
+function _snapAndClipPair(idxA, itemA, idxB, itemB, forceClip) {
+  // We want itemB to be the free wall that is repositioned.
+  // If B is standard, we must swap.
+  // If both are free walls, A is the moved wall, so we want B to be the moved wall A (meaning we swap).
+  const isAfree = (itemA.offsetX !== undefined);
+  const isBfree = (itemB.offsetX !== undefined);
+  
+  if (!isBfree || (isAfree && isBfree)) {
+    const tempIdx = idxA; idxA = idxB; idxB = tempIdx;
+    const tempItem = itemA; itemA = itemB; itemB = tempItem;
+  }
+
+  console.log('DEBUG _snapAndClipPair START:', {
+    original_idxA: idxB, original_idxB: idxA, // since swapped
+    idxA, idxB,
+    itemA_type: itemA.type, itemA_free: (itemA.offsetX !== undefined),
+    itemB_type: itemB.type, itemB_free: (itemB.offsetX !== undefined),
+    itemA_offsetX: itemA.offsetX, itemA_offsetY: itemA.offsetY,
+    itemB_offsetX: itemB.offsetX, itemB_offsetY: itemB.offsetY,
+  });
+
+  const stage = document.getElementById('stage');
+  const sWidth = stage ? (stage.clientWidth || window.innerWidth - 400) : (window.innerWidth - 400);
+  const sHeight = stage ? (stage.clientHeight || window.innerHeight) : window.innerHeight;
+  const stageCenterStartX = sWidth / 2 - 100;
+  const stageCenterStartY = sHeight / 2 + 100;
+
+  const THRESHOLD = 10;
+  const angleA = getWallAngle(idxA, itemA);
+  const angleB = getWallAngle(idxB, itemB);
+
+  let diff = Math.abs(angleA - angleB) % 360;
+  if (diff > 180) diff = 360 - diff;
+
+  const epA = getWallEndpoints(idxA, itemA);
+  const thick = (itemA.thickness || 12);
+  const halfThick = thick / 2;
+
+  if (diff < 15 || Math.abs(diff - 180) < 15) {
+    // 180 degrees (collinear) - snap end-to-end with 0.2px (2mm) gap and align angle
+    if (diff < 15) {
+      itemB.freeAngle = angleA;
+    } else {
+      itemB.freeAngle = (angleA + 180) % 360;
+    }
+    const alignedAngleB = ((itemB.freeAngle || 0) + 360) % 360;
+
+    // Recalculate B endpoints with aligned angle (ABSOLUTE coords)
+    const epB_new = {
+      x1: stageCenterStartX + itemB.offsetX - (itemB.length / 2) * Math.cos(alignedAngleB * Math.PI / 180),
+      y1: stageCenterStartY + itemB.offsetY - (itemB.length / 2) * Math.sin(alignedAngleB * Math.PI / 180),
+      x2: stageCenterStartX + itemB.offsetX + (itemB.length / 2) * Math.cos(alignedAngleB * Math.PI / 180),
+      y2: stageCenterStartY + itemB.offsetY + (itemB.length / 2) * Math.sin(alignedAngleB * Math.PI / 180),
+    };
+
+    const candA = [epA.x1, epA.y1, epA.x2, epA.y2];
+    const candB = [epB_new.x1, epB_new.y1, epB_new.x2, epB_new.y2];
+    let bestD = Infinity, bestAisFar = false, bestBisFar = false;
+    for (let ai = 0; ai < 2; ai++) {
+      for (let bi = 0; bi < 2; bi++) {
+        const ax = ai === 0 ? epA.x1 : epA.x2, ay = ai === 0 ? epA.y1 : epA.y2;
+        const bx = bi === 0 ? epB_new.x1 : epB_new.x2, by = bi === 0 ? epB_new.y1 : epB_new.y2;
+        const d = Math.hypot(ax - bx, ay - by);
+        if (d < bestD) { bestD = d; bestAisFar = (ai === 1); bestBisFar = (bi === 0); }
+      }
+    }
+    if (!forceClip && bestD > THRESHOLD) return;
+
+    const baseX = bestAisFar ? epA.x2 : epA.x1;
+    const baseY = bestAisFar ? epA.y2 : epA.y1;
+    const signB = bestBisFar ? 1 : -1;
+    const radB = alignedAngleB * Math.PI / 180;
+    const gapX = 0.2 * Math.cos(radB);
+    const gapY = 0.2 * Math.sin(radB);
+    
+    console.log('DEBUG _snapAndClipPair COLLINEAR PRE:', {
+      baseX, baseY, signB, radB, gapX, gapY, stageCenterStartX, stageCenterStartY,
+      epA, epB_new
+    });
+
+    itemB.offsetX = baseX + gapX + signB * (itemB.length / 2) * Math.cos(radB) - stageCenterStartX;
+    itemB.offsetY = baseY + gapY + signB * (itemB.length / 2) * Math.sin(radB) - stageCenterStartY;
+
+    console.log('DEBUG _snapAndClipPair COLLINEAR POST:', {
+      new_offsetX: itemB.offsetX, new_offsetY: itemB.offsetY
+    });
+
+    if (itemA._collinearWith !== undefined && itemA._collinearWith !== idxB) {
+      const oldCol = plan[itemA._collinearWith];
+      if (oldCol) delete oldCol._collinearWith;
+    }
+    if (itemB._collinearWith !== undefined && itemB._collinearWith !== idxA) {
+      const oldCol = plan[itemB._collinearWith];
+      if (oldCol) delete oldCol._collinearWith;
+    }
+    itemA._collinearWith = idxB;
+    itemB._collinearWith = idxA;
+    if (itemA._cornerWith === idxB) {
+      delete itemA._cornerWith; delete itemA._clipCornerX; delete itemA._clipCornerY; delete itemA._cornerType;
+    }
+    if (itemB._cornerWith === idxA) {
+      delete itemB._cornerWith; delete itemB._clipCornerX; delete itemB._clipCornerY; delete itemB._cornerType;
+    }
+  } else if (diff > 75 && diff < 105) {
+    const epB = getWallEndpoints(idxB, itemB);
+    const pairList = [
+      { ai: 1, bi: 0, ax: epA.x2, ay: epA.y2, bx: epB.x1, by: epB.y1 },
+      { ai: 1, bi: 1, ax: epA.x2, ay: epA.y2, bx: epB.x2, by: epB.y2 },
+      { ai: 0, bi: 0, ax: epA.x1, ay: epA.y1, bx: epB.x1, by: epB.y1 },
+      { ai: 0, bi: 1, ax: epA.x1, ay: epA.y1, bx: epB.x2, by: epB.y2 },
+    ];
+    let bestPair = pairList[0], bestPairDist = Infinity;
+    pairList.forEach(p => {
+      const d = Math.hypot(p.ax - p.bx, p.ay - p.by);
+      if (d < bestPairDist) { bestPairDist = d; bestPair = p; }
+    });
+    if (!forceClip && bestPairDist > THRESHOLD) return;
+
+    let cornerType = itemA._cornerType || itemB._cornerType || 'zew-zew';
+    if (typeof currentSystem !== 'undefined') {
+      if (currentSystem === 'foldable' && cornerType === 'zew-zew') cornerType = 'wew-zew-1';
+      if (currentSystem === 'multiframe') cornerType = 'cube';
+    }
+
+    const cornerX = bestPair.ax;
+    const cornerY = bestPair.ay;
+    const radA = angleA * Math.PI / 180;
+    const radB = angleB * Math.PI / 180;
+    const signA = bestPair.ai === 1 ? 1 : -1;
+    const signB = bestPair.bi === 0 ? -1 : 1;
+
+    let dxA = 0, dyA = 0, dxB = 0, dyB = 0;
+    if (cornerType === 'zew-zew') {
+      dxB = -halfThick * signA * Math.cos(radB); dyB = -halfThick * signA * Math.sin(radB);
+      dxA = -halfThick * signB * Math.cos(radA); dyA = -halfThick * signB * Math.sin(radA);
+    } else if (cornerType === 'wew-zew-1') {
+      dxB = -halfThick * signA * Math.cos(radB); dyB = -halfThick * signA * Math.sin(radB);
+      dxA =  halfThick * signB * Math.cos(radA); dyA =  halfThick * signB * Math.sin(radA);
+    } else if (cornerType === 'wew-zew-2') {
+      dxB =  halfThick * signA * Math.cos(radB); dyB =  halfThick * signA * Math.sin(radB);
+      dxA = -halfThick * signB * Math.cos(radA); dyA = -halfThick * signB * Math.sin(radA);
+    }
+
+    const cx = cornerX + dxA + dxB;
+    const cy = cornerY + dyA + dyB;
+
+    console.log('DEBUG _snapAndClipPair 90 PRE:', {
+      cornerX, cornerY, radA, radB, signA, signB, dxA, dyA, dxB, dyB, cx, cy, stageCenterStartX, stageCenterStartY
+    });
+
+    if (itemA.offsetX !== undefined) {
+      itemA.offsetX = cx - signA * (itemA.length / 2) * Math.cos(radA) - dxA - stageCenterStartX;
+      itemA.offsetY = cy - signA * (itemA.length / 2) * Math.sin(radA) - dyA - stageCenterStartY;
+    }
+    if (itemB.offsetX !== undefined) {
+      itemB.offsetX = cx - signB * (itemB.length / 2) * Math.cos(radB) - dxB - stageCenterStartX;
+      itemB.offsetY = cy - signB * (itemB.length / 2) * Math.sin(radB) - dyB - stageCenterStartY;
+    }
+
+    console.log('DEBUG _snapAndClipPair 90 POST:', {
+      itemA_offsetX: itemA.offsetX, itemA_offsetY: itemA.offsetY,
+      itemB_offsetX: itemB.offsetX, itemB_offsetY: itemB.offsetY
+    });
+
+    if (itemA._cornerWith !== undefined && itemA._cornerWith !== idxB) {
+      const oldPartner = plan[itemA._cornerWith];
+      if (oldPartner) {
+        delete oldPartner._cornerWith;
+        delete oldPartner._clipCornerX;
+        delete oldPartner._clipCornerY;
+        delete oldPartner._cornerType;
+      }
+    }
+    if (itemB._cornerWith !== undefined && itemB._cornerWith !== idxA) {
+      const oldPartner = plan[itemB._cornerWith];
+      if (oldPartner) {
+        delete oldPartner._cornerWith;
+        delete oldPartner._clipCornerX;
+        delete oldPartner._clipCornerY;
+        delete oldPartner._cornerType;
+      }
+    }
+    if (itemA._collinearWith !== undefined && itemA._collinearWith !== idxB) {
+      const oldCol = plan[itemA._collinearWith];
+      if (oldCol) delete oldCol._collinearWith;
+    }
+    if (itemB._collinearWith !== undefined && itemB._collinearWith !== idxA) {
+      const oldCol = plan[itemB._collinearWith];
+      if (oldCol) delete oldCol._collinearWith;
+    }
+
+    itemA._clipCornerX = cx; itemA._clipCornerY = cy;
+    itemB._clipCornerX = cx; itemB._clipCornerY = cy;
+    itemA._cornerWith = idxB; itemA._cornerType = cornerType;
+    itemB._cornerWith = idxA; itemB._cornerType = cornerType;
+    if (itemA._collinearWith === idxB) delete itemA._collinearWith;
+    if (itemB._collinearWith === idxA) delete itemB._collinearWith;
+  }
+}
+
+function cycleClipCornerType(idxA, idxB) {
+  const itemA = plan[idxA];
+  const itemB = plan[idxB];
+  if (!itemA || !itemB) return;
+
+  const typeOrder = (typeof currentSystem !== 'undefined' && currentSystem === 'foldable')
+    ? ['wew-zew-1', 'wew-zew-2']
+    : (currentSystem === 'multiframe' ? ['cube'] : ['zew-zew', 'wew-zew-1', 'wew-zew-2']);
+
+  const current = (itemA._cornerType || 'zew-zew');
+  const nextIdx = (typeOrder.indexOf(current) + 1) % typeOrder.length;
+  const next = typeOrder[nextIdx];
+
+  // Ustaw nowy typ i ponownie zastosuj clip
+  itemA._cornerType = next;
+  itemB._cornerType = next;
+  _snapAndClipPair(idxA, itemA, idxB, itemB, true);
+  render();
+}
+
+function magnetPull() {
+  const freeWallIndices = plan
+    .map((item, idx) => ({ item, idx }))
+    .filter(o => o.item && o.item.type === 'wall' && o.item.offsetX !== undefined);
+
+  if (freeWallIndices.length === 0) return;
+
+  // Sort from left to right by offsetX
+  freeWallIndices.sort((a, b) => a.item.offsetX - b.item.offsetX);
+
+  for (let i = 0; i < freeWallIndices.length; i++) {
+    const wA = freeWallIndices[i];
+
+    if (typeof getWallPositions !== 'function') break;
+    const allPositions = getWallPositions(plan);
+
+    const epA = getWallEndpoints(wA.idx, wA.item);
+    const angleA = ((wA.item.freeAngle || 0) + 360) % 360;
+
+    let bestOther = null;
+    let bestDist = Infinity;
+
+    for (let wB of allPositions) {
+      if (wB.planIndex === wA.idx) continue;
+
+      const pairs = [
+        [epA.x2, epA.y2, wB.startX, wB.startY],
+        [epA.x2, epA.y2, wB.endX, wB.endY],
+        [epA.x1, epA.y1, wB.startX, wB.startY],
+        [epA.x1, epA.y1, wB.endX, wB.endY],
+      ];
+      const minD = Math.min(...pairs.map(([ax, ay, bx, by]) => Math.hypot(ax - bx, ay - by)));
+      if (minD < bestDist) {
+        bestDist = minD;
+        bestOther = wB;
+      }
+    }
+
+    if (bestOther) {
+      const angleB = ((bestOther.angle || 0) + 360) % 360;
+      let diff = Math.abs(angleA - angleB) % 360;
+      if (diff > 180) diff = 360 - diff;
+
+      if (diff < 45 || Math.abs(diff - 180) < 45) {
+        // Snap collinear
+        if (diff < 45) {
+          wA.item.freeAngle = angleB;
+        } else {
+          wA.item.freeAngle = (angleB + 180) % 360;
+        }
+      } else {
+        // Snap 90 degrees
+        const option1 = (angleB + 90) % 360;
+        const option2 = (angleB - 90 + 360) % 360;
+        let diff1 = Math.abs(angleA - option1) % 360; if (diff1 > 180) diff1 = 360 - diff1;
+        let diff2 = Math.abs(angleA - option2) % 360; if (diff2 > 180) diff2 = 360 - diff2;
+        if (diff1 < diff2) {
+          wA.item.freeAngle = option1;
+        } else {
+          wA.item.freeAngle = option2;
+        }
+      }
+
+      _snapAndClipPair(wA.idx, wA.item, bestOther.planIndex, plan[bestOther.planIndex], true);
+    }
+  }
+
+  render();
+}
+window.magnetPull = magnetPull;
+
 
 function deselectItem(e) {
   if (e.target.id === 'stage' && !isDraggingView) {
-    selectedItemIndex = null;
+
     const stage = document.getElementById('stage');
-    if (stage) {
-      const rect = stage.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const clickY = e.clientY - rect.top;
-      
-      const localX = (clickX - viewPanX) / viewScale;
-      const localY = (clickY - viewPanY) / viewScale;
-      
-      const sWidth = stage.clientWidth || window.innerWidth - 400;
-      const sHeight = stage.clientHeight || window.innerHeight;
-      const stageCenterStartX = sWidth / 2 - 100;
-      const stageCenterStartY = sHeight / 2 + 100;
-      
+    const rect = stage ? stage.getBoundingClientRect() : { left: 0, top: 0 };
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+    const localX = (clickX - viewPanX) / viewScale;
+    const localY = (clickY - viewPanY) / viewScale;
+    const sWidth = stage ? (stage.clientWidth || window.innerWidth - 400) : (window.innerWidth - 400);
+    const sHeight = stage ? (stage.clientHeight || window.innerHeight) : window.innerHeight;
+    const stageCenterStartX = sWidth / 2 - 100;
+    const stageCenterStartY = sHeight / 2 + 100;
+
+    // ── TRYB PRZESUWANIA (M): kliknięcie = umieść wszystkie zaznaczone elementy ──
+    if (typeof isMoveMode !== 'undefined' && isMoveMode) {
       const dx = localX - stageCenterStartX;
       const dy = localY - stageCenterStartY;
-      const snappedDx = Math.round(dx / 50) * 50;
-      const snappedDy = Math.round(dy / 50) * 50;
-      const snappedX = stageCenterStartX + snappedDx;
-      const snappedY = stageCenterStartY + snappedDy;
-      
-      const currentAngle = window.currentCursorAngle !== undefined ? window.currentCursorAngle : 0;
-      
-      if (plan.length > 0 && plan[plan.length - 1].type === 'jump' && plan[plan.length - 1].x !== undefined) {
-        plan[plan.length - 1].x = snappedX;
-        plan[plan.length - 1].y = snappedY;
-        plan[plan.length - 1].angle = currentAngle;
-      } else {
-        plan.push({
-          type: 'jump',
-          x: snappedX,
-          y: snappedY,
-          angle: currentAngle
-        });
+
+      // Snap do siatki metrycznej (100px = 100cm, próg 10px)
+      const SNAP_THRESHOLD = 10;
+      const GRID_SIZE = 100;
+      let snappedDx = dx;
+      let snappedDy = dy;
+      const modX = ((dx % GRID_SIZE) + GRID_SIZE) % GRID_SIZE;
+      const modY = ((dy % GRID_SIZE) + GRID_SIZE) % GRID_SIZE;
+      if (modX < SNAP_THRESHOLD || modX > GRID_SIZE - SNAP_THRESHOLD) {
+        snappedDx = Math.round(dx / GRID_SIZE) * GRID_SIZE;
       }
+      if (modY < SNAP_THRESHOLD || modY > GRID_SIZE - SNAP_THRESHOLD) {
+        snappedDy = Math.round(dy / GRID_SIZE) * GRID_SIZE;
+      }
+
+      // Przesuń wszystkie zaznaczone elementy
+      const activeIndices = new Set(typeof selectedItemIndices !== 'undefined' ? selectedItemIndices : []);
+      if (typeof selectedItemIndex !== 'undefined' && selectedItemIndex !== null) activeIndices.add(selectedItemIndex);
+
+      // Oblicz offset od pierwszego elementu do kursora
+      const movers = Array.from(activeIndices).filter(idx => plan[idx] && plan[idx].offsetX !== undefined);
+      if (movers.length > 0) {
+        const firstItem = plan[movers[0]];
+        const baseOffX = snappedDx - (firstItem.offsetX || 0);
+        const baseOffY = snappedDy - (firstItem.offsetY || 0);
+        movers.forEach(idx => {
+          plan[idx].offsetX = (plan[idx].offsetX || 0) + baseOffX;
+          plan[idx].offsetY = (plan[idx].offsetY || 0) + baseOffY;
+        });
+
+        // Clear connections of all moved walls and their partners!
+        movers.forEach(idx => {
+          const item = plan[idx];
+          if (item) {
+            let partnerIdx = item._cornerWith;
+            if (partnerIdx !== undefined && plan[partnerIdx]) {
+              delete plan[partnerIdx]._cornerWith;
+              delete plan[partnerIdx]._clipCornerX;
+              delete plan[partnerIdx]._clipCornerY;
+              delete plan[partnerIdx]._cornerType;
+            }
+            let collPartnerIdx = item._collinearWith;
+            if (collPartnerIdx !== undefined && plan[collPartnerIdx]) {
+              delete plan[collPartnerIdx]._collinearWith;
+            }
+            delete item._cornerWith;
+            delete item._clipCornerX;
+            delete item._clipCornerY;
+            delete item._cornerType;
+            delete item._collinearWith;
+          }
+        });
+
+        // Automatyczny clipping zbliżeniowy po umieszczeniu (każda ściana do najbliższej)
+        const collinearClipped = new Set();
+        movers.forEach(idx => {
+          const item = plan[idx];
+          if (!item || item.type !== 'wall' || item.offsetX === undefined) return;
+
+          const SNAP_THRESHOLD = 10;
+          let bestOtherIdx = null;
+          let bestDist = SNAP_THRESHOLD;
+          const angleA = ((item.freeAngle || 0) + 360) % 360;
+          const epA = getWallEndpoints(idx, item);
+
+          if (typeof getWallPositions === 'function') {
+            const allPositions = getWallPositions(plan);
+            for (let wB of allPositions) {
+              if (wB.planIndex === idx) continue;
+              const itemB = plan[wB.planIndex];
+              if (!itemB || itemB.type !== 'wall') continue;
+
+              const angleB = ((wB.angle || 0) + 360) % 360;
+              let diff = Math.abs(angleA - angleB) % 360;
+              if (diff > 180) diff = 360 - diff;
+
+              if (diff < 15 || Math.abs(diff - 180) < 15) {
+                const pairs = [
+                  [epA.x2, epA.y2, wB.startX, wB.startY],
+                  [epA.x2, epA.y2, wB.endX, wB.endY],
+                  [epA.x1, epA.y1, wB.startX, wB.startY],
+                  [epA.x1, epA.y1, wB.endX, wB.endY],
+                ];
+                const minPairDist = Math.min(...pairs.map(([ax, ay, bx, by]) => Math.hypot(ax - bx, ay - by)));
+                if (minPairDist <= bestDist) {
+                  bestDist = minPairDist;
+                  bestOtherIdx = wB.planIndex;
+                }
+              }
+            }
+          }
+
+          if (bestOtherIdx !== null) {
+            _snapAndClipPair(idx, item, bestOtherIdx, plan[bestOtherIdx], true);
+            collinearClipped.add(idx);
+            collinearClipped.add(bestOtherIdx);
+          }
+        });
+
+        movers.forEach(idx => {
+          if (!collinearClipped.has(idx)) {
+            if (typeof _autoClipProximity === 'function') _autoClipProximity(idx);
+          }
+        });
+
+      }
+
+      // Wyjdź z trybu M
+      isMoveMode = false;
+      moveModeTargets = [];
+      if (stage) stage.classList.remove('move-mode');
+      render();
+      return;
+    }
+
+    // ── NORMALNE KLIKNIĘCIE: usuń zaznaczenie ──────────────────────────────────
+    selectedItemIndex = null;
+    if (typeof selectedItemIndices !== 'undefined') selectedItemIndices.clear();
+
+    const dx = localX - stageCenterStartX;
+    const dy = localY - stageCenterStartY;
+    const snappedDx = Math.round(dx / 50) * 50;
+    const snappedDy = Math.round(dy / 50) * 50;
+    const snappedX = stageCenterStartX + snappedDx;
+    const snappedY = stageCenterStartY + snappedDy;
+    const currentAngle = window.currentCursorAngle !== undefined ? window.currentCursorAngle : 0;
+
+    if (plan.length > 0 && plan[plan.length - 1].type === 'jump' && plan[plan.length - 1].x !== undefined) {
+      plan[plan.length - 1].x = snappedX;
+      plan[plan.length - 1].y = snappedY;
+      plan[plan.length - 1].angle = currentAngle;
+    } else {
+      plan.push({
+        type: 'jump',
+        x: snappedX,
+        y: snappedY,
+        angle: currentAngle
+      });
     }
     render();
   }
 }
 
-function undo() { plan.pop(); selectedItemIndex = null; render(); }
+
+
+
 
 function clearPlan() {
   plan = [];
   selectedItemIndex = null;
   manualItems = {}; // 👈 Czyści zawartość koszyka
   lastSystemForManual = null; // Wymusza przerysowanie przycisków
+  render();
+}
+
+function jumpTo(nodeIndex) {
+  plan.push({ type: 'jump', target: nodeIndex });
+  selectedItemIndex = null;
+  if (typeof selectedItemIndices !== 'undefined') selectedItemIndices.clear();
   render();
 }
 

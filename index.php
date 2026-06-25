@@ -801,6 +801,9 @@
                 onclick="document.getElementById('instructionsModal').style.display='flex'">
                 💡 Instrukcje
             </button>
+            <button id="btnMagnetPull" class="fab-main" style="background: #ff0080; box-shadow: 0 4px 15px rgba(255, 0, 128, 0.4); font-weight: bold; border: none; color: #fff;" onclick="magnetPull()">
+                🧲 Magnet Pull (Shift+C)
+            </button>
             <button id="btnToggleRadial" class="fab-main"
                 style="display: none; background: #ffaa00; color: #000; box-shadow: 0 4px 15px rgba(255, 170, 0, 0.4); border: 2px solid #ffcc00;"
                 onclick="toggleRadialMenus()">
@@ -1714,13 +1717,13 @@
         </div>
     </div>
 
-    <script src="js/data.js"></script>
-    <script src="js/export.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/3d-builder.js"></script>
-    <script src="js/3d-engine.js"></script>
-    <script src="js/bom.js"></script>
-    <script src="js/main.js"></script>
+    <script src="js/data.js?v=5"></script>
+    <script src="js/export.js?v=5"></script>
+    <script src="js/ui.js?v=5"></script>
+    <script src="js/3d-builder.js?v=5"></script>
+    <script src="js/3d-engine.js?v=5"></script>
+    <script src="js/bom.js?v=5"></script>
+    <script src="js/main.js?v=5"></script>
 </body>
 
 </html>

@@ -191,6 +191,166 @@ let currentScannerIndex = -1;
 
 let selectedItemIndex = null;
 
+// --- 🎯 MULTI-SELECT I TRYB PRZESUWANIA (M) ---
+let selectedItemIndices = new Set(); // Zbiór indeksów wielokrotnie zaznaczonych elementów
+let isMoveMode = false;             // Flaga trybu przesuwania (klawisz M)
+let moveModeTargets = [];           // Lista {index, initX, initY} przesuwanych elementów
+let clipboardItems = [];            // Schowek do Ctrl+C/V (lista elementów)
+
+// --- 🎯 POMOCNIKI DLA TRYBU PRZESUWANIA (M) ---
+let currentMouseX = 0;
+let currentMouseY = 0;
+let initMoveMouseX = 0;
+let initMoveMouseY = 0;
+
+document.addEventListener('mousemove', (e) => {
+    currentMouseX = e.clientX;
+    currentMouseY = e.clientY;
+});
+
+function _startMoveModeTracking(targets) {
+    moveModeTargets = targets;
+    initMoveMouseX = currentMouseX;
+    initMoveMouseY = currentMouseY;
+
+    document.addEventListener('mousemove', _onMoveModeMouseMove);
+    setTimeout(() => {
+        document.addEventListener('mousedown', _onMoveModeClickDetector, true);
+    }, 50);
+}
+
+function _onMoveModeMouseMove(e) {
+    if (!isMoveMode) return;
+    const vs = typeof viewScale !== 'undefined' ? viewScale : 1;
+    const deltaX = (e.clientX - initMoveMouseX) / vs;
+    const deltaY = (e.clientY - initMoveMouseY) / vs;
+
+    moveModeTargets.forEach(target => {
+        const item = plan[target.index];
+        if (item) {
+            item.offsetX = target.initX + deltaX;
+            item.offsetY = target.initY + deltaY;
+        }
+    });
+    render();
+}
+
+function _onMoveModeClickDetector(e) {
+    if (!isMoveMode) return;
+    if (e.button !== 0) return; // Tylko LPM
+    e.preventDefault();
+    e.stopPropagation();
+    _exitMoveMode(false);
+}
+
+function _exitMoveMode(cancel = false) {
+    isMoveMode = false;
+    document.removeEventListener('mousemove', _onMoveModeMouseMove);
+    document.removeEventListener('mousedown', _onMoveModeClickDetector, true);
+
+    const stage = document.getElementById('stage');
+    if (stage) stage.classList.remove('move-mode');
+
+    if (cancel) {
+        moveModeTargets.forEach(target => {
+            const item = plan[target.index];
+            if (item) {
+                item.offsetX = target.initX;
+                item.offsetY = target.initY;
+            }
+        });
+        moveModeTargets = [];
+        render();
+    } else {
+        const movers = moveModeTargets.map(t => t.index);
+        moveModeTargets = [];
+
+        // Clear connections of all moved walls and their partners!
+        movers.forEach(idx => {
+            const item = plan[idx];
+            if (item) {
+                let partnerIdx = item._cornerWith;
+                if (partnerIdx !== undefined && plan[partnerIdx]) {
+                    delete plan[partnerIdx]._cornerWith;
+                    delete plan[partnerIdx]._clipCornerX;
+                    delete plan[partnerIdx]._clipCornerY;
+                    delete plan[partnerIdx]._cornerType;
+                }
+                let collPartnerIdx = item._collinearWith;
+                if (collPartnerIdx !== undefined && plan[collPartnerIdx]) {
+                    delete plan[collPartnerIdx]._collinearWith;
+                }
+                delete item._cornerWith;
+                delete item._clipCornerX;
+                delete item._clipCornerY;
+                delete item._cornerType;
+                delete item._collinearWith;
+            }
+        });
+
+        // Automatyczny clipping zbliżeniowy po umieszczeniu (kolinearne najpierw, potem reszta)
+        const collinearClipped = new Set();
+        movers.forEach(idx => {
+            const item = plan[idx];
+            if (!item || item.type !== 'wall' || item.offsetX === undefined) return;
+
+            const SNAP_THRESHOLD = 10;
+            let bestOtherIdx = null;
+            let bestDist = SNAP_THRESHOLD;
+            const angleA = ((item.freeAngle || 0) + 360) % 360;
+            const epA = typeof getWallEndpoints === 'function' ? getWallEndpoints(idx, item) : null;
+            if (!epA) return;
+
+            if (typeof getWallPositions === 'function') {
+                const allPositions = getWallPositions(plan);
+                for (let wB of allPositions) {
+                    if (wB.planIndex === idx) continue;
+                    const itemB = plan[wB.planIndex];
+                    if (!itemB || itemB.type !== 'wall') continue;
+
+                    const angleB = ((wB.angle || 0) + 360) % 360;
+                    let diff = Math.abs(angleA - angleB) % 360;
+                    if (diff > 180) diff = 360 - diff;
+
+                    if (diff < 15 || Math.abs(diff - 180) < 15) {
+                        const pairs = [
+                            [epA.x2, epA.y2, wB.startX, wB.startY],
+                            [epA.x2, epA.y2, wB.endX, wB.endY],
+                            [epA.x1, epA.y1, wB.startX, wB.startY],
+                            [epA.x1, epA.y1, wB.endX, wB.endY],
+                        ];
+                        const minPairDist = Math.min(...pairs.map(([ax, ay, bx, by]) => Math.hypot(ax - bx, ay - by)));
+                        if (minPairDist <= bestDist) {
+                            bestDist = minPairDist;
+                            bestOtherIdx = wB.planIndex;
+                        }
+                    }
+                }
+            }
+
+            if (bestOtherIdx !== null) {
+                if (typeof _snapAndClipPair === 'function') {
+                    _snapAndClipPair(idx, item, bestOtherIdx, plan[bestOtherIdx], true);
+                    collinearClipped.add(idx);
+                    collinearClipped.add(bestOtherIdx);
+                }
+            }
+        });
+
+        movers.forEach(idx => {
+            if (!collinearClipped.has(idx)) {
+                if (typeof _autoClipProximity === 'function') _autoClipProximity(idx);
+            }
+        });
+
+        render();
+    }
+}
+
+// Uwidocznienie funkcji globalnie
+window._startMoveModeTracking = _startMoveModeTracking;
+window._exitMoveMode = _exitMoveMode;
+
 let computed3DData = [];
 
 // --- 🛒 LOGIKA DODAWANIA RĘCZNEGO ---
@@ -431,6 +591,44 @@ document.addEventListener('keydown', function (e) {
 
     if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
 
+    // ESC – wyjście z trybu M lub czyszczenie selekcji
+
+    if (e.key === 'Escape') {
+
+        if (isMoveMode) {
+
+            e.preventDefault();
+
+            if (typeof _exitMoveMode === 'function') {
+                _exitMoveMode(true);
+            } else {
+                isMoveMode = false;
+                moveModeTargets = [];
+                const stage = document.getElementById('stage');
+                if (stage) stage.classList.remove('move-mode');
+                render();
+            }
+
+            return;
+
+        }
+
+        if (selectedItemIndices.size > 0) {
+
+            e.preventDefault();
+
+            selectedItemIndices.clear();
+
+            selectedItemIndex = null;
+
+            render();
+
+            return;
+
+        }
+
+    }
+
     // 1. SKRÓTY DO RYSOWANIA ŚCIAN (Zależne od systemu)
 
     if (currentSystem === 'foldable') {
@@ -473,73 +671,188 @@ document.addEventListener('keydown', function (e) {
 
     if (e.key === 'ArrowRight') { e.preventDefault(); addTurn('right'); }
 
-    // 3. OPERACJE NA ZAZNACZONYM ELEMENCIE (Musi być podświetlony)
+    // 3. OPERACJE NA ZAZNACZONYM ELEMENCIE / ZAZNACZONYCH ELEMENTACH
 
-    if (selectedItemIndex !== null && plan[selectedItemIndex]) {
+    // Zbieramy zbiór aktywnych indeksów (singiel lub multi)
 
-        let item = plan[selectedItemIndex];
+    let activeIndices = new Set(selectedItemIndices);
 
-        // Kasowanie (Klawisz Delete lub Backspace)
+    if (selectedItemIndex !== null && plan[selectedItemIndex]) activeIndices.add(selectedItemIndex);
+
+    if (activeIndices.size > 0) {
+
+        // --- KASOWANIE (Del/Backspace) ---
 
         if (e.key === 'Delete' || e.key === 'Backspace') {
 
             e.preventDefault();
 
-            plan.splice(selectedItemIndex, 1);
+            // Sortujemy malejąco, by nie przesuwać indeksów przy splice
+
+            let toDelete = Array.from(activeIndices).sort((a, b) => b - a);
+
+            toDelete.forEach(idx => {
+
+                if (idx >= 0 && idx < plan.length) {
+
+                    // Jeśli to ściana w łańcuchu, usuń też sąsiednie turn/jump jeśli samotne
+
+                    plan.splice(idx, 1);
+
+                }
+
+            });
 
             selectedItemIndex = null;
 
+            selectedItemIndices.clear();
+
             render();
 
+            return;
+
         }
 
-        // Rotacja (Klawisz Q - obraca wolnostojące i podwieszane o 90 stopni)
+        // --- TRYB PRZESUWANIA (M) ---
 
-        if (e.key.toLowerCase() === 'q') {
+        if (e.key.toLowerCase() === 'm' && !e.ctrlKey) {
 
-            if (item.type === 'freestanding' || item.type === 'freestanding_s' || item.type === 'suspended' || item.type === 'table_chairs' || item.type === 'potted_plant' || item.type === 'adfolder') {
+            e.preventDefault();
 
-                item.rotation = ((item.rotation || 0) + 90) % 360;
+            if (isMoveMode) {
+
+                // Drugie M – zakończ ruch (finalizuj, klipuj, wróć do normalnego)
+                if (typeof _exitMoveMode === 'function') _exitMoveMode();
+
+            } else {
+
+                // Wejście w tryb M – wyrywamy ściany z łańcucha
+                moveModeTargets = [];
+
+                activeIndices.forEach(idx => {
+                    const item = plan[idx];
+                    if (!item) return;
+                    if ((item.type === 'wall' && item.offsetX === undefined) || (item.type === 'kantorek_1x1' && !item.isFree)) {
+                        if (typeof detachElementFromChain === 'function') {
+                            detachElementFromChain(idx);
+                        } else if (typeof detachWallFromChain === 'function') {
+                            detachWallFromChain(idx);
+                        }
+                    }
+                    moveModeTargets.push({ index: idx, initX: plan[idx].offsetX || 0, initY: plan[idx].offsetY || 0 });
+                });
+
+                isMoveMode = true;
+                const stage = document.getElementById('stage');
+                if (stage) stage.classList.add('move-mode');
+
+                // Uruchom śledzenie kursora
+                if (typeof _startMoveModeTracking === 'function') _startMoveModeTracking(moveModeTargets);
 
                 render();
+            }
+
+            return;
+
+        }
+
+        // --- MAGNET PULL (Shift+C) ---
+
+        if (e.key.toLowerCase() === 'c' && e.shiftKey && !e.ctrlKey) {
+
+            e.preventDefault();
+
+            if (typeof magnetPull === 'function') magnetPull();
+
+            return;
+
+        }
+
+        // --- RĘCZNY CLIPPING (C) ---
+
+        if (e.key.toLowerCase() === 'c' && !e.ctrlKey && !e.shiftKey) {
+
+            e.preventDefault();
+
+            if (typeof clipSelectedWalls === 'function') clipSelectedWalls(Array.from(activeIndices));
+
+            return;
+
+        }
+
+        // --- ROTACJA (Q) – 9 stopni w prawo ---
+
+        if (e.key.toLowerCase() === 'q' && !e.ctrlKey) {
+
+            e.preventDefault();
+
+            activeIndices.forEach(idx => {
+
+                let item = plan[idx];
+
+                if (!item) return;
+
+                const rotatableTypes = ['freestanding', 'freestanding_s', 'suspended', 'table_chairs', 'potted_plant', 'adfolder', 'suspended_ring'];
+
+                if (rotatableTypes.includes(item.type)) {
+
+                    item.rotation = ((item.rotation || 0) + 9) % 360;
+
+                } else if (item.type === 'wall' && item.freeAngle !== undefined) {
+
+                    // Wolna ściana (wyrwana z łańcucha) – obrót o 9°
+
+                    item.freeAngle = ((item.freeAngle || 0) + 9) % 360;
+
+                }
+
+            });
+
+            render();
+
+            return;
+
+        }
+
+        // --- Upgrade/Downgrade (tylko dla pojedynczego zaznaczenia) ---
+
+        if (activeIndices.size === 1) {
+
+            let idx = Array.from(activeIndices)[0];
+
+            let item = plan[idx];
+
+            if (!item) return;
+
+            if (e.key === '+' || e.key === '=') {
+
+                const upgradeMap = { "Moduł 300x250": "sego300x300", "Moduł 200x250": "sego200x300", "Moduł 100x250": "sego100x300", "Moduł 85x250": "sego85x300" };
+
+                if (upgradeMap[item.name]) {
+
+                    let preservedData = { accessories: item.accessories || [], textureFrontName: item.textureFrontName, textureBackName: item.textureBackName, textureFront: item.textureFront, textureBack: item.textureBack };
+
+                    plan[idx] = Object.assign(JSON.parse(JSON.stringify(DB[upgradeMap[item.name]])), preservedData);
+
+                    render();
+
+                }
 
             }
 
-        }
+            if (e.key === '-' || e.key === '_') {
 
-        // Upgrade Modułu na wyższy (Klawisz +)
+                const downgradeMap = { "Moduł 300x300": "sego300x250", "Moduł 200x300": "sego200x250", "Moduł 100x300": "sego100x250", "Moduł 85x300": "sego85x250" };
 
-        if (e.key === '+' || e.key === '=') {
+                if (downgradeMap[item.name]) {
 
-            const upgradeMap = { "Moduł 300x250": "sego300x300", "Moduł 200x250": "sego200x300", "Moduł 100x250": "sego100x300", "Moduł 85x250": "sego85x300" };
+                    let preservedData = { accessories: item.accessories || [], textureFrontName: item.textureFrontName, textureBackName: item.textureBackName, textureFront: item.textureFront, textureBack: item.textureBack };
 
-            if (upgradeMap[item.name]) {
+                    plan[idx] = Object.assign(JSON.parse(JSON.stringify(DB[downgradeMap[item.name]])), preservedData);
 
-                // Kopiujemy grafikę i akcesoria, żeby ich nie stracić!
+                    render();
 
-                let preservedData = { accessories: item.accessories || [], textureFrontName: item.textureFrontName, textureBackName: item.textureBackName, textureFront: item.textureFront, textureBack: item.textureBack };
-
-                plan[selectedItemIndex] = Object.assign(JSON.parse(JSON.stringify(DB[upgradeMap[item.name]])), preservedData);
-
-                render();
-
-            }
-
-        }
-
-        // Downgrade Modułu na niższy (Klawisz -)
-
-        if (e.key === '-' || e.key === '_') {
-
-            const downgradeMap = { "Moduł 300x300": "sego300x250", "Moduł 200x300": "sego200x250", "Moduł 100x300": "sego100x250", "Moduł 85x300": "sego85x250" };
-
-            if (downgradeMap[item.name]) {
-
-                let preservedData = { accessories: item.accessories || [], textureFrontName: item.textureFrontName, textureBackName: item.textureBackName, textureFront: item.textureFront, textureBack: item.textureBack };
-
-                plan[selectedItemIndex] = Object.assign(JSON.parse(JSON.stringify(DB[downgradeMap[item.name]])), preservedData);
-
-                render();
+                }
 
             }
 
@@ -548,6 +861,7 @@ document.addEventListener('keydown', function (e) {
     }
 
 });
+
 
 // --- LOGIKA MFRAME PALLET ---
 
@@ -647,59 +961,69 @@ document.addEventListener('keydown', function (event) {
 
     }
 
-    // 1b. CTRL + C -> Kopiuj element
+    // 1b. CTRL + C -> Kopiuj element(y) – wsparcie multi-select
 
     if (event.ctrlKey && event.key.toLowerCase() === 'c') {
 
+        event.preventDefault();
+
+        // Zbieramy zbiór aktywnych indeksów
+        let toCopy = new Set(typeof selectedItemIndices !== 'undefined' ? selectedItemIndices : []);
         if (typeof selectedItemIndex !== 'undefined' && selectedItemIndex !== null && plan[selectedItemIndex]) {
+            toCopy.add(selectedItemIndex);
+        }
 
-            event.preventDefault();
-
-            window.clipboardItem = JSON.parse(JSON.stringify(plan[selectedItemIndex]));
-
+        if (toCopy.size > 0) {
+            // Schowek wieloelementowy
+            clipboardItems = Array.from(toCopy)
+                .filter(idx => plan[idx])
+                .map(idx => JSON.parse(JSON.stringify(plan[idx])));
+            // Kompatybilność z istniejącym kodem
+            window.clipboardItem = clipboardItems[0] || null;
         }
 
     }
 
-    // 1c. CTRL + V -> Wklej element
+    // 1c. CTRL + V -> Wklej element(y)
 
     if (event.ctrlKey && event.key.toLowerCase() === 'v') {
 
-        if (window.clipboardItem) {
+        event.preventDefault();
 
-            event.preventDefault();
+        const itemsToPaste = (clipboardItems && clipboardItems.length > 0)
+            ? clipboardItems
+            : (window.clipboardItem ? [window.clipboardItem] : []);
 
-            let newItem = JSON.parse(JSON.stringify(window.clipboardItem));
+        if (itemsToPaste.length > 0) {
 
-            if (newItem.offsetX !== undefined) newItem.offsetX += 40;
+            selectedItemIndices.clear();
+            selectedItemIndex = null;
 
-            if (newItem.offsetY !== undefined) newItem.offsetY += 40;
-
-            if (newItem.startX !== undefined) newItem.startX += 40;
-
-            if (newItem.startY !== undefined) newItem.startY += 40;
-
-            if (newItem.endX !== undefined) newItem.endX += 40;
-
-            if (newItem.endY !== undefined) newItem.endY += 40;
-
-            plan.push(newItem);
+            itemsToPaste.forEach(src => {
+                let newItem = JSON.parse(JSON.stringify(src));
+                if (newItem.offsetX !== undefined) newItem.offsetX += 40;
+                if (newItem.offsetY !== undefined) newItem.offsetY += 40;
+                plan.push(newItem);
+                selectedItemIndices.add(plan.length - 1);
+            });
 
             selectedItemIndex = plan.length - 1;
-
             if (typeof render === 'function') render();
 
         }
 
     }
 
-    // 2. BACKSPACE -> Alias dla cofania
+    // 2. BACKSPACE -> Cofnij krok (tylko gdy NIE MA zaznaczenia – wtedy Delete/Backspace usuwa)
 
     if (event.key === 'Backspace') {
 
         event.preventDefault(); // Ekstremalnie ważne! Zapobiega cofnięciu strony w przeglądarce
 
-        if (typeof undo === 'function') undo();
+        let hasSelection = (typeof selectedItemIndices !== 'undefined' && selectedItemIndices.size > 0)
+            || (typeof selectedItemIndex !== 'undefined' && selectedItemIndex !== null);
+
+        if (!hasSelection && typeof undo === 'function') undo();
 
     }
 

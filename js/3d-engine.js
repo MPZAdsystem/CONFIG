@@ -2175,13 +2175,195 @@ function render() {
   const feetFlags = computeWallFeetFlags(plan);
   let nodes = []; nodes.push({ x: x, y: y, angle: currentAngle, isFlipped: false }); createJoint(layer, x, y, 0);
 
+  // ─── Pomocnik: czy element jest w multi-selekcji ─────────────────────────────
+  const isMultiSel = (idx) => typeof selectedItemIndices !== 'undefined' && selectedItemIndices.has(idx);
+
   for (let index = 0; index < plan.length; index++) {
     let item = plan[index];
+
+    // ─── WOLNA ŚCIANA (wyrwana z łańcucha) ─────────────────────────────────────
+    if (item.type === 'wall' && item.offsetX !== undefined) {
+      const freeAngle = item.freeAngle || 0;
+      const thick = item.thickness || 12;
+      const fx = stageCenterStartX + item.offsetX;
+      const fy = stageCenterStartY + item.offsetY;
+      const isSel = selectedItemIndex === index;
+      const isMSel = isMultiSel(index);
+      let wFlags = feetFlags[index] || { leftFoot: true, rightFoot: true };
+
+      // Ściana przestaje być freestanding (dashed border) jeśli ma klipowanego partnera
+      let wallClasses = 'sego-wall';
+      if (item._cornerWith === undefined && item._collinearWith === undefined) {
+        wallClasses += ' free-wall';
+      }
+      if (isSel) wallClasses += ' selected';
+      if (isMSel) wallClasses += ' multi-selected';
+
+      let freeWallEl = document.createElement('div');
+      freeWallEl.className = wallClasses;
+      freeWallEl.style.width = item.length + 'px';
+      freeWallEl.style.height = thick + 'px';
+      freeWallEl.style.left = (fx - item.length / 2) + 'px';
+      freeWallEl.style.top = (fy - thick / 2) + 'px';
+      freeWallEl.style.transformOrigin = '50% 50%';
+      freeWallEl.style.transform = `rotate(${freeAngle}deg)`;
+      if (item.color) { freeWallEl.style.borderColor = item.color; freeWallEl.style.boxShadow = `0 0 8px ${item.color}`; }
+
+      const textRot = (freeAngle % 360 >= 90 && freeAngle % 360 <= 270) ? 180 : 0;
+      const heightLabel = item.height === 300 ? `<br><span style="font-size:8px;color:${item.color || '#ff0080'};">3m</span>` : '';
+      freeWallEl.innerHTML = `<span style="transform: rotate(${textRot}deg); pointer-events: none; text-align:center; line-height:1;">${item.length}${heightLabel}</span>`;
+
+      freeWallEl.onclick = (e) => selectItem(index, e);
+
+      // Usunięto bezpośrednie przeciąganie wolnej ściany. Wejście w ruch tylko przez klawisz M.
+      // Dajemy mousedown do celów zaznaczania (w tym Ctrl+klik)
+      freeWallEl.onmousedown = function (e) {
+        if (e.target.tagName === 'SPAN') return;
+        e.preventDefault(); e.stopPropagation();
+        selectItem(index, e);
+      };
+
+      layer.appendChild(freeWallEl);
+
+      // Guzik toggle narożnika jeśli ściana ma klipowanego partnera 90 stopni
+      if (item._cornerWith !== undefined && item._clipCornerX !== undefined) {
+        const btnX = item._clipCornerX;
+        const btnY = item._clipCornerY;
+
+        let cTypes = ['zew-zew', 'wew-zew-1', 'wew-zew-2'];
+        if (typeof currentSystem !== 'undefined' && currentSystem === 'foldable') cTypes = ['wew-zew-1', 'wew-zew-2'];
+        if (typeof currentSystem !== 'undefined' && currentSystem === 'multiframe') cTypes = ['cube'];
+
+        const cType = item._cornerType || 'zew-zew';
+        const cLabel = cType === 'zew-zew' ? 'Z-Z' : (cType === 'wew-zew-2' ? 'W-Z 2' : (cType === 'cube' ? '⬜' : 'W-Z 1'));
+
+        if (cTypes.length > 1) {
+          const cornerBtn = document.createElement('div');
+          cornerBtn.className = 'clip-corner-btn';
+          cornerBtn.style.left = btnX + 'px';
+          cornerBtn.style.top = btnY + 'px';
+          cornerBtn.innerText = cLabel;
+          cornerBtn.title = 'Zmień typ łączenia narożnika';
+          cornerBtn.onmousedown = (e) => e.stopPropagation();
+          const captIdx = index, captPartner = item._cornerWith;
+          cornerBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (typeof cycleClipCornerType === 'function') cycleClipCornerType(captIdx, captPartner);
+          };
+          layer.appendChild(cornerBtn);
+        }
+      }
+
+      // --- DODAWANIE DO BOM I NALICZANIE KOSZTÓW DLA WOLNEJ ŚCIANY ---
+      addItemToBom(item.name, 1, item.price, counts);
+      baseCost += item.price;
+      if (item.isDoor) {
+        addItemToBom(DB.sego100x250.name, 1, DB.sego100x250.price, counts);
+        baseCost += DB.sego100x250.price;
+      }
+
+      // Stopki (stopy płaskie) dla wolnej ściany - USUNIĘTO (mini stopy tylko przy kantorkach)
+
+      // Łączniki dla klipowanych wolnych ścian (liczone tylko raz dla pary)
+      if (item._cornerWith !== undefined && index < item._cornerWith) {
+        const partner = plan[item._cornerWith];
+        if (partner) {
+          // Połączenie 90 stopni (narożnik)
+          if (item.isFoldable) {
+            addItemToBom("Foldable set 90deg connector", 2, 4, counts);
+            baseCost += (2 * 4);
+          } else {
+            const cType = item._cornerType || 'zew-zew';
+            const cName = cType === 'zew-zew' ? DB.zewzew.name : DB.wewzew.name;
+            const cPrice = cType === 'zew-zew' ? DB.zewzew.price : DB.wewzew.price;
+            addItemToBom(cName, 2, cPrice, counts);
+            baseCost += (2 * cPrice);
+          }
+        }
+      }
+      if (item._collinearWith !== undefined && index < item._collinearWith) {
+        const partner = plan[item._collinearWith];
+        if (partner) {
+          // Połączenie 180 stopni (kolinearne)
+          if (item.isFoldable) {
+            addItemToBom("Foldable set 180° connector", 2, 4, counts);
+            baseCost += (2 * 4);
+          } else {
+            addItemToBom(DB.clamp.name, 2, DB.clamp.price, counts);
+            baseCost += (2 * DB.clamp.price);
+          }
+        }
+      }
+
+      // Dodaj dwa końce wolnej ściany jako węzły i stwórz dla nich jointy
+      const radEp = (freeAngle * Math.PI) / 180;
+      const halfLEp = item.length / 2;
+      const epX1 = fx - halfLEp * Math.cos(radEp);
+      const epY1 = fy - halfLEp * Math.sin(radEp);
+      const epX2 = fx + halfLEp * Math.cos(radEp);
+      const epY2 = fy + halfLEp * Math.sin(radEp);
+
+      nodes.push({ x: epX1, y: epY1, angle: freeAngle, isFlipped: false });
+      let nodeIdxStart = nodes.length - 1;
+      createJoint(layer, epX1, epY1, nodeIdxStart);
+
+      nodes.push({ x: epX2, y: epY2, angle: freeAngle, isFlipped: false });
+      let nodeIdxEnd = nodes.length - 1;
+      createJoint(layer, epX2, epY2, nodeIdxEnd);
+
+      // Zapisujemy pozycję wolnej ściany do placedWalls, aby była uwzględniana w obrysie i kolizjach
+      placedWalls.push({ startX: epX1, startY: epY1, endX: epX2, endY: epY2, isDoor: item.isDoor, planIndex: index });
+
+      let perpX = Math.abs(Math.sin(radEp)) * (thick / 2);
+      let perpY = Math.abs(Math.cos(radEp)) * (thick / 2);
+      minX = Math.min(minX, epX1 - perpX, epX2 - perpX);
+      maxX = Math.max(maxX, epX1 + perpX, epX2 + perpX);
+      minY = Math.min(minY, epY1 - perpY, epY2 - perpY);
+      maxY = Math.max(maxY, epY1 + perpY, epY2 + perpY);
+
+      // Dodaj do computed3DData z obliczonymi wFlags stopkami
+      computed3DData.push({ type: 'wall', planIndex: index, cx: item.offsetX, cz: item.offsetY, length: item.length, height: item.height || 250, angle: freeAngle, color: item.color, isDoor: item.isDoor, labelEN: item.labelEN, isFoldable: item.isFoldable, thickness: thick, isFlipped: item.isFlipped, leftFoot: wFlags.leftFoot, rightFoot: wFlags.rightFoot });
+
+      // --- ZACHOWAJ PRZERWĘ W ŁAŃCUCHU ---
+      let tempX = x, tempY = y;
+      if (pendingTurnItem) {
+        let rad1 = pendingTurnItem.prevAngle * Math.PI / 180;
+        let rad2 = pendingTurnItem.currAngle * Math.PI / 180;
+        let offset = (item.thickness || 12) / 2;
+        let sV1 = 0, sV2 = 0;
+        let cType = pendingTurnItem.cornerType || 'wew-zew-1';
+
+        if (cType === 'zew-zew') { sV1 = offset; sV2 = offset; }
+        else if (cType === 'wew-zew-1') { sV1 = -offset; sV2 = offset; }
+        else if (cType === 'wew-zew-2') { sV1 = offset; sV2 = -offset; }
+
+        let isBranchingFromStart = false;
+        for (let w of placedWalls) {
+          if (Math.abs(pendingTurnItem.cornerX - w.startX) < 1 && Math.abs(pendingTurnItem.cornerY - w.startY) < 1) {
+            isBranchingFromStart = true; break;
+          }
+        }
+        if (isBranchingFromStart) sV1 = -sV1;
+
+        tempX = pendingTurnItem.cornerX + sV1 * Math.cos(rad1) + sV2 * Math.cos(rad2);
+        tempY = pendingTurnItem.cornerY + sV1 * Math.sin(rad1) + sV2 * Math.sin(rad2);
+        pendingTurnItem = null;
+      }
+
+      let chainRad = currentAngle * Math.PI / 180;
+      x = tempX + item.length * Math.cos(chainRad);
+      y = tempY + item.length * Math.sin(chainRad);
+      prevWallAngle = currentAngle;
+      nodes.push({ x: x, y: y, angle: currentAngle });
+      item.endNodeIndex = nodes.length - 1;
+
+      continue; // Pomiń logikę łańcucha dla tej ściany
+    }
 
     if (item.type === 'suspended' || item.type === 'suspended_ring') {
       let fx = stageCenterStartX + item.offsetX; let fy = stageCenterStartY + item.offsetY;
       computed3DData.push({ type: item.type, planIndex: index, id: item.id, cx: item.offsetX, cz: item.offsetY, width: item.width || item.diameter, height: item.height, depth: item.depth || item.diameter, diameter: item.diameter, labelEN: item.labelEN, quadTextures: item.quadTextures || {} });
-      let suspEl = document.createElement('div'); suspEl.className = 'sego-suspended' + (selectedItemIndex === index ? ' selected' : '');
+      let suspEl = document.createElement('div'); suspEl.className = 'sego-suspended' + (selectedItemIndex === index ? ' selected' : '') + (isMultiSel(index) ? ' multi-selected' : '');
       suspEl.style.width = (item.width || item.diameter) + 'px'; suspEl.style.height = (item.depth || item.diameter) + 'px';
       if (item.type === 'suspended_ring') suspEl.style.borderRadius = '50%';
       suspEl.style.left = (fx - (item.width || item.diameter) / 2) + 'px'; suspEl.style.top = (fy - (item.depth || item.diameter) / 2) + 'px';
@@ -2198,11 +2380,12 @@ function render() {
         document.addEventListener('mousemove', onMouseMove); document.onmouseup = function () { document.removeEventListener('mousemove', onMouseMove); document.onmouseup = null; render(); };
       };
       layer.appendChild(suspEl); addItemToBom(item.name, 1, item.price, counts); baseCost += item.price; continue;
+
     }
     else if (item.type === 'freestanding' || item.type === 'freestanding_s') {
       let fx = stageCenterStartX + item.offsetX; let fy = stageCenterStartY + item.offsetY;
       computed3DData.push({ type: item.type, planIndex: index, id: item.id, cx: item.offsetX, cz: item.offsetY, width: item.width, height: item.height, depth: item.depth, rotation: item.rotation || 0, labelEN: item.labelEN, textureFront: item.textureFront, textureBack: item.textureBack });
-      let freeEl = document.createElement('div'); freeEl.className = 'sego-freestanding' + (selectedItemIndex === index ? ' selected' : '');
+      let freeEl = document.createElement('div'); freeEl.className = 'sego-freestanding' + (selectedItemIndex === index ? ' selected' : '') + (isMultiSel(index) ? ' multi-selected' : '');
       freeEl.style.width = item.width + 'px'; freeEl.style.height = item.depth + 'px';
       freeEl.style.left = (fx - item.width / 2) + 'px'; freeEl.style.top = (fy - item.depth / 2) + 'px'; freeEl.style.transform = `rotate(${item.rotation || 0}deg)`;
       if (item.type === 'freestanding_s') { freeEl.style.borderColor = item.color; freeEl.style.color = item.color; freeEl.style.boxShadow = `0 0 10px ${item.color}88`; }
@@ -2216,7 +2399,7 @@ function render() {
           let newFx = stageCenterStartX + item.offsetX; let newFy = stageCenterStartY + item.offsetY;
           freeEl.style.left = (newFx - item.width / 2) + 'px'; freeEl.style.top = (newFy - item.depth / 2) + 'px';
         }
-        document.addEventListener('mousemove', onMouseMove); document.onmouseup = function () { document.removeEventListener('mousemove', onMouseMove); document.onmouseup = null; render(); };
+        document.addEventListener('mousemove', onMouseMove); document.onmouseup = function () { document.removeEventListener('mousemove', onMouseMove); document.onmouseup = null; if (typeof _autoClipProximity === 'function') _autoClipProximity(index); render(); };
       };
       layer.appendChild(freeEl); addItemToBom(item.name, 1, item.price, counts); baseCost += item.price; continue;
     }
@@ -2225,7 +2408,7 @@ function render() {
       computed3DData.push({ type: 'table_chairs', planIndex: index, id: item.id, cx: item.offsetX, cz: item.offsetY, width: item.width, height: item.height, depth: item.depth, rotation: item.rotation || 0, labelEN: item.labelEN });
       
       let containerEl = document.createElement('div');
-      containerEl.className = 'sego-table-chairs' + (selectedItemIndex === index ? ' selected' : '');
+      containerEl.className = 'sego-table-chairs' + (selectedItemIndex === index ? ' selected' : '') + (isMultiSel(index) ? ' multi-selected' : '');
       containerEl.style.position = 'absolute';
       containerEl.style.width = '160px';
       containerEl.style.height = '160px';
@@ -2305,6 +2488,7 @@ function render() {
         document.onmouseup = function () {
           document.removeEventListener('mousemove', onMouseMove);
           document.onmouseup = null;
+          if (typeof _autoClipProximity === 'function') _autoClipProximity(index);
           render();
         };
       };
@@ -2317,9 +2501,10 @@ function render() {
     else if (item.type === 'potted_plant') {
       let fx = stageCenterStartX + item.offsetX; let fy = stageCenterStartY + item.offsetY;
       computed3DData.push({ type: 'potted_plant', planIndex: index, id: item.id, cx: item.offsetX, cz: item.offsetY, width: item.width, height: item.height, depth: item.depth, rotation: item.rotation || 0, labelEN: item.labelEN });
+
       
       let containerEl = document.createElement('div');
-      containerEl.className = 'sego-potted-plant' + (selectedItemIndex === index ? ' selected' : '');
+      containerEl.className = 'sego-potted-plant' + (selectedItemIndex === index ? ' selected' : '') + (isMultiSel(index) ? ' multi-selected' : '');
       containerEl.style.position = 'absolute';
       containerEl.style.width = '60px';
       containerEl.style.height = '60px';
@@ -2401,6 +2586,7 @@ function render() {
         document.onmouseup = function () {
           document.removeEventListener('mousemove', onMouseMove);
           document.onmouseup = null;
+          if (typeof _autoClipProximity === 'function') _autoClipProximity(index);
           render();
         };
       };
@@ -2413,9 +2599,10 @@ function render() {
     else if (item.type === 'adfolder') {
       let fx = stageCenterStartX + item.offsetX; let fy = stageCenterStartY + item.offsetY;
       computed3DData.push({ type: 'adfolder', planIndex: index, id: item.id, cx: item.offsetX, cz: item.offsetY, width: item.width, height: item.height, depth: item.depth, rotation: item.rotation || 0, labelEN: item.labelEN });
+
       
       let containerEl = document.createElement('div');
-      containerEl.className = 'sego-adfolder' + (selectedItemIndex === index ? ' selected' : '');
+      containerEl.className = 'sego-adfolder' + (selectedItemIndex === index ? ' selected' : '') + (isMultiSel(index) ? ' multi-selected' : '');
       containerEl.style.position = 'absolute';
       containerEl.style.width = '30px';
       containerEl.style.height = '40px';
@@ -2483,6 +2670,7 @@ function render() {
         document.onmouseup = function () {
           document.removeEventListener('mousemove', onMouseMove);
           document.onmouseup = null;
+          if (typeof _autoClipProximity === 'function') _autoClipProximity(index);
           render();
         };
       };
@@ -2500,25 +2688,32 @@ function render() {
       let dOp = item.doorOpposite || false;
       let fx, fy, nextX, nextY, nextAngle;
 
-      if (item.rotation === 0) {
-        fx = x + 62;
-        fy = y + 44;
-        nextX = fx + 56;
-        nextY = fy + 50;
-        nextAngle = 90;
+      if (item.isFree) {
+        fx = stageCenterStartX + item.offsetX;
+        fy = stageCenterStartY + item.offsetY;
+        nextX = x;
+        nextY = y;
+        nextAngle = currentAngle;
       } else {
-        fx = x + 44;
-        fy = y - 62;
-        nextX = fx + 50;
-        nextY = fy - 56;
-        nextAngle = 0;
+        if (item.rotation === 0) {
+          fx = x + 62;
+          fy = y + 44;
+          nextX = fx + 56;
+          nextY = fy + 50;
+          nextAngle = 90;
+        } else {
+          fx = x + 44;
+          fy = y - 62;
+          nextX = fx + 50;
+          nextY = fy - 56;
+          nextAngle = 0;
+        }
+        item.offsetX = fx - stageCenterStartX;
+        item.offsetY = fy - stageCenterStartY;
       }
 
-      item.offsetX = fx - stageCenterStartX;
-      item.offsetY = fy - stageCenterStartY;
-
       let kantEl = document.createElement('div');
-      kantEl.className = 'sego-freestanding' + (selectedItemIndex === index ? ' selected' : '');
+      kantEl.className = 'sego-freestanding' + (selectedItemIndex === index ? ' selected' : '') + (isMultiSel(index) ? ' multi-selected' : '');
       kantEl.style.width = (item.rotation === 0 ? '124px' : '100px');
       kantEl.style.height = (item.rotation === 0 ? '100px' : '124px');
       kantEl.style.left = (fx - (item.rotation === 0 ? 62 : 50)) + 'px';
@@ -2567,6 +2762,11 @@ function render() {
       `;
 
       kantEl.onclick = (e) => selectItem(index, e);
+      kantEl.onmousedown = function (e) {
+        if (e.target.classList.contains('acc-btn')) return;
+        e.preventDefault(); e.stopPropagation();
+        selectItem(index, e);
+      };
       layer.appendChild(kantEl);
 
       if (!item.quadTextures) item.quadTextures = {};
@@ -2611,6 +2811,21 @@ function render() {
       let hBox = item.rotation === 0 ? 100 : 124;
       minX = Math.min(minX, fx - wBox / 2); maxX = Math.max(maxX, fx + wBox / 2);
       minY = Math.min(minY, fy - hBox / 2); maxY = Math.max(maxY, fy + hBox / 2);
+
+      // Dodaj 4 narożniki kantorka jako węzły (nodes) i stwórz dla nich jointy
+      let cBoxW = item.rotation === 0 ? 56 : 50;
+      let cBoxH = item.rotation === 0 ? 50 : 56;
+      let corners = [
+        { x: fx - cBoxW, y: fy - cBoxH, angle: item.rotation === 0 ? 180 : 270 },
+        { x: fx + cBoxW, y: fy - cBoxH, angle: item.rotation === 0 ? 270 : 0 },
+        { x: fx + cBoxW, y: fy + cBoxH, angle: item.rotation === 0 ? 0 : 90 },
+        { x: fx - cBoxW, y: fy + cBoxH, angle: item.rotation === 0 ? 90 : 180 }
+      ];
+      corners.forEach(c => {
+        nodes.push({ x: c.x, y: c.y, angle: c.angle, isFlipped: false });
+        let nodeIdx = nodes.length - 1;
+        createJoint(layer, c.x, c.y, nodeIdx);
+      });
 
       nodes.push({ x: x, y: y, angle: currentAngle, isFlipped: false });
       let thisNodeIndex = nodes.length - 1;
@@ -2778,7 +2993,7 @@ function render() {
 
       let thick = item.thickness || 12;
       let wall = document.createElement('div');
-      wall.className = 'sego-wall' + (selectedItemIndex === index ? ' selected' : '');
+      wall.className = 'sego-wall' + (selectedItemIndex === index ? ' selected' : '') + (isMultiSel(index) ? ' multi-selected' : '');
       wall.style.width = item.length + 'px';
       wall.style.height = thick + 'px';
       wall.style.left = wallStartX + 'px';
@@ -2843,7 +3058,7 @@ function render() {
             computed3DData.push({ type: 'daszek', planIndex: index, accIndex: accIdx, accData: acc, cx: cx - stageCenterStartX, cz: cy - stageCenterStartY, wallHeight: item.height, angle: finalAngle, labelEN: acc.labelEN });
 
             let daszekEl = document.createElement('div');
-            daszekEl.className = 'sego-daszek' + (selectedItemIndex === `daszek_${index}_${accIdx}` ? ' selected' : '');
+            daszekEl.className = 'sego-daszek' + (selectedItemIndex === `daszek_${index}_${accIdx}` ? ' selected' : '') + (isMultiSel(index) ? ' multi-selected' : '');
             daszekEl.onclick = (e) => selectItem(`daszek_${index}_${accIdx}`, e);
 
             daszekEl.style.width = '100px'; daszekEl.style.height = '250px'; daszekEl.style.left = cx + 'px'; daszekEl.style.top = cy + 'px'; daszekEl.style.marginLeft = '-50px'; daszekEl.style.transformOrigin = '50% 0'; daszekEl.style.transform = `rotate(${finalAngle}deg)`;
@@ -2884,19 +3099,7 @@ function render() {
 
       lastItemType = 'wall'; addItemToBom(item.name, 1, item.price, counts); baseCost += item.price;
       if (item.isDoor) { addItemToBom(DB.sego100x250.name, 1, DB.sego100x250.price, counts); baseCost += DB.sego100x250.price; }
-      if (!item.isFoldable) {
-        let wFlags = feetFlags[index] || { leftFoot: true, rightFoot: true };
-        let feetCount = 0;
-        if (wFlags.leftFoot !== false) feetCount++;
-        if (wFlags.rightFoot !== false) feetCount++;
-        if (manualKantorekWallIndices.has(index)) {
-          feetCount = 0;
-        }
-        if (feetCount > 0) {
-          addItemToBom(DB.miniFoot.name, feetCount, DB.miniFoot.price, counts);
-          baseCost += feetCount * DB.miniFoot.price;
-        }
-      }
+      // Stopki dla standardowej ściany - USUNIĘTO (mini stopy tylko przy kantorkach)
 
     } else if (item.type === 'turn') {
       if (!item.cornerType) item.cornerType = 'wew-zew-1';
@@ -3054,6 +3257,12 @@ function render() {
 
   globalWidth = Math.ceil((placedWalls.length > 0 ? (maxX - minX) + 12 : 0) / 50) * 50;
   globalDepth = Math.ceil((placedWalls.length > 0 ? (maxY - minY) + 12 : 0) / 50) * 50;
+
+  if (floorBounds && placedWalls.length > 0) {
+    if (minX < floorBounds.minX || maxX > floorBounds.maxX || minY < floorBounds.minY || maxY > floorBounds.maxY) {
+      isOutOfBounds = true;
+    }
+  }
   globalCounts = counts; globalTotalEUR = finalEUR; globalTotalPLN = finalPLN;
 
   document.getElementById('valPLN').innerHTML = `<b>${Math.round(finalPLN).toLocaleString()} PLN</b>`;
@@ -3285,6 +3494,64 @@ function getWallPositions(testPlan) {
         if (targetNode) { x = targetNode.x; y = targetNode.y; angle = targetNode.angle; }
       }
     } else if (item.type === 'wall') {
+      if (item.offsetX !== undefined) {
+        const rad = ((item.freeAngle || 0) * Math.PI) / 180;
+        const halfL = item.length / 2;
+        const fx = stageCenterStartX + item.offsetX;
+        const fy = stageCenterStartY + item.offsetY;
+        const epX1 = fx - halfL * Math.cos(rad);
+        const epY1 = fy - halfL * Math.sin(rad);
+        const epX2 = fx + halfL * Math.cos(rad);
+        const epY2 = fy + halfL * Math.sin(rad);
+
+        // Dodaj start i koniec wolnej ściany do nodes
+        nodes.push({ x: epX1, y: epY1, angle: item.freeAngle || 0 });
+        nodes.push({ x: epX2, y: epY2, angle: item.freeAngle || 0 });
+
+        walls.push({
+          planIndex: index,
+          startX: epX1,
+          startY: epY1,
+          endX: epX2,
+          endY: epY2,
+          angle: item.freeAngle || 0,
+          length: item.length,
+          isFoldable: !!item.isFoldable
+        });
+
+        // --- ZACHOWAJ PRZERWĘ W ŁAŃCUCHU ---
+        let tempX = x, tempY = y;
+        if (pendingTurnItem) {
+          let rad1 = pendingTurnItem.prevAngle * Math.PI / 180;
+          let rad2 = pendingTurnItem.currAngle * Math.PI / 180;
+          let offset = (item.thickness || 12) / 2;
+          let sV1 = 0, sV2 = 0;
+          let cType = pendingTurnItem.cornerType || 'wew-zew-1';
+
+          if (cType === 'zew-zew') { sV1 = offset; sV2 = offset; }
+          else if (cType === 'wew-zew-1') { sV1 = -offset; sV2 = offset; }
+          else if (cType === 'wew-zew-2') { sV1 = offset; sV2 = -offset; }
+
+          let isBranchingFromStart = false;
+          for (let w of walls) {
+            if (Math.abs(pendingTurnItem.cornerX - w.startX) < 1 && Math.abs(pendingTurnItem.cornerY - w.startY) < 1) {
+              isBranchingFromStart = true; break;
+            }
+          }
+          if (isBranchingFromStart) sV1 = -sV1;
+
+          tempX = pendingTurnItem.cornerX + sV1 * Math.cos(rad1) + sV2 * Math.cos(rad2);
+          tempY = pendingTurnItem.cornerY + sV1 * Math.sin(rad1) + sV2 * Math.sin(rad2);
+          pendingTurnItem = null;
+        }
+
+        let chainRad = angle * Math.PI / 180;
+        x = tempX + item.length * Math.cos(chainRad);
+        y = tempY + item.length * Math.sin(chainRad);
+        nodes.push({ x: x, y: y, angle: angle });
+
+        continue;
+      }
       let tempX = x, tempY = y;
       if (pendingTurnItem) {
         let rad1 = pendingTurnItem.prevAngle * Math.PI / 180;
@@ -3334,18 +3601,26 @@ function getWallPositions(testPlan) {
       let dOp = item.doorOpposite || false;
       let fx, fy, nextX, nextY, nextAngle;
 
-      if (item.rotation === 0) {
-        fx = x + 62;
-        fy = y + 44;
-        nextX = fx + 56;
-        nextY = fy + 50;
-        nextAngle = 90;
+      if (item.isFree) {
+        fx = stageCenterStartX + item.offsetX;
+        fy = stageCenterStartY + item.offsetY;
+        nextX = x;
+        nextY = y;
+        nextAngle = angle;
       } else {
-        fx = x + 44;
-        fy = y - 62;
-        nextX = fx + 50;
-        nextY = fy - 56;
-        nextAngle = 0;
+        if (item.rotation === 0) {
+          fx = x + 62;
+          fy = y + 44;
+          nextX = fx + 56;
+          nextY = fy + 50;
+          nextAngle = 90;
+        } else {
+          fx = x + 44;
+          fy = y - 62;
+          nextX = fx + 50;
+          nextY = fy - 56;
+          nextAngle = 0;
+        }
       }
 
       let rad = item.rotation * Math.PI / 180;
@@ -3381,6 +3656,19 @@ function getWallPositions(testPlan) {
       addVirtualWallPos(56, 0, 270, 2);
       addVirtualWallPos(0, 44, 0, 3);
       addVirtualWallPos(-56, 0, 90, 4);
+
+      // Dodaj 4 narożniki do nodes (identycznie jak w render)
+      let cBoxW = item.rotation === 0 ? 56 : 50;
+      let cBoxH = item.rotation === 0 ? 50 : 56;
+      let corners = [
+        { x: fx - cBoxW, y: fy - cBoxH, angle: item.rotation === 0 ? 180 : 270 },
+        { x: fx + cBoxW, y: fy - cBoxH, angle: item.rotation === 0 ? 270 : 0 },
+        { x: fx + cBoxW, y: fy + cBoxH, angle: item.rotation === 0 ? 0 : 90 },
+        { x: fx - cBoxW, y: fy + cBoxH, angle: item.rotation === 0 ? 90 : 180 }
+      ];
+      corners.forEach(c => {
+        nodes.push({ x: c.x, y: c.y, angle: c.angle });
+      });
 
       x = nextX;
       y = nextY;
