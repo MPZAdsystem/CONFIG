@@ -1112,6 +1112,9 @@ function switchSystem(newSystem) {
         const collapsible = document.getElementById('sidebar-collapsible-content');
         if (collapsible) collapsible.style.display = 'none';
 
+        const wypPanel = document.getElementById('panel-wyposazenie-dodatkowe');
+        if (wypPanel) wypPanel.style.display = 'none';
+
         const allPanels = document.querySelectorAll('.system-ui-panel');
         allPanels.forEach(p => p.style.display = 'none');
 
@@ -1186,6 +1189,13 @@ function switchSystem(newSystem) {
     const collapsible = document.getElementById('sidebar-collapsible-content');
     if (collapsible) {
         collapsible.style.display = (newSystem === 'wydruki') ? 'none' : 'block';
+    }
+
+    // Wyposażenie Dodatkowe — widoczne dla wszystkich aktywnych systemów z builderem
+    const wypPanel = document.getElementById('panel-wyposazenie-dodatkowe');
+    if (wypPanel) {
+        const hideWyp = (newSystem === 'wydruki' || newSystem === 'mframe_pallet');
+        wypPanel.style.display = hideWyp ? 'none' : 'block';
     }
 
     const wydrukiBtns = ['btnWydrukiReport', 'btnWydrukiMatch', 'btnWydrukiClearStage', 'btnClearWydruki'];

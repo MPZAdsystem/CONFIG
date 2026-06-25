@@ -51,10 +51,12 @@ if (strpos($contentType, 'application/json') !== false) {
     $projectName = $input['projectName'] ?? '';
     $jsonData = $input['jsonData'] ?? '';
     $csvData = $input['csvData'] ?? '';
+    $xlsData = $input['xlsData'] ?? '';
 } else {
     $projectName = $_POST['projectName'] ?? '';
     $jsonData = $_POST['jsonData'] ?? '';
     $csvData = $_POST['csvData'] ?? '';
+    $xlsData = $_POST['xlsData'] ?? '';
 }
 
 if (empty($projectName)) {
@@ -72,9 +74,11 @@ if (empty($safeProjectName)) {
 $filenameBase = 'EXPO_' . $safeProjectName;
 $jsonFilepath = $userDir . '/' . $filenameBase . '.json';
 $csvFilepath = $userDir . '/' . $filenameBase . '.csv';
+$xlsFilepath = $userDir . '/' . $filenameBase . '.xlsx';
 
 $savedJson = false;
 $savedCsv = false;
+$savedXls = false;
 
 // Zapis pliku JSON
 if (!empty($jsonData)) {
@@ -90,7 +94,17 @@ if (!empty($csvData)) {
     }
 }
 
-if ($savedJson || $savedCsv) {
+// Zapis pliku XLSX (Excel)
+if (!empty($xlsData)) {
+    $decodedXls = base64_decode($xlsData);
+    if ($decodedXls !== false) {
+        if (file_put_contents($xlsFilepath, $decodedXls) !== false) {
+            $savedXls = true;
+        }
+    }
+}
+
+if ($savedJson || $savedCsv || $savedXls) {
     echo json_encode([
         'status' => 'OK',
         'message' => 'Projekt i zestawienie BOM zostały pomyślnie zapisane na serwerze',
@@ -98,7 +112,8 @@ if ($savedJson || $savedCsv) {
         'project_name' => $projectName,
         'files' => [
             'json' => $savedJson ? $filenameBase . '.json' : null,
-            'csv' => $savedCsv ? $filenameBase . '.csv' : null
+            'csv' => $savedCsv ? $filenameBase . '.csv' : null,
+            'xlsx' => $savedXls ? $filenameBase . '.xlsx' : null
         ]
     ]);
 } else {

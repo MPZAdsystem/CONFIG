@@ -147,6 +147,7 @@ foreach (scandir($baseFilesDir) as $item) {
         $fileCount = 0;
         $jsonCount = 0;
         $csvCount = 0;
+        $xlsxCount = 0;
         $latestModified = 0;
 
         foreach (scandir($itemPath) as $child) {
@@ -158,6 +159,7 @@ foreach (scandir($baseFilesDir) as $item) {
             $childExt = strtolower(pathinfo($child, PATHINFO_EXTENSION));
             if ($childExt === 'json') $jsonCount++;
             if ($childExt === 'csv') $csvCount++;
+            if ($childExt === 'xlsx') $xlsxCount++;
 
             $mtime = filemtime($childPath);
             if ($mtime > $latestModified) $latestModified = $mtime;
@@ -168,6 +170,7 @@ foreach (scandir($baseFilesDir) as $item) {
             'total_files'     => $fileCount,
             'json_count'      => $jsonCount,
             'csv_count'       => $csvCount,
+            'xlsx_count'      => $xlsxCount,
             'last_activity'   => $latestModified > 0 ? date('Y-m-d H:i:s', $latestModified) : null,
             'browse_url'      => 'Api/api_files.php?user=' . urlencode($item)
         ];

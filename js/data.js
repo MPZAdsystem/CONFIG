@@ -141,6 +141,7 @@ let currentUserRole = null; // 'klient', 'agencja', 'admin'
 document.addEventListener('keydown', function (event) {
 
     // Reaguj tylko, jeśli użytkownik nie wpisuje niczego w pole tekstowe (np. zniżki)
+    if (!event.key) return;
 
     if (event.key.toLowerCase() === 'k' && document.activeElement.tagName !== 'INPUT') {
 
@@ -624,6 +625,7 @@ const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyXwLqKo2jTxHt4Nryos
 document.addEventListener('keydown', function (event) {
 
     // Zabezpieczenie: Ignoruj skróty, jeśli użytkownik pisze w jakimkolwiek polu tekstowym
+    if (!event.key) return;
 
     const activeElement = document.activeElement;
 
@@ -826,6 +828,7 @@ var foldablePlanes = []; // Przechowuje zidentyfikowane ciągi ścian
 document.addEventListener('keydown', function (e) {
 
     // Sprawdzamy, czy wciśnięto Ctrl + M (niezależnie od wielkości liter)
+    if (!e.key) return;
 
     if (e.ctrlKey && e.key.toLowerCase() === 'm') {
 

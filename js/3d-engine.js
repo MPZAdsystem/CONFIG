@@ -2598,7 +2598,9 @@ function render() {
         addItemToBom(DB['sego100x250'].name, 4, DB['sego100x250'].price, counts);
         addItemToBom(DB['door100'].name, 1, DB['door100'].price, counts);
         addItemToBom(DB.miniFoot.name, 4, DB.miniFoot.price, counts);
-        baseCost += (DB['sego100x250'].price * 4) + DB['door100'].price + (DB.miniFoot.price * 4);
+        // 8 łączników kątowych dla presetowanego kantorka (klawisz K)
+        addItemToBom(DB.wewzew.name, 8, DB.wewzew.price, counts);
+        baseCost += (DB['sego100x250'].price * 4) + DB['door100'].price + (DB.miniFoot.price * 4) + (DB.wewzew.price * 8);
       }
 
       x = nextX;
@@ -2742,7 +2744,7 @@ function render() {
       }
       let currentWallIndex = placedWalls.length;
       for (let i = 0; i < currentWallIndex; i++) {
-        if (Math.abs(x - placedWalls[i].startX) < 2 && Math.abs(y - placedWalls[i].startY) < 2) {
+        if (Math.hypot(x - placedWalls[i].startX, y - placedWalls[i].startY) < 15) {
           if (!item.isFoldable) {
             addItemToBom(DB.wewzew.name, 2, DB.wewzew.price, counts); baseCost += (2 * DB.wewzew.price);
           } else {
@@ -2975,7 +2977,16 @@ function render() {
 
   if (kantorekCount > 0) {
     addItemToBom(DB.miniFoot.name, 4 * kantorekCount, DB.miniFoot.price, counts); baseCost += (4 * kantorekCount * DB.miniFoot.price);
-    addItemToBom(DB.wewzew.name, 2 * kantorekCount, DB.wewzew.price, counts); baseCost += (2 * kantorekCount * DB.wewzew.price);
+  }
+
+  // Po zbudowaniu manualKantorekWallIndices: wyzeruj stopy 3D dla ścian należących do ręcznego kantorka
+  if (manualKantorekWallIndices.size > 0) {
+    for (let d3 of computed3DData) {
+      if (d3.type === 'wall' && d3.quadIdx === undefined && manualKantorekWallIndices.has(d3.planIndex)) {
+        d3.leftFoot = false;
+        d3.rightFoot = false;
+      }
+    }
   }
 
   if (currentSystem === 'foldable' && typeof foldablePlanes !== 'undefined' && foldablePlanes.length > 0) {

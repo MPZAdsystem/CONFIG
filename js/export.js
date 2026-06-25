@@ -63,10 +63,57 @@ function generateBOMCSV() {
     return csv;
 }
 
-function uploadProjectToServer(projectName, jsonString) {
+function getIntranetXlsBase64() {
+    if (typeof window.initIntranetBomDraft === 'function') {
+        window.initIntranetBomDraft();
+    }
+    if (!window.intranetBOMDraft || window.intranetBOMDraft.length === 0) {
+        return "";
+    }
+    const rows = [];
+    rows.push([
+        'ID Produktu',
+        'ID Produktu\nnadrzędnego',
+        'Nazwa\n(ignorowane)',
+        'Ilość',
+        'Cena netto',
+        'VAT',
+        'Nazwa wyświetlana',
+        'Opis',
+        'Dodaj BOM'
+    ]);
+    window.intranetBOMDraft.forEach(item => {
+        const idVal = (item.isParent || !item.isKaseton) ? (item.id ? parseFloat(item.id) : null) : null;
+        const parentIdVal = (!item.isParent && item.isKaseton) ? (item.parentId ? parseFloat(item.parentId) : null) : null;
+        rows.push([
+            idVal,
+            parentIdVal,
+            item.name,
+            item.qty !== null ? parseFloat(item.qty) : null,
+            item.price !== null ? parseFloat(item.price) : null,
+            item.vat,
+            item.displayName || null,
+            item.description || null,
+            0
+        ]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Worksheet");
+    return XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+}
+
+function uploadProjectToServer(projectName, jsonString, customXlsBase64 = null) {
     let csvString = "";
     if (typeof generateBOMCSV === 'function') {
         csvString = generateBOMCSV();
+    }
+
+    let xlsBase64 = "";
+    if (customXlsBase64 !== null) {
+        xlsBase64 = customXlsBase64;
+    } else if (typeof getIntranetXlsBase64 === 'function') {
+        xlsBase64 = getIntranetXlsBase64();
     }
 
     fetch('Api/api_save.php', {
@@ -77,7 +124,8 @@ function uploadProjectToServer(projectName, jsonString) {
         body: JSON.stringify({
             projectName: projectName || 'BezNazwy',
             jsonData: jsonString,
-            csvData: csvString
+            csvData: csvString,
+            xlsData: xlsBase64
         })
     })
     .then(response => {
@@ -668,6 +716,19 @@ window.generateIntranetXls = function () {
     const filename = `${pName.replace(/\s+/g, '_')}_BOM.xlsx`;
 
     XLSX.writeFile(wb, filename);
+
+    // Zapisz na serwerze wygenerowany XLS (w tle)
+    const editedXlsBase64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+    const jsonString = JSON.stringify({
+        version: 1,
+        system: currentSystem,
+        projectName: document.getElementById('projectName').value,
+        customerName: document.getElementById('customerName').value,
+        customerEmail: document.getElementById('customerEmail').value,
+        floorConfig: floorConfig,
+        plan: plan
+    });
+    uploadProjectToServer(pName, jsonString, editedXlsBase64);
 
     // Close modal after successful generation
     window.closeIntranetBomModal();
