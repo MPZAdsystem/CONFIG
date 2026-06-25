@@ -52,22 +52,31 @@ function attemptLogin() {
     err.style.display = 'none';
 
     // AJAX POST do api_login.php (serwer PHP weryfikuje przez API CMS)
-    fetch('api_login.php', {
+    fetch('Api/api_login.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'cms_login=' + encodeURIComponent(user) + '&cms_password=' + encodeURIComponent(pass)
     })
-    .then(response => response.json())
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('PHP login endpoint not available or returned error');
+        }
+        return response.json();
+    })
     .then(data => {
         if (data.status === 'OK') {
-            // Logowanie pomyślne — ustawiamy domyślną rolę
-            // (API CMS nie zwraca ról, więc wszyscy zalogowani = admin)
-            currentUserRole = 'admin';
+            // Ustawiamy rolę na podstawie loginu: mpz, test i admin to admini, reszta to zwykli userzy
+            const lowercaseUser = (data.user || user).toLowerCase();
+            if (lowercaseUser === 'mpz' || lowercaseUser === 'test' || lowercaseUser === 'admin') {
+                currentUserRole = 'admin';
+            } else {
+                currentUserRole = 'user';
+            }
 
             if (remember) {
                 try {
                     localStorage.setItem('expoBuilderRole', currentUserRole);
-                    localStorage.setItem('expoBuilderUser', user);
+                    localStorage.setItem('expoBuilderUser', data.user || user);
                 } catch (e) {
                     console.warn("Storage item write blocked:", e);
                 }
@@ -82,9 +91,26 @@ function attemptLogin() {
         }
     })
     .catch(error => {
-        console.error("Błąd połączenia z API logowania:", error);
-        err.style.display = 'block';
-        err.innerText = 'Błąd połączenia z serwerem. Spróbuj ponownie.';
+        console.error("Błąd połączenia z API logowania (próba fallback offline):", error);
+        
+        // Fallback dla GitHub Pages lub braku PHP
+        const lowercaseUser = user.toLowerCase();
+        if ((lowercaseUser === 'test' && pass === 'adsys222') || (lowercaseUser === 'admin' && pass === 'admin123')) {
+            currentUserRole = 'admin';
+            if (remember) {
+                try {
+                    localStorage.setItem('expoBuilderRole', currentUserRole);
+                    localStorage.setItem('expoBuilderUser', user);
+                } catch (e) {
+                    console.warn("Storage item write blocked:", e);
+                }
+            }
+            document.getElementById('loginOverlay').style.display = 'none';
+            runFlavorLoading(() => { applyRolePermissions(); });
+        } else {
+            err.style.display = 'block';
+            err.innerText = 'Nieprawidłowy login lub hasło! (Tryb offline)';
+        }
     })
     .finally(() => {
         if (loginBtn) {
@@ -96,37 +122,47 @@ function attemptLogin() {
 
 function checkSavedLogin() {
     // Sprawdzamy sesję PHP na serwerze (zamiast localStorage)
-    fetch('api_check_session.php')
-        .then(response => response.json())
+    fetch('Api/api_check_session.php')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('PHP check session endpoint not available');
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.logged_in === true) {
-                // Sesja PHP aktywna — wpuszczamy użytkownika
-                currentUserRole = 'admin';
+                // Sesja PHP aktywna — wpuszczamy użytkownika z odpowiednią rolą
+                const checkUser = (data.user || '').toLowerCase();
+                if (checkUser === 'mpz' || checkUser === 'test' || checkUser === 'admin') {
+                    currentUserRole = 'admin';
+                } else {
+                    currentUserRole = 'user';
+                }
                 document.getElementById('loginOverlay').style.display = 'none';
                 runFlavorLoading(() => { applyRolePermissions(); });
             } else {
-                // Brak sesji PHP — sprawdzamy localStorage jako fallback
-                let savedRole = null;
-                try {
-                    savedRole = localStorage.getItem('expoBuilderRole');
-                } catch (e) {
-                    console.warn("Storage read blocked:", e);
-                }
-                // Nie logujemy automatycznie z localStorage — wymagamy sesji serwerowej
-                // Pokazujemy formularz logowania
+                // Brak sesji PHP — nie logujemy automatycznie, wymagamy wpisania danych
+                // Pokazujemy formularz logowania (który domyślnie jest już widoczny)
             }
         })
         .catch(error => {
             // Brak dostępu do serwera (offline/lokalny dev) — fallback na localStorage
             console.warn("Nie można sprawdzić sesji serwerowej, fallback na localStorage:", error);
             let savedRole = null;
+            let savedUser = null;
             try {
                 savedRole = localStorage.getItem('expoBuilderRole');
+                savedUser = localStorage.getItem('expoBuilderUser');
             } catch (e) {
                 console.warn("Storage read blocked:", e);
             }
-            if (savedRole) {
-                currentUserRole = savedRole;
+            if (savedRole && savedUser) {
+                const lowercaseUser = savedUser.toLowerCase();
+                if (lowercaseUser === 'mpz' || lowercaseUser === 'test' || lowercaseUser === 'admin') {
+                    currentUserRole = 'admin';
+                } else {
+                    currentUserRole = 'user';
+                }
                 document.getElementById('loginOverlay').style.display = 'none';
                 runFlavorLoading(() => { applyRolePermissions(); });
             }
@@ -135,7 +171,7 @@ function checkSavedLogin() {
 
 function logout() {
     // Wylogowanie z serwera PHP
-    fetch('api_logout.php')
+    fetch('Api/api_logout.php')
         .then(() => {
             console.log("Sesja serwerowa zakończona.");
         })
@@ -1663,3 +1699,31 @@ function updateMountingMenu(selectedSystem) {
 
     if (typeof updateConfigFromUI === 'function') updateConfigFromUI();
 }
+
+// Rozpoczęcie okresowego sprawdzania sesji w tle (co 2 minuty)
+setInterval(function() {
+    // Sprawdzamy sesję tylko jeśli użytkownik jest zalogowany (znana rola)
+    if (currentUserRole) {
+        fetch('Api/api_check_session.php')
+            .then(response => {
+                if (!response.ok) throw new Error('Network error or no PHP support');
+                return response.json();
+            })
+            .then(data => {
+                if (data && data.logged_in === false) {
+                    console.warn("Sesja na serwerze wygasła. Pokazywanie ekranu logowania.");
+                    if (typeof showNotification === 'function') {
+                        showNotification("Sesja wygasła", "Twoja sesja wygasła. Zaloguj się ponownie, aby kontynuować zapisywanie na serwerze.");
+                    }
+                    // Wyświetlenie overlay bez czyszczenia danych
+                    const overlay = document.getElementById('loginOverlay');
+                    if (overlay) {
+                        overlay.style.display = 'flex';
+                    }
+                }
+            })
+            .catch(err => {
+                console.warn("Okresowe sprawdzanie sesji serwera pominięte (brak PHP / offline):", err);
+            });
+    }
+}, 120000); // 120 000 ms = 2 minuty

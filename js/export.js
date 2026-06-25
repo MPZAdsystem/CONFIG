@@ -69,7 +69,7 @@ function uploadProjectToServer(projectName, jsonString) {
         csvString = generateBOMCSV();
     }
 
-    fetch('api_save.php', {
+    fetch('Api/api_save.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -81,6 +81,17 @@ function uploadProjectToServer(projectName, jsonString) {
         })
     })
     .then(response => {
+        if (response.status === 401) {
+            console.warn("Wygasła sesja serwerowa. Wyświetlanie ekranu logowania.");
+            if (typeof showNotification === 'function') {
+                showNotification("Sesja wygasła", "Twoja sesja wygasła. Zaloguj się ponownie, aby zapisać projekt na serwerze.");
+            }
+            const overlay = document.getElementById('loginOverlay');
+            if (overlay) {
+                overlay.style.display = 'flex';
+            }
+            throw new Error('Session expired (401)');
+        }
         if (!response.ok) {
             throw new Error('Network response was not ok');
         }
