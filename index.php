@@ -373,6 +373,7 @@
     <div id="sidebarGhost" class="sidebar-ghost"></div>
 
     <div class="sidebar" id="sidebar">
+        <div id="moduleListSidebarOverlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #111115; z-index: 9999; padding: 20px; box-sizing: border-box; overflow-y: auto; color: #fff; border-right: 1px solid #333;"></div>
         <h2>EXPO Builder v68</h2>
 
         <div class="form-group" style="margin-bottom: 20px;">
@@ -391,9 +392,33 @@
                 <option value="multigenerator">🧬 Multi-Generator (AI/Hybrid)</option>
                 <option value="mframe_pallet">📦 Konfigurator palety mframe</option>
                 <option value="kasetony_niestandardowe">🔲 Kasetony niestandardowe</option>
+                <option value="prompt_generator">🎨 Generator promptów</option>
             </select>
         </div>
 
+        <div id="ui-prompt-sidebar-controls" style="display: none; margin-bottom: 20px;">
+            <label style="color: var(--highlight, #00d2ff); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Rodzaj prompta:</label>
+            <select id="promptTypeSelector" onchange="if(window.onPromptTypeChange) window.onPromptTypeChange()" style="border: 1px solid var(--highlight, #00d2ff); background: #000; color: #fff; font-weight: bold; cursor: pointer; box-shadow: 0 0 15px rgba(0, 210, 255, 0.3); width: 100%; padding: 8px; border-radius: 4px; margin-top: 5px;">
+                <option value="graphic_project">🎨 Projekt grafiki na stoisko (2D Wydruk)</option>
+                <option value="booth_3d_vis">🎪 Wizualizacja 3D Stoiska (Architektura)</option>
+            </select>
+
+            <!-- Sub-controls for 3D Booth Visualization -->
+            <div id="ui-3d-vis-subcontrols" style="display: none; margin-top: 12px; padding: 10px; background: rgba(15, 15, 20, 0.9); border: 1px solid #333; border-radius: 6px;">
+                <label style="color: #aaa; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; display: block; margin-bottom: 4px;">Wariant Wizualizacji 3D:</label>
+                <select id="prompt3dVariantSelector" onchange="if(window.onPrompt3dVariantChange) window.onPrompt3dVariantChange()" style="width: 100%; background: #080808; color: #00d2ff; border: 1px solid #444; padding: 6px; border-radius: 4px; font-size: 12px; font-weight: bold;">
+                    <option value="graphic">🎨 Graficzna (Z pełnym nadrukiem)</option>
+                    <option value="white">⚪ Biała (Czysta architektura / bez grafik)</option>
+                    <option value="tech">📏 Techniczna (Rzut z wymiarami)</option>
+                </select>
+                <div id="ui-3d-tech-dims-box" style="display: none; margin-top: 8px; align-items: center; gap: 6px;">
+                    <input type="checkbox" id="promptShowDimensions" checked onchange="if(window.buildPromptEngine) window.buildPromptEngine()" style="cursor: pointer;">
+                    <label for="promptShowDimensions" style="font-size: 11px; color: #fff; cursor: pointer;">Pokaż wymiary na wizualizacji</label>
+                </div>
+            </div>
+        </div>
+
+        <div id="sidebar-project-details">
         <h3>Szczegóły Projektu</h3>
         <div class="form-group">
             <input type="text" id="projectName" placeholder="Nazwa projektu / wydarzenia">
@@ -404,13 +429,10 @@
         <h3>Zarządzanie Projektem</h3>
         <div style="display: flex; gap: 5px; margin-bottom: 5px;">
             <button class="btn" style="flex:1; justify-content: center; background: #2b5797;"
-                onclick="saveProjectLocal()">💾 Zapisz (Plik)</button>
+                onclick="saveToGoogleDrive()">💾 Zapisz projekt</button>
             <button class="btn" style="flex:1; justify-content: center; background: #00a4e4;"
                 onclick="loadProjectLocal()">📂 Otwórz</button>
         </div>
-        <button class="btn"
-            style="justify-content: center; background: #4285F4; border-color: #4285F4; width: 100%; margin-bottom: 15px;"
-            onclick="saveToGoogleDrive()">🤖 Wyślij do Intranetu (BOM)</button>
 
         <input type="file" id="loadFileInput" style="display: none;" accept=".json" onchange="handleFileLoad(event)">
 
@@ -422,6 +444,7 @@
         <button id="btnClearWydruki" class="btn btn-action"
             style="display:none; background: #d63031; border-color: #d63031; color:#fff; width: 100%; margin-bottom: 15px; font-weight:bold;"
             onclick="clearWydruki()">🗑 Wyczyść wydruki</button>
+        </div>
 
         <div id="sidebar-collapsible-content">
             <button class="btn btn-action"
@@ -711,9 +734,6 @@
 
             <div style="margin-top: 10px;">
                 <button class="btn btn-3d" onclick="toggle3D()">👁️ Wygeneruj Podgląd 3D</button>
-                <button class="btn"
-                    style="background: #ff8c00; border-color: #ff8c00; width: 100%; margin-bottom: 5px; color: #fff;"
-                    onclick="toggleDimensions()">📏 Pokaż/Ukryj Wymiary</button>
 
                 <select id="graphicsQuality" onchange="if(is3DMode) update3DScene()"
                     style="width: 100%; background: #222; color: #aaa; border: 1px solid #444; border-radius: 4px; padding: 5px; font-size: 11px; margin-bottom: 5px;">
@@ -829,6 +849,12 @@
             <button id="btnRandomizeGraphics" class="fab-main" onclick="randomizeProjectGraphics(this)"
                 style="display: none; background: linear-gradient(135deg, #10ac84, #1dd1a1); color: #000; border: none; font-weight: bold; box-shadow: 0 4px 15px rgba(29, 209, 161, 0.4);">🎲
                 Losuj grafiki</button>
+            <button id="btnToggleDimensions" class="fab-main" onclick="toggleDimensions()"
+                style="display: none; background: linear-gradient(135deg, #444, #222); color: #ccc; border: 1px solid #555; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">📏
+                Wizualizacja techniczna</button>
+            <button id="btnModuleList" class="fab-main" onclick="toggleModuleListMode()"
+                style="display: none; background: linear-gradient(135deg, #444, #222); color: #ccc; border: 1px solid #555; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">📋
+                Lista modułów</button>
         </div>
 
         <div id="instructionsModal" class="ticketModal"
@@ -1467,7 +1493,7 @@
 
             <!-- Footer -->
             <div class="intranet-bom-footer">
-                <button class="btn-intranet-submit" onclick="generateIntranetXls()">💾 Wygeneruj .xls</button>
+                <button class="btn-intranet-submit" onclick="saveProjectConsolidated()">💾 Zapisz projekt</button>
                 <button class="btn-intranet-cancel" onclick="closeIntranetBomModal()">❌ Anuluj</button>
             </div>
         </div>
@@ -1723,6 +1749,7 @@
     <script src="js/3d-builder.js?v=5"></script>
     <script src="js/3d-engine.js?v=5"></script>
     <script src="js/bom.js?v=5"></script>
+    <script src="js/prompt_generator.js?v=5"></script>
     <script src="js/main.js?v=5"></script>
 </body>
 

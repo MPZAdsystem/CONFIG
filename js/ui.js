@@ -752,12 +752,270 @@ function refreshManualPanel() {
     }
 }
 
+function updateDimensionsButtonUI() {
+    const btn = document.getElementById('btnToggleDimensions');
+    if (!btn) return;
+    if (showDimensions) {
+        btn.style.background = 'linear-gradient(135deg, #0984e3, #00d2ff)';
+        btn.style.color = '#fff';
+        btn.style.border = 'none';
+        btn.style.boxShadow = '0 4px 15px rgba(0, 210, 255, 0.5)';
+        btn.innerHTML = '📏 Wizualizacja techniczna (WŁ)';
+    } else {
+        btn.style.background = 'linear-gradient(135deg, #444, #222)';
+        btn.style.color = '#ccc';
+        btn.style.border = '1px solid #555';
+        btn.style.boxShadow = '0 4px 10px rgba(0,0,0,0.3)';
+        btn.innerHTML = '📏 Wizualizacja techniczna';
+    }
+}
+window.updateDimensionsButtonUI = updateDimensionsButtonUI;
+
+function updateModuleListButtonUI() {
+    const btn = document.getElementById('btnModuleList');
+    if (!btn) return;
+    
+    const isBlocked = typeof currentSystem !== 'undefined' && ['wydruki', 'mframe_pallet', 'prompt_generator'].includes(currentSystem);
+    btn.style.display = isBlocked ? 'none' : 'flex';
+    
+    if (showModuleListMode === 'bw') {
+        btn.style.background = 'linear-gradient(135deg, #555, #333)';
+        btn.style.color = '#fff';
+        btn.style.border = '1px solid #888';
+        btn.style.boxShadow = '0 4px 15px rgba(255, 255, 255, 0.2)';
+        btn.innerHTML = '📋 Lista modułów (B/W)';
+    } else if (showModuleListMode) {
+        btn.style.background = 'linear-gradient(135deg, #9c27b0, #cc00ff)';
+        btn.style.color = '#fff';
+        btn.style.border = 'none';
+        btn.style.boxShadow = '0 4px 15px rgba(204, 0, 255, 0.5)';
+        btn.innerHTML = '📋 Lista modułów (WŁ)';
+    } else {
+        btn.style.background = 'linear-gradient(135deg, #444, #222)';
+        btn.style.color = '#ccc';
+        btn.style.border = '1px solid #555';
+        btn.style.boxShadow = '0 4px 10px rgba(0,0,0,0.3)';
+        btn.innerHTML = '📋 Lista modułów';
+    }
+}
+window.updateModuleListButtonUI = updateModuleListButtonUI;
+
+function buildModuleListTable() {
+    const overlay = document.getElementById('moduleListSidebarOverlay');
+    if (!overlay) return;
+
+    if (!window.assignedModulesList || window.assignedModulesList.length === 0) {
+        overlay.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px; border-bottom: 2px solid #ff0080; padding-bottom: 10px;">
+                <h3 style="margin:0; color:#fff; font-size: 16px;">📋 Lista Modułów</h3>
+                <button onclick="toggleModuleListMode()" style="background:#cc005f; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:bold;">Zamknij</button>
+            </div>
+            <p style="color:#888; font-size:12px;">Brak modułów do wyświetlenia. Upewnij się, że jesteś w trybie 3D.</p>
+        `;
+        return;
+    }
+
+    const isBW = typeof showModuleListMode !== 'undefined' && showModuleListMode === 'bw';
+    const mainAccentColor = isBW ? '#888888' : '#ff0080';
+    const subAccentColor = isBW ? '#888888' : '#00d2ff';
+    const titleBorderColor = isBW ? '#555555' : '#ff0080';
+
+    let html = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 20px; border-bottom: 2px solid ${titleBorderColor}; padding-bottom: 10px;">
+            <h3 style="margin:0; color:#fff; font-size: 16px;">📋 Lista Modułów</h3>
+            <button onclick="toggleModuleListMode()" style="background:#cc005f; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:bold;">Zamknij</button>
+        </div>
+        <table style="width:100%; border-collapse:collapse; font-size:11px; color:#fff;">
+            <thead>
+                <tr style="border-bottom:1px solid #444; color:#aaa; text-align:left;">
+                    <th style="padding:6px 4px; font-weight:bold;">Indeks / Nazwa</th>
+                    <th style="padding:6px 4px; font-weight:bold; text-align:right; color:${subAccentColor};">Wytyczne do wydruku</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    window.assignedModulesList.forEach((mod) => {
+        const item = mod.item;
+        const part = mod.part;
+        
+        let letter = '';
+        let name = '';
+        let widthCm = 0;
+        let heightCm = 0;
+        let isSego = false;
+        
+        if (typeof currentSystem !== 'undefined' && (currentSystem === 'SEGO' || currentSystem === 'SEGO_2_0')) {
+            isSego = true;
+        }
+
+        if (part === 'wall') {
+            letter = window.wallLetters ? window.wallLetters.get(item) : '';
+            name = `[Moduł ${letter}] ${item.labelEN || 'Wall'}`;
+            widthCm = item.length;
+            heightCm = item.height;
+        } else if (part === 'roof') {
+            letter = window.wallLetters ? window.wallLetters.get(item.planIndex + '_roof') : '';
+            name = `[Moduł ${letter}] Daszek (Dach)`;
+            widthCm = 100;
+            heightCm = 250;
+        } else if (part === 'leg') {
+            letter = window.wallLetters ? window.wallLetters.get(item.planIndex + '_leg') : '';
+            name = `[Moduł ${letter}] Daszek (Noga)`;
+            widthCm = 100;
+            heightCm = item.wallHeight || 250;
+        }
+
+        const sizeCmText = `${widthCm}x${heightCm} cm`;
+
+        html += `
+            <tr style="background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid #333; font-weight: bold; color: ${mainAccentColor};">
+                <td style="padding:8px 4px;">${name}</td>
+                <td style="padding:8px 4px; text-align:right; font-family: monospace;">${sizeCmText}</td>
+            </tr>
+        `;
+
+        const sides = [];
+        if (part === 'wall') {
+            sides.push({
+                label: 'Przód',
+                index: 1,
+                fileName: item.textureFrontName,
+                widthCm: widthCm,
+                heightCm: heightCm
+            });
+            sides.push({
+                label: 'Tył',
+                index: 2,
+                fileName: item.textureBackName,
+                widthCm: widthCm,
+                heightCm: heightCm
+            });
+        } else if (part === 'roof') {
+            const accData = item.accData || {};
+            sides.push({
+                label: 'Góra',
+                index: 1,
+                fileName: accData.texRoofFrontName || (accData.texRoofFront ? 'Grafika wgrana' : null),
+                widthCm: widthCm,
+                heightCm: heightCm
+            });
+            sides.push({
+                label: 'Dół',
+                index: 2,
+                fileName: accData.texRoofBackName || (accData.texRoofBack ? 'Grafika wgrana' : null),
+                widthCm: widthCm,
+                heightCm: heightCm
+            });
+        } else if (part === 'leg') {
+            const accData = item.accData || {};
+            sides.push({
+                label: 'Przód',
+                index: 1,
+                fileName: accData.texLegFrontName || (accData.texLegFront ? 'Grafika wgrana' : null),
+                widthCm: widthCm,
+                heightCm: heightCm
+            });
+            sides.push({
+                label: 'Tył',
+                index: 2,
+                fileName: accData.texLegBackName || (accData.texLegBack ? 'Grafika wgrana' : null),
+                widthCm: widthCm,
+                heightCm: heightCm
+            });
+        }
+
+        sides.forEach((side) => {
+            const graphicName = side.fileName || 'Brak grafiki';
+            const hasGraphic = !!side.fileName;
+            const netText = `${side.widthCm}x${side.heightCm} cm`;
+
+            let grossText = '-';
+            if (isSego) {
+                const wMm = (side.widthCm * 10) + 7;
+                const hMm = (side.heightCm * 10) + 7;
+                grossText = `${wMm}x${hMm} mm`;
+            } else {
+                const wMm = side.widthCm * 10;
+                const hMm = side.heightCm * 10;
+                grossText = `${wMm}x${hMm} mm`;
+            }
+
+            html += `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.02); color:#ccc;">
+                    <td style="padding:6px 4px 6px 16px; font-style:italic;">
+                        <span style="color:#888; margin-right:4px;">└─</span> 
+                        <strong style="color:${mainAccentColor}; font-family:monospace; margin-right:4px;">${letter}${side.index}</strong> 
+                        <span style="color:#aaa; font-size:10px; margin-right:4px;">(${side.label}):</span>
+                        <span style="${hasGraphic ? (isBW ? '#aaa' : '#1dd1a1') : '#666'}; font-weight:${hasGraphic ? '500' : 'normal'};">${graphicName}</span> 
+                        <span style="color:#999; font-size:10px;">(${netText})</span>
+                    </td>
+                    <td style="padding:6px 4px; text-align:right; font-family: monospace; color:${subAccentColor}; font-weight:bold;">
+                        ${grossText}
+                    </td>
+                </tr>
+            `;
+        });
+    });
+
+    html += `
+            </tbody>
+        </table>
+    `;
+
+    overlay.innerHTML = html;
+}
+window.buildModuleListTable = buildModuleListTable;
+
+function toggleModuleListMode() {
+    if (!showModuleListMode) {
+        showModuleListMode = true;
+    } else if (showModuleListMode === true) {
+        showModuleListMode = 'bw';
+    } else {
+        showModuleListMode = false;
+    }
+    
+    const stage = document.getElementById('stage');
+    if (stage) {
+        if (showModuleListMode === 'bw') {
+            stage.classList.add('stage-bw-mode');
+        } else {
+            stage.classList.remove('stage-bw-mode');
+        }
+    }
+    
+    // Toggle sidebar overlay
+    const overlay = document.getElementById('moduleListSidebarOverlay');
+    if (overlay) {
+        overlay.style.display = showModuleListMode ? 'block' : 'none';
+        if (showModuleListMode) {
+            buildModuleListTable();
+        }
+    }
+    
+    updateModuleListButtonUI();
+    if (is3DMode) {
+        update3DScene();
+    } else {
+        render();
+    }
+}
+window.toggleModuleListMode = toggleModuleListMode;
+
+document.addEventListener('DOMContentLoaded', () => {
+    updateDimensionsButtonUI();
+    updateModuleListButtonUI();
+});
+
 function toggleDimensions() {
     showDimensions = !showDimensions;
     isBlueprintMode = showDimensions; // Tryb techniczny włącza się razem z wymiarami
     if (is3DMode) update3DScene();
     // Populate/hide the legend panel (blueprintLegendItems set by drawKasetonScene)
     if (typeof window.refreshBlueprintLegend === 'function') window.refreshBlueprintLegend();
+    
+    updateDimensionsButtonUI();
 }
 
 function toggleSceneSettings() {
@@ -937,6 +1195,14 @@ function toggle3D() {
         if (btnMagnet) {
             btnMagnet.style.display = is3DMode ? 'none' : 'flex';
         }
+        const btnToggleDimensions = document.getElementById('btnToggleDimensions');
+        if (btnToggleDimensions) {
+            btnToggleDimensions.style.display = is3DMode ? 'flex' : 'none';
+        }
+        const btnModuleList = document.getElementById('btnModuleList');
+        if (btnModuleList) {
+            btnModuleList.style.display = 'flex';
+        }
 
         if (is3DMode) {
             if (container) container.style.display = 'block';
@@ -966,6 +1232,8 @@ function toggle3D() {
             window.blueprintDimensions = null;
             const blPanel = document.getElementById('blueprintLegend');
             if (blPanel) blPanel.style.display = 'none';
+            
+            // Keep module list mode active when leaving 3D
         }
     } catch (error) {
         alert("Wystąpił błąd silnika 3D: " + error.message);
@@ -1130,6 +1398,13 @@ function switchSystem(newSystem) {
         if (btnRand) btnRand.style.display = 'none';
         const btnMagnet = document.getElementById('btnMagnetPull');
         if (btnMagnet) btnMagnet.style.display = 'none';
+        const btnToggleDimensions = document.getElementById('btnToggleDimensions');
+        if (btnToggleDimensions) btnToggleDimensions.style.display = 'none';
+        const btnModuleList = document.getElementById('btnModuleList');
+        if (btnModuleList) btnModuleList.style.display = 'none';
+        if (typeof showModuleListMode !== 'undefined' && showModuleListMode) {
+            toggleModuleListMode();
+        }
 
         const wydrukiBtns = ['btnWydrukiReport', 'btnWydrukiMatch', 'btnWydrukiClearStage', 'btnClearWydruki'];
         wydrukiBtns.forEach(id => {
@@ -1194,18 +1469,44 @@ function switchSystem(newSystem) {
         btnMagnet.style.display = is3DMode ? 'none' : 'flex';
     }
 
+    const btnToggleDimensions = document.getElementById('btnToggleDimensions');
+    if (btnToggleDimensions) {
+        btnToggleDimensions.style.display = is3DMode ? 'flex' : 'none';
+    }
+    const btnModuleList = document.getElementById('btnModuleList');
+    if (btnModuleList) {
+        btnModuleList.style.display = 'flex';
+    }
+
     const allPanels = document.querySelectorAll('.system-ui-panel');
     allPanels.forEach(p => p.style.display = 'none');
 
     const collapsible = document.getElementById('sidebar-collapsible-content');
     if (collapsible) {
-        collapsible.style.display = (newSystem === 'wydruki') ? 'none' : 'block';
+        collapsible.style.display = (newSystem === 'wydruki' || newSystem === 'prompt_generator') ? 'none' : 'block';
+    }
+
+    const projectDetails = document.getElementById('sidebar-project-details');
+    if (projectDetails) {
+        projectDetails.style.display = (newSystem === 'prompt_generator') ? 'none' : 'block';
+    }
+
+    const promptControls = document.getElementById('ui-prompt-sidebar-controls');
+    if (promptControls) {
+        promptControls.style.display = (newSystem === 'prompt_generator') ? 'block' : 'none';
+        if (newSystem === 'prompt_generator' && typeof window.onPromptTypeChange === 'function') {
+            window.onPromptTypeChange();
+        }
+    }
+
+    if (typeof window.togglePromptGeneratorMode === 'function') {
+        window.togglePromptGeneratorMode(newSystem === 'prompt_generator');
     }
 
     // Wyposażenie Dodatkowe — widoczne dla wszystkich aktywnych systemów z builderem
     const wypPanel = document.getElementById('panel-wyposazenie-dodatkowe');
     if (wypPanel) {
-        const hideWyp = (newSystem === 'wydruki' || newSystem === 'mframe_pallet');
+        const hideWyp = (newSystem === 'wydruki' || newSystem === 'mframe_pallet' || newSystem === 'prompt_generator');
         wypPanel.style.display = hideWyp ? 'none' : 'block';
     }
 

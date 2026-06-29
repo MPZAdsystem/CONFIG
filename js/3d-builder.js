@@ -596,6 +596,8 @@ function addAccessory(id) {
 
 function addFreestanding(id) { let newItem = JSON.parse(JSON.stringify(DB[id])); newItem.offsetX = 0; newItem.offsetY = 300; plan.push(newItem); render(); }
 
+function addSuspended(id) { if (!DB[id]) return; let newItem = JSON.parse(JSON.stringify(DB[id])); newItem.offsetX = 0; newItem.offsetY = 300; plan.push(newItem); render(); }
+
 function removeFreestanding(index, e) { e.stopPropagation(); plan.splice(index, 1); render(); }
 
 function toggleKantorekDoor(index, e) {

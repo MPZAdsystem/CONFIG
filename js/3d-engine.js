@@ -611,6 +611,107 @@ function update3DScene() {
 
   if (!scene) return;
 
+  const addModuleLetterMesh = (letter, targetGroup, height, thickness) => {
+    if (!letter) return;
+    const letterCanvas = document.createElement('canvas');
+    letterCanvas.width = 256;
+    letterCanvas.height = 256;
+    const letterCtx = letterCanvas.getContext('2d');
+    
+    letterCtx.clearRect(0, 0, 256, 256);
+    letterCtx.font = 'bold 200px "Segoe UI", Arial';
+    letterCtx.fillStyle = '#ff1133'; // Vibrant neon red
+    letterCtx.textAlign = 'center';
+    letterCtx.textBaseline = 'middle';
+    letterCtx.fillText(letter, 128, 128);
+
+    const letterTex = new THREE.CanvasTexture(letterCanvas);
+    const letterMat = new THREE.MeshBasicMaterial({
+      map: letterTex,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+
+    const letterSize = 35;
+    const halfThick = thickness / 2;
+
+    // Front letter
+    const letterMeshFront = new THREE.Mesh(new THREE.PlaneGeometry(letterSize, letterSize), letterMat);
+    letterMeshFront.position.set(0, height, halfThick + 0.1);
+    letterMeshFront.userData = { isInternalAnatomy: true };
+    letterMeshFront.renderOrder = 1002;
+    targetGroup.add(letterMeshFront);
+
+    // Back letter
+    const letterMeshBack = new THREE.Mesh(new THREE.PlaneGeometry(letterSize, letterSize), letterMat);
+    letterMeshBack.position.set(0, height, -halfThick - 0.1);
+    letterMeshBack.rotation.y = Math.PI;
+    letterMeshBack.userData = { isInternalAnatomy: true };
+    letterMeshBack.renderOrder = 1002;
+    targetGroup.add(letterMeshBack);
+  };
+
+  const addModuleOverlayMesh = (letter, sizeText, targetGroup, height, thickness) => {
+    if (!letter) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    
+    // Clear and draw white background
+    ctx.clearRect(0, 0, 512, 512);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 512, 512);
+    
+    const isBW = typeof showModuleListMode !== 'undefined' && showModuleListMode === 'bw';
+
+    // Nice border
+    ctx.strokeStyle = isBW ? '#222222' : '#dddddd';
+    ctx.lineWidth = 16;
+    ctx.strokeRect(8, 8, 496, 496);
+    
+    // Letter in center-top
+    ctx.fillStyle = isBW ? '#222222' : '#ff1133';
+    ctx.font = 'bold 220px "Segoe UI", Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(letter, 256, 190);
+    
+    // Size text below
+    ctx.fillStyle = isBW ? '#555555' : '#111111';
+    ctx.font = 'bold 60px "Segoe UI", Arial';
+    ctx.fillText(sizeText, 256, 380);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+
+    const overlaySize = 45; // 45x45 cm square overlay
+    const halfThick = thickness / 2;
+
+    // Front overlay
+    const meshFront = new THREE.Mesh(new THREE.PlaneGeometry(overlaySize, overlaySize), mat);
+    meshFront.position.set(0, height, halfThick + 0.15);
+    meshFront.userData = { isModuleListOverlay: true };
+    meshFront.renderOrder = 1003;
+    targetGroup.add(meshFront);
+
+    // Back overlay
+    const meshBack = new THREE.Mesh(new THREE.PlaneGeometry(overlaySize, overlaySize), mat);
+    meshBack.position.set(0, height, -halfThick - 0.15);
+    meshBack.rotation.y = Math.PI;
+    meshBack.userData = { isModuleListOverlay: true };
+    meshBack.renderOrder = 1003;
+    targetGroup.add(meshBack);
+  };
+
   // 1. CZYSZCZENIE BUFORÓW I GEOMETRII (Twój obecny kod)
   sceneObjects.forEach(obj => {
     if (scene) scene.remove(obj);
@@ -666,8 +767,10 @@ function update3DScene() {
   if (typeof scene !== 'undefined' && scene) {
     scene.traverse(obj => {
       if (obj.userData && obj.userData.isInternalAnatomy) {
-        // Wyświetlaj rury i paski LED tylko, gdy włączony jest tryb pokazywania wymiarów
         obj.visible = (typeof showDimensions !== 'undefined' && showDimensions);
+      }
+      if (obj.userData && obj.userData.isModuleListOverlay) {
+        obj.visible = (typeof showModuleListMode !== 'undefined' && showModuleListMode);
       }
     });
   }
@@ -862,8 +965,52 @@ function update3DScene() {
   scene.add(gridGroup);
   sceneObjects.push(gridGroup);
 
+  // Sort walls and daszek parts to assign letters A-Z logically from left to right (along X-axis)
+  const modules = [];
   computed3DData.forEach(item => {
     if (item.type === 'wall') {
+      modules.push({
+        item: item,
+        part: 'wall',
+        cx: item.cx
+      });
+    } else if (item.type === 'daszek') {
+      const rot = -item.angle * Math.PI / 180;
+      // Roof part (center z_local = 131)
+      modules.push({
+        item: item,
+        part: 'roof',
+        cx: item.cx + 131 * Math.sin(rot)
+      });
+      // Leg part (center z_local = 262)
+      modules.push({
+        item: item,
+        part: 'leg',
+        cx: item.cx + 262 * Math.sin(rot)
+      });
+    }
+  });
+
+  // Sort modules by cx (left to right)
+  modules.sort((a, b) => a.cx - b.cx);
+
+  // Assign letters A-Z
+  const wallLetters = new Map();
+  modules.forEach((mod, index) => {
+    const letter = String.fromCharCode(65 + (mod.index !== undefined ? mod.index : index) % 26); // A-Z
+    if (mod.part === 'wall') {
+      wallLetters.set(mod.item, letter);
+    } else {
+      wallLetters.set(mod.item.planIndex + '_' + mod.part, letter);
+    }
+  });
+
+  window.wallLetters = wallLetters;
+  window.assignedModulesList = modules;
+
+  computed3DData.forEach(item => {
+    if (item.type === 'wall') {
+      const moduleLetter = wallLetters.get(item);
       const group = new THREE.Group();
       group.position.set(item.cx, globalElevationY, item.cz);
       group.rotation.y = -item.angle * Math.PI / 180;
@@ -1039,7 +1186,11 @@ function update3DScene() {
       // BLOK ETYKIETOWANIA I GENEROWANIA MIAR (Niezmieniony potok)
       // ─────────────────────────────────────────────────────────────────
       const labelCol = (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? "#8bb3ff" : "#ffffff";
-      const labelSprite = createTextSprite(item.labelEN || item.name, labelCol, 16);
+      let labelText = item.labelEN || item.name;
+      if (typeof isBlueprintMode !== 'undefined' && isBlueprintMode && moduleLetter) {
+        labelText = `[Moduł ${moduleLetter}] ` + labelText;
+      }
+      const labelSprite = createTextSprite(labelText, labelCol, 16);
       labelSprite.position.set(0, item.height + 25, 0);
       group.add(labelSprite);
       group.add(createLeaderLine(item.height, item.height + 15, 0));
@@ -1048,6 +1199,11 @@ function update3DScene() {
         const p1W = new THREE.Vector3(-item.length / 2, 0, 0);
         const p2W = new THREE.Vector3(item.length / 2, 0, 0);
         group.add(addDimension3D(p1W, p2W, `${item.length} cm`, new THREE.Vector3(0, -25, 0), 0.5));
+      }
+
+      if (moduleLetter) {
+        addModuleLetterMesh(moduleLetter, group, 40, item.thickness || (item.isFoldable ? 4.5 : 12));
+        addModuleOverlayMesh(moduleLetter, `${item.length}x${item.height} cm`, group, item.height / 2, item.thickness || (item.isFoldable ? 4.5 : 12));
       }
 
       scene.add(group);
@@ -1059,7 +1215,13 @@ function update3DScene() {
       group.rotation.y = -item.angle * Math.PI / 180;
 
       const legHeight = item.wallHeight;
-      const frameMat = new THREE.MeshStandardMaterial({ color: 0x999999, metalness: 0.7, roughness: 0.2 });
+      const frameMat = new THREE.MeshStandardMaterial({
+        color: isBlueprintMode ? 0x4488ff : 0x999999,
+        metalness: 0.7,
+        roughness: 0.2,
+        transparent: isBlueprintMode,
+        opacity: isBlueprintMode ? 0.2 : 1.0
+      });
       const texLoader = new THREE.TextureLoader();
 
       const getMat = (texUrl) => {
@@ -1084,7 +1246,57 @@ function update3DScene() {
       legMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(legGeom), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 })));
       group.add(legMesh);
 
-      const labelSprite = createTextSprite(item.labelEN); labelSprite.position.set(0, item.wallHeight + 40, 131); group.add(labelSprite); group.add(createLeaderLine(item.wallHeight + 12, item.wallHeight + 30, 131));
+      // Pobranie liter modułów dla dachu i nogi
+      const roofLetter = wallLetters.get(item.planIndex + '_roof');
+      const legLetter = wallLetters.get(item.planIndex + '_leg');
+
+      if (roofLetter) {
+        addModuleOverlayMesh(roofLetter, `100x250 cm`, roofMesh, 0, 12);
+      }
+      if (legLetter) {
+        addModuleOverlayMesh(legLetter, `100x${legHeight} cm`, legMesh, 0, 12);
+      }
+
+      // Wstrzyknięcie anatomii wewnętrznej SEGO (rozpórki, ledy, duży napis wymiarowy)
+      if (typeof currentSystem !== 'undefined' && (currentSystem === 'SEGO' || currentSystem === 'SEGO_2_0')) {
+        // Anatomia pionowej Nogi (Leg)
+        const legGroup = new THREE.Group();
+        legGroup.position.set(0, 0, 262);
+        buildSegoInternalAnatomy({ length: 100, height: legHeight }, legGroup);
+        if (legLetter) {
+          addModuleLetterMesh(legLetter, legGroup, 40, 12);
+        }
+        group.add(legGroup);
+
+        // Anatomia poziomego Dachu (Roof)
+        const roofGroup = new THREE.Group();
+        roofGroup.position.set(0, item.wallHeight - 6, 131);
+        roofGroup.rotation.x = -Math.PI / 2;
+
+        const roofAnatomySubGroup = new THREE.Group();
+        roofAnatomySubGroup.position.set(0, -125, 0); // Przesunięcie o połowę długości (250 / 2), aby wycentrować anatomię
+        buildSegoInternalAnatomy({ length: 100, height: 250 }, roofAnatomySubGroup);
+        if (roofLetter) {
+          addModuleLetterMesh(roofLetter, roofAnatomySubGroup, 40, 12);
+        }
+        roofGroup.add(roofAnatomySubGroup);
+        group.add(roofGroup);
+      }
+
+      // Etykieta tekstowa daszka z oznaczeniem modułów
+      let labelText = item.labelEN || "Daszek";
+      if (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) {
+        if (roofLetter && legLetter) {
+          labelText = `[Moduł ${roofLetter}/${legLetter}] ` + labelText;
+        } else if (roofLetter) {
+          labelText = `[Moduł ${roofLetter}] ` + labelText;
+        }
+      }
+      const labelCol = (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? "#8bb3ff" : "#ffffff";
+      const labelSprite = createTextSprite(labelText, labelCol, 16);
+      labelSprite.position.set(0, item.wallHeight + 40, 131);
+      group.add(labelSprite);
+      group.add(createLeaderLine(item.wallHeight + 12, item.wallHeight + 30, 131));
       scene.add(group); sceneObjects.push(group);
     }
     else if (item.type === 'accessory') {
@@ -1097,8 +1309,13 @@ function update3DScene() {
       let zOffset = (item.dir === 1 ? 1 : -1) * (6 + (isTV ? 2.5 : 12.5));
 
       let yPos = item.wallHeight / 2;
-      if (item.accData.slot === 1) yPos = item.wallHeight * 0.33;
-      else if (item.accData.slot === 3) yPos = item.wallHeight * 0.66;
+      if (item.accData.heightPct !== undefined) {
+        yPos = item.wallHeight * (item.accData.heightPct / 100);
+      } else if (item.accData.slot === 1) {
+        yPos = item.wallHeight * 0.33;
+      } else if (item.accData.slot === 3) {
+        yPos = item.wallHeight * 0.66;
+      }
 
       mesh.position.set(0, yPos, zOffset);
 
@@ -2023,6 +2240,9 @@ function update3DScene() {
       if (obj.userData && obj.userData.isInternalAnatomy) {
         obj.visible = (typeof showDimensions !== 'undefined' && showDimensions);
       }
+      if (obj.userData && obj.userData.isModuleListOverlay) {
+        obj.visible = (typeof showModuleListMode !== 'undefined' && showModuleListMode);
+      }
     });
   }
 
@@ -2085,6 +2305,11 @@ function update3DScene() {
       legendDiv.innerHTML = legendHTML;
       container3D.appendChild(legendDiv);
     }
+  }
+
+  // Refresh module list table in sidebar if active
+  if (typeof showModuleListMode !== 'undefined' && showModuleListMode && typeof window.buildModuleListTable === 'function') {
+    window.buildModuleListTable();
   }
 }
 
@@ -2989,7 +3214,7 @@ function render() {
       let cy = wallStartY + (y - wallStartY) / 2;
 
       let wFlags = feetFlags[index] || { leftFoot: true, rightFoot: true };
-      computed3DData.push({ type: 'wall', planIndex: index, cx: cx - stageCenterStartX, cz: cy - stageCenterStartY, length: item.length, height: item.height, angle: currentAngle, color: item.color, isDoor: item.isDoor, labelEN: item.labelEN, textureFront: item.textureFront, textureBack: item.textureBack, isFoldable: item.isFoldable, thickness: item.thickness, isFlipped: item.isFlipped, leftFoot: wFlags.leftFoot, rightFoot: wFlags.rightFoot });
+      computed3DData.push({ type: 'wall', planIndex: index, cx: cx - stageCenterStartX, cz: cy - stageCenterStartY, length: item.length, height: item.height, angle: currentAngle, color: item.color, isDoor: item.isDoor, labelEN: item.labelEN, textureFront: item.textureFront, textureBack: item.textureBack, textureFrontName: item.textureFrontName, textureBackName: item.textureBackName, isFoldable: item.isFoldable, thickness: item.thickness, isFlipped: item.isFlipped, leftFoot: wFlags.leftFoot, rightFoot: wFlags.rightFoot });
 
       let thick = item.thickness || 12;
       let wall = document.createElement('div');
@@ -3001,9 +3226,17 @@ function render() {
       wall.style.transformOrigin = '0 50%';
       wall.style.transform = `rotate(${currentAngle}deg)`;
 
-      if (item.color) { wall.style.borderColor = item.color; wall.style.boxShadow = `0 0 8px ${item.color}`; }
+      const isBW = typeof showModuleListMode !== 'undefined' && showModuleListMode === 'bw';
+      if (isBW) {
+        wall.style.borderColor = '#000000';
+        wall.style.backgroundColor = '#000000';
+        wall.style.boxShadow = 'none';
+        wall.style.color = '#ffffff';
+      } else {
+        if (item.color) { wall.style.borderColor = item.color; wall.style.boxShadow = `0 0 8px ${item.color}`; }
+      }
       let textRot = (currentAngle % 360 >= 90 && currentAngle % 360 <= 270) ? 180 : 0;
-      let heightLabel = item.height === 300 ? `<br><span style="font-size:8px;color:${item.color};">3m</span>` : '';
+      let heightLabel = item.height === 300 ? `<br><span style="font-size:8px;color:${isBW ? '#888888' : item.color};">3m</span>` : '';
       wall.innerHTML = `<span style="transform: rotate(${textRot}deg); pointer-events: none; text-align:center; line-height:1;">${item.length}${heightLabel}</span>`;
       wall.onclick = (e) => selectItem(index, e);
       layer.appendChild(wall);
@@ -3061,8 +3294,18 @@ function render() {
             daszekEl.className = 'sego-daszek' + (selectedItemIndex === `daszek_${index}_${accIdx}` ? ' selected' : '') + (isMultiSel(index) ? ' multi-selected' : '');
             daszekEl.onclick = (e) => selectItem(`daszek_${index}_${accIdx}`, e);
 
-            daszekEl.style.width = '100px'; daszekEl.style.height = '250px'; daszekEl.style.left = cx + 'px'; daszekEl.style.top = cy + 'px'; daszekEl.style.marginLeft = '-50px'; daszekEl.style.transformOrigin = '50% 0'; daszekEl.style.transform = `rotate(${finalAngle}deg)`;
-            let dRad = finalAngle * Math.PI / 180; let dEndX = cx - 250 * Math.sin(dRad); let dEndY = cy + 250 * Math.cos(dRad);
+            const startOffset = 6;
+            const daszekX = cx - startOffset * Math.sin(finalAngle * Math.PI / 180);
+            const daszekY = cy + startOffset * Math.cos(finalAngle * Math.PI / 180);
+
+            daszekEl.style.width = '100px'; daszekEl.style.height = '250px'; daszekEl.style.left = daszekX + 'px'; daszekEl.style.top = daszekY + 'px'; daszekEl.style.marginLeft = '-50px'; daszekEl.style.transformOrigin = '50% 0'; daszekEl.style.transform = `rotate(${finalAngle}deg)`;
+            if (isBW) {
+              daszekEl.style.backgroundColor = '#111111';
+              daszekEl.style.borderColor = '#000000';
+              daszekEl.style.borderTopColor = '#000000';
+              daszekEl.style.borderBottomColor = '#000000';
+            }
+            let dRad = finalAngle * Math.PI / 180; let dEndX = daszekX - 250 * Math.sin(dRad); let dEndY = daszekY + 250 * Math.cos(dRad);
             minX = Math.min(minX, dEndX - 50); maxX = Math.max(maxX, dEndX + 50); minY = Math.min(minY, dEndY - 50); maxY = Math.max(maxY, dEndY + 50);
             daszekEl.innerHTML = `<div class="acc-controls"><span class="acc-btn" onclick="toggleAccDir(${index}, ${accIdx}, event)">🔄</span><span class="acc-btn" onclick="removeAccessory(${index}, ${accIdx}, event)" style="color:#ff5555">❌</span></div>`;
             layer.appendChild(daszekEl);
@@ -3071,15 +3314,26 @@ function render() {
             acc.accessories.forEach((legAcc, legAccIdx) => {
               addItemToBom(legAcc.name, 1, legAcc.price, counts); baseCost += legAcc.price;
 
-              let legX = cx - 244 * Math.sin(dRad); let legY = cy + 244 * Math.cos(dRad);
+              let legX = daszekX - 244 * Math.sin(dRad); let legY = daszekY - 244 * Math.cos(dRad); // Wait, legY is cy + 244 originally, let's keep direction correct
+              legX = daszekX - 244 * Math.sin(dRad);
+              legY = daszekY + 244 * Math.cos(dRad);
               computed3DData.push({ type: 'accessory', id: legAcc.id, accData: legAcc, cx: legX - stageCenterStartX, cz: legY - stageCenterStartY, wallHeight: item.height, wallAngle: finalAngle, dir: legAcc.dir, labelEN: legAcc.labelEN });
 
               let accEl = document.createElement('div'); accEl.className = 'sego-accessory'; accEl.style.width = '24px'; accEl.style.height = '24px';
               let offsetRad = (finalAngle + (legAcc.dir === 1 ? 90 : -90)) * Math.PI / 180;
               let accX = legX + 18 * Math.cos(offsetRad); let accY = legY + 18 * Math.sin(offsetRad);
 
-              accEl.style.left = (accX - 12) + 'px'; accEl.style.top = (accY - 12 - (legAccIdx * 5)) + 'px'; accEl.style.background = legAcc.color; accEl.style.boxShadow = `0 0 8px ${legAcc.color}`;
-              accEl.innerHTML = `<div class="acc-controls"><span class="acc-btn" onclick="cycleLegAccSlot(${index}, ${accIdx}, ${legAccIdx}, event)" title="Zmień wysokość">↕️</span><span class="acc-btn" onclick="toggleLegAccDir(${index}, ${accIdx}, ${legAccIdx}, event)">🔄</span><span class="acc-btn" onclick="removeLegAccessory(${index}, ${accIdx}, ${legAccIdx}, event)" style="color:#ff5555">❌</span></div><span style="transform: rotate(${textRot}deg); pointer-events: none;">${legAcc.short}</span>`;
+              accEl.style.left = (accX - 12) + 'px'; accEl.style.top = (accY - 12 - (legAccIdx * 5)) + 'px';
+              if (isBW) {
+                accEl.style.background = '#222222';
+                accEl.style.border = '1px solid #000000';
+                accEl.style.boxShadow = 'none';
+                accEl.style.color = '#ffffff';
+              } else {
+                accEl.style.background = legAcc.color;
+                accEl.style.boxShadow = `0 0 8px ${legAcc.color}`;
+              }
+              accEl.innerHTML = `<div class="acc-controls"><span class="acc-btn" onclick="window.showHeightSlider(${index}, ${legAccIdx}, true, event)" style="font-size: 14px;" title="Ustaw wysokość">📏</span><span class="acc-btn" onclick="toggleLegAccDir(${index}, ${accIdx}, ${legAccIdx}, event)">🔄</span><span class="acc-btn" onclick="removeLegAccessory(${index}, ${accIdx}, ${legAccIdx}, event)" style="color:#ff5555">❌</span></div><span style="transform: rotate(${textRot}deg); pointer-events: none;">${legAcc.short}</span>`;
               layer.appendChild(accEl);
             });
           } else {
@@ -3090,8 +3344,17 @@ function render() {
 
             let offsetRad = (currentAngle + (effectiveDir === 1 ? 90 : -90)) * Math.PI / 180;
             let accX = cx + 18 * Math.cos(offsetRad); let accY = cy + 18 * Math.sin(offsetRad);
-            accEl.style.left = (accX - 12) + 'px'; accEl.style.top = (accY - 12 - (accIdx * 5)) + 'px'; accEl.style.background = acc.color; accEl.style.boxShadow = `0 0 8px ${acc.color}`;
-            accEl.innerHTML = `<div class="acc-controls"><span class="acc-btn" onclick="cycleAccSlot(${index}, ${accIdx}, event)" title="Zmień wysokość">↕️</span><span class="acc-btn" onclick="toggleAccDir(${index}, ${accIdx}, event)">🔄</span><span class="acc-btn" onclick="removeAccessory(${index}, ${accIdx}, event)" style="color:#ff5555">❌</span></div><span style="transform: rotate(${textRot}deg); pointer-events: none;">${acc.short}</span>`;
+            accEl.style.left = (accX - 12) + 'px'; accEl.style.top = (accY - 12 - (accIdx * 5)) + 'px';
+            if (isBW) {
+              accEl.style.background = '#222222';
+              accEl.style.border = '1px solid #000000';
+              accEl.style.boxShadow = 'none';
+              accEl.style.color = '#ffffff';
+            } else {
+              accEl.style.background = acc.color;
+              accEl.style.boxShadow = `0 0 8px ${acc.color}`;
+            }
+            accEl.innerHTML = `<div class="acc-controls"><span class="acc-btn" onclick="window.showHeightSlider(${index}, ${accIdx}, false, event)" style="font-size: 14px;" title="Ustaw wysokość">📏</span><span class="acc-btn" onclick="toggleAccDir(${index}, ${accIdx}, event)">🔄</span><span class="acc-btn" onclick="removeAccessory(${index}, ${accIdx}, event)" style="color:#ff5555">❌</span></div><span style="transform: rotate(${textRot}deg); pointer-events: none;">${acc.short}</span>`;
             layer.appendChild(accEl);
           }
         });
@@ -3439,6 +3702,59 @@ function render() {
 
     layer.appendChild(man2D);
   })();
+  // Cleanup old 2D module list elements if any
+  const oldSvg = document.getElementById('leaderLinesSvg');
+  if (oldSvg) oldSvg.remove();
+  const oldLabels = document.querySelectorAll('.draggable-module-label');
+  oldLabels.forEach(l => l.remove());
+
+  // If Module List Mode is active, generate 2D draggable overlays
+  if (typeof showModuleListMode !== 'undefined' && showModuleListMode) {
+      // Rebuild window.assignedModulesList first
+      const modules = [];
+      computed3DData.forEach(item => {
+        if (item.type === 'wall') {
+          modules.push({
+            item: item,
+            part: 'wall',
+            cx: item.cx
+          });
+        } else if (item.type === 'daszek') {
+          const rot = -item.angle * Math.PI / 180;
+          modules.push({
+            item: item,
+            part: 'roof',
+            cx: item.cx + 131 * Math.sin(rot)
+          });
+          modules.push({
+            item: item,
+            part: 'leg',
+            cx: item.cx + 262 * Math.sin(rot)
+          });
+        }
+      });
+
+      modules.sort((a, b) => a.cx - b.cx);
+
+      const wallLetters = new Map();
+      modules.forEach((mod, index) => {
+        const letter = String.fromCharCode(65 + index % 26);
+        if (mod.part === 'wall') {
+          wallLetters.set(mod.item, letter);
+        } else {
+          wallLetters.set(mod.item.planIndex + '_' + mod.part, letter);
+        }
+      });
+
+      window.wallLetters = wallLetters;
+      window.assignedModulesList = modules;
+
+      // Draw 2D drag-and-drop overlays
+      if (typeof draw2DModuleListLabels === 'function') {
+        draw2DModuleListLabels(layer, stageCenterStartX, stageCenterStartY);
+      }
+  }
+
   if (is3DMode) update3DScene();
 }
 
@@ -3738,3 +4054,242 @@ function computeWallFeetFlags(testPlan) {
   
   return flags;
 }
+
+function draw2DModuleListLabels(layer, stageCenterStartX, stageCenterStartY) {
+    const oldSvg = document.getElementById('leaderLinesSvg');
+    if (oldSvg) oldSvg.remove();
+    const oldLabels = document.querySelectorAll('.draggable-module-label');
+    oldLabels.forEach(l => l.remove());
+
+    if (!window.assignedModulesList || window.assignedModulesList.length === 0) return;
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'leaderLinesSvg';
+    svg.style.cssText = 'position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:1001;';
+    layer.appendChild(svg);
+
+    window.module2DOffsets = window.module2DOffsets || new Map();
+    const totalModules = window.assignedModulesList.length;
+    const isBW = typeof showModuleListMode !== 'undefined' && showModuleListMode === 'bw';
+
+    window.assignedModulesList.forEach((mod, index) => {
+        const item = mod.item;
+        const part = mod.part;
+
+        let letter = '';
+        let widthCm = 0;
+        let heightCm = 0;
+        let isSego = false;
+        let moduleId = '';
+        let center = { x: 0, y: 0 };
+
+        if (typeof currentSystem !== 'undefined' && (currentSystem === 'SEGO' || currentSystem === 'SEGO_2_0')) {
+            isSego = true;
+        }
+
+        if (part === 'wall') {
+            letter = window.wallLetters.get(item);
+            widthCm = item.length;
+            heightCm = item.height;
+            moduleId = 'wall_' + item.planIndex;
+            center.x = item.cx + stageCenterStartX;
+            center.y = item.cz + stageCenterStartY;
+        } else if (part === 'roof') {
+            letter = window.wallLetters.get(item.planIndex + '_roof');
+            widthCm = 100;
+            heightCm = 250;
+            moduleId = 'roof_' + item.planIndex;
+            const dRad = item.angle * Math.PI / 180;
+            center.x = item.cx + stageCenterStartX - 131 * Math.sin(dRad);
+            center.y = item.cz + stageCenterStartY + 131 * Math.cos(dRad);
+        } else if (part === 'leg') {
+            letter = window.wallLetters.get(item.planIndex + '_leg');
+            widthCm = 100;
+            heightCm = item.wallHeight || 250;
+            moduleId = 'leg_' + item.planIndex;
+            const dRad = item.angle * Math.PI / 180;
+            center.x = item.cx + stageCenterStartX - 262 * Math.sin(dRad);
+            center.y = item.cz + stageCenterStartY + 262 * Math.cos(dRad);
+        }
+
+        let offset = window.module2DOffsets.get(moduleId);
+        if (!offset) {
+            const angle = (index * 2 * Math.PI) / totalModules - Math.PI / 2;
+            const dist = 130;
+            offset = { dx: dist * Math.cos(angle), dy: dist * Math.sin(angle) };
+            window.module2DOffsets.set(moduleId, offset);
+        }
+
+        const sides = [];
+        if (part === 'wall') {
+            sides.push({ label: 'Przód', index: 1, fileName: item.textureFrontName, w: widthCm, h: heightCm });
+            sides.push({ label: 'Tył', index: 2, fileName: item.textureBackName, w: widthCm, h: heightCm });
+        } else if (part === 'roof') {
+            const accData = item.accData || {};
+            sides.push({ label: 'Góra', index: 1, fileName: accData.texRoofFrontName || (accData.texRoofFront ? 'Grafika' : null), w: widthCm, h: heightCm });
+            sides.push({ label: 'Dół', index: 2, fileName: accData.texRoofBackName || (accData.texRoofBack ? 'Grafika' : null), w: widthCm, h: heightCm });
+        } else if (part === 'leg') {
+            const accData = item.accData || {};
+            sides.push({ label: 'Przód', index: 1, fileName: accData.texLegFrontName || (accData.texLegFront ? 'Grafika' : null), w: widthCm, h: heightCm });
+            sides.push({ label: 'Tył', index: 2, fileName: accData.texLegBackName || (accData.texLegBack ? 'Grafika' : null), w: widthCm, h: heightCm });
+        }
+
+        const labelEl = document.createElement('div');
+        labelEl.className = 'draggable-module-label';
+        labelEl.dataset.centerX = center.x;
+        labelEl.dataset.centerY = center.y;
+        labelEl.style.cssText = isBW ? `
+            position: absolute;
+            background: rgba(240, 240, 240, 0.95);
+            border: 1px solid #555555;
+            border-radius: 6px;
+            padding: 6px 10px;
+            color: #222222;
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 11px;
+            z-index: 1002;
+            cursor: move;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            min-width: 140px;
+            pointer-events: auto;
+            user-select: none;
+            backdrop-filter: blur(2px);
+        ` : `
+            position: absolute;
+            background: rgba(10, 10, 15, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 6px 10px;
+            color: #fff;
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 11px;
+            z-index: 1002;
+            cursor: move;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            min-width: 140px;
+            pointer-events: auto;
+            user-select: none;
+            backdrop-filter: blur(2px);
+        `;
+
+        let sidesHTML = '';
+        sides.forEach(s => {
+            const gName = s.fileName ? s.fileName : 'Brak';
+            let gross = '';
+            if (isSego) {
+                gross = `${(s.w * 10) + 7}x${(s.h * 10) + 7} mm`;
+            } else {
+                gross = `${s.w * 10}x${s.h * 10} mm`;
+            }
+            
+            const textColor = isBW ? '#555555' : '#00d2ff';
+            const fileNameColor = isBW ? '#777777' : '#aaa';
+            sidesHTML += `
+                <div style="margin-top: 3px; font-family: monospace; font-size: 9.5px; line-height: 1.2;">
+                    <span style="color:${textColor}; font-weight:bold;">${letter}${s.index}: ${gross}</span> 
+                    <span style="color:${fileNameColor};">[${gName}]</span>
+                </div>
+            `;
+        });
+
+        const headerColor = isBW ? '#222222' : '#ffffff';
+        labelEl.innerHTML = `
+            <div style="font-weight: bold; color: ${headerColor}; font-size: 12px; margin-bottom: 2px; text-shadow: ${isBW ? 'none' : '0 1px 2px rgba(0,0,0,0.8)'};">
+                ${letter}: ${widthCm}x${heightCm} cm
+            </div>
+            <div class="label-underline" style="
+                height: 2px;
+                background: ${isBW ? '#555555' : '#39ff14'};
+                margin: 4px -10px;
+                box-shadow: ${isBW ? 'none' : '0 0 6px #39ff14'};
+                border-radius: 1px;
+            "></div>
+            <div style="margin-top: 4px;">
+                ${sidesHTML}
+            </div>
+        `;
+
+        layer.appendChild(labelEl);
+
+        requestAnimationFrame(() => {
+            labelEl.style.left = (center.x + offset.dx - labelEl.offsetWidth / 2) + 'px';
+            labelEl.style.top = (center.y + offset.dy - labelEl.offsetHeight / 2) + 'px';
+            drawLeaderLines();
+        });
+
+        labelEl.onmousedown = function (e) {
+            e.preventDefault(); e.stopPropagation();
+            let startX = e.clientX;
+            let startY = e.clientY;
+            let initDx = offset.dx;
+            let initDy = offset.dy;
+            let vs = typeof viewScale !== 'undefined' ? viewScale : 1;
+
+            function onMouseMove(event) {
+                offset.dx = initDx + (event.clientX - startX) / vs;
+                offset.dy = initDy + (event.clientY - startY) / vs;
+
+                labelEl.style.left = (center.x + offset.dx - labelEl.offsetWidth / 2) + 'px';
+                labelEl.style.top = (center.y + offset.dy - labelEl.offsetHeight / 2) + 'px';
+                drawLeaderLines();
+            }
+
+            function onMouseUp() {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+            }
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        };
+    });
+
+    function drawLeaderLines() {
+        svg.innerHTML = '';
+        const labels = document.querySelectorAll('.draggable-module-label');
+        labels.forEach(label => {
+            const px = parseFloat(label.dataset.centerX);
+            const py = parseFloat(label.dataset.centerY);
+            const leftVal = parseFloat(label.style.left) || 0;
+            const topVal = parseFloat(label.style.top) || 0;
+            const wVal = label.offsetWidth || 0;
+            const hVal = label.offsetHeight || 0;
+
+            const underlineEl = label.querySelector('.label-underline');
+            let uy = topVal + 22;
+            if (underlineEl) {
+                uy = topVal + underlineEl.offsetTop + underlineEl.offsetHeight / 2;
+            }
+
+            let anchorX = leftVal;
+            if (leftVal + wVal / 2 < px) {
+                anchorX = leftVal + wVal;
+            }
+
+            // 1. Leader Line: Solid line with glow or gray without glow
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', `M ${px} ${py} L ${anchorX} ${uy}`);
+            path.setAttribute('stroke', isBW ? '#555555' : '#39ff14');
+            path.setAttribute('stroke-width', '1.5');
+            path.setAttribute('fill', 'none');
+            if (!isBW) {
+                path.style.filter = 'drop-shadow(0 0 3px #39ff14)';
+            }
+            svg.appendChild(path);
+
+            // 3. Anchor dot: Small circle with glow at the module center
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', px);
+            circle.setAttribute('cy', py);
+            circle.setAttribute('r', '3');
+            circle.setAttribute('fill', isBW ? '#555555' : '#39ff14');
+            if (!isBW) {
+                circle.style.filter = 'drop-shadow(0 0 3px #39ff14)';
+            }
+            svg.appendChild(circle);
+        });
+    }
+
+    window.drawLeaderLines = drawLeaderLines;
+}
+window.draw2DModuleListLabels = draw2DModuleListLabels;

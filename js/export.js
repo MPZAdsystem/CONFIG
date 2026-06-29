@@ -4,6 +4,14 @@ function saveProjectLocal() {
         return;
     }
 
+    let wallList = plan.map((p, idx) => ({
+        stepIndex: idx + 1,
+        name: p.name || p.id || 'Moduł',
+        width: p.width || p.length || 100,
+        height: p.height || 250,
+        type: p.type || 'wall'
+    }));
+
     // Pakujemy cały stan aplikacji do jednego obiektu
     const projectData = {
         version: 1,
@@ -12,7 +20,11 @@ function saveProjectLocal() {
         customerName: document.getElementById('customerName').value,
         customerEmail: document.getElementById('customerEmail').value,
         floorConfig: floorConfig,
-        plan: plan
+        plan: plan,
+        architecturalManifest: {
+            totalWallsCount: wallList.length,
+            wallSequenceFromLeftToRight: wallList
+        }
     };
 
     // ZMIANA: Zapis do Blob pozwala na zapisywanie ogromnych grafik bez zawieszania przeglądarki
@@ -103,19 +115,7 @@ function getIntranetXlsBase64() {
     return XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
 }
 
-function uploadProjectToServer(projectName, jsonString, customXlsBase64 = null) {
-    let csvString = "";
-    if (typeof generateBOMCSV === 'function') {
-        csvString = generateBOMCSV();
-    }
-
-    let xlsBase64 = "";
-    if (customXlsBase64 !== null) {
-        xlsBase64 = customXlsBase64;
-    } else if (typeof getIntranetXlsBase64 === 'function') {
-        xlsBase64 = getIntranetXlsBase64();
-    }
-
+function uploadProjectToServer(projectName, jsonString, xlsBase64) {
     fetch('Api/api_save.php', {
         method: 'POST',
         headers: {
@@ -124,8 +124,7 @@ function uploadProjectToServer(projectName, jsonString, customXlsBase64 = null) 
         body: JSON.stringify({
             projectName: projectName || 'BezNazwy',
             jsonData: jsonString,
-            csvData: csvString,
-            xlsData: xlsBase64
+            xlsData: xlsBase64 || ''
         })
     })
     .then(response => {
@@ -147,10 +146,11 @@ function uploadProjectToServer(projectName, jsonString, customXlsBase64 = null) 
     })
     .then(data => {
         if (data.status === 'OK') {
-            console.log("Projekt został automatycznie zapisany na serwerze:", data.files);
-            showNotification("Zapisano na serwerze", "Zaktualizowano pliki projektu (.json i .csv).");
+            console.log("Projekt został zapisany na serwerze:", data.files);
+            showNotification("Zapisano na serwerze", "Zaktualizowano pliki projektu (.json i .xlsx).");
         } else {
             console.warn("Błąd zapisu na serwerze:", data.message);
+            showNotification("Błąd zapisu", data.message || "Nie udało się zapisać na serwerze.");
         }
     })
     .catch(err => {
@@ -666,15 +666,18 @@ window.openManualModalFromIntranet = function () {
     openManualModal();
 };
 
-window.generateIntranetXls = function () {
+window.saveProjectConsolidated = function () {
     if (!window.intranetBOMDraft || window.intranetBOMDraft.length === 0) {
-        alert("Brak danych do wygenerowania pliku XLS!");
+        alert("Brak danych do zapisania!");
         return;
     }
 
-    const rows = [];
+    const projectNameEl = document.getElementById('projectName');
+    const pName = projectNameEl ? projectNameEl.value.trim() : 'Projekt';
+    const safeName = pName.replace(/\s+/g, '_') || 'BezNazwy';
 
-    // Add header row
+    // === 1. Generowanie XLSX z BOM ===
+    const rows = [];
     rows.push([
         'ID Produktu',
         'ID Produktu\nnadrzędnego',
@@ -687,11 +690,9 @@ window.generateIntranetXls = function () {
         'Dodaj BOM'
     ]);
 
-    // Add data rows
     window.intranetBOMDraft.forEach(item => {
         const idVal = (item.isParent || !item.isKaseton) ? (item.id ? parseFloat(item.id) : null) : null;
         const parentIdVal = (!item.isParent && item.isKaseton) ? (item.parentId ? parseFloat(item.parentId) : null) : null;
-
         rows.push([
             idVal,
             parentIdVal,
@@ -705,32 +706,56 @@ window.generateIntranetXls = function () {
         ]);
     });
 
-    // Create worksheet and workbook
     const ws = XLSX.utils.aoa_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Worksheet");
 
-    // Download
-    const projectNameEl = document.getElementById('projectName');
-    const pName = projectNameEl ? projectNameEl.value.trim() : 'Projekt';
-    const filename = `${pName.replace(/\s+/g, '_')}_BOM.xlsx`;
+    // Pobierz XLSX lokalnie (kopia zapasowa)
+    const xlsFilename = `${safeName}_BOM.xlsx`;
+    XLSX.writeFile(wb, xlsFilename);
 
-    XLSX.writeFile(wb, filename);
+    // Przygotuj XLSX jako base64 do wysyłki na serwer
+    const xlsBase64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
 
-    // Zapisz na serwerze wygenerowany XLS (w tle)
-    const editedXlsBase64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
-    const jsonString = JSON.stringify({
+    let wallList = plan.map((p, idx) => ({
+        stepIndex: idx + 1,
+        name: p.name || p.id || 'Moduł',
+        width: p.width || p.length || 100,
+        height: p.height || 250,
+        type: p.type || 'wall'
+    }));
+
+    // === 2. Generowanie JSON projektu ===
+    const projectData = {
         version: 1,
         system: currentSystem,
-        projectName: document.getElementById('projectName').value,
+        projectName: pName,
         customerName: document.getElementById('customerName').value,
         customerEmail: document.getElementById('customerEmail').value,
         floorConfig: floorConfig,
-        plan: plan
-    });
-    uploadProjectToServer(pName, jsonString, editedXlsBase64);
+        plan: plan,
+        architecturalManifest: {
+            totalWallsCount: wallList.length,
+            wallSequenceFromLeftToRight: wallList
+        }
+    };
+    const jsonString = JSON.stringify(projectData);
 
-    // Close modal after successful generation
+    // Pobierz JSON lokalnie (kopia zapasowa)
+    const jsonBlob = new Blob([jsonString], { type: 'application/json' });
+    const jsonUrl = URL.createObjectURL(jsonBlob);
+    const jsonLink = document.createElement('a');
+    jsonLink.href = jsonUrl;
+    jsonLink.download = `EXPO_${safeName}.json`;
+    document.body.appendChild(jsonLink);
+    jsonLink.click();
+    jsonLink.remove();
+    URL.revokeObjectURL(jsonUrl);
+
+    // === 3. Upload na serwer (XLSX + JSON, bez CSV) ===
+    uploadProjectToServer(pName, jsonString, xlsBase64);
+
+    // === 4. Zamknij modal ===
     window.closeIntranetBomModal();
 };
 

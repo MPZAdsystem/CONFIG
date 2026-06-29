@@ -456,6 +456,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 let showDimensions = false; // Zmienna sterująca widocznością wymiarów
+let showModuleListMode = false; // Zmienna sterująca widocznością listy modułów
 
 let isAnimating = false;
 
@@ -567,6 +568,86 @@ window.cycleLegAccSlot = function (pIdx, aIdx, legAccIdx, e) {
 
     if (!acc.slot) acc.slot = 2; acc.slot = acc.slot === 3 ? 1 : acc.slot + 1; render();
 
+};
+
+window.showHeightSlider = function (itemIndex, accIndex, isLeg, event) {
+    event.stopPropagation();
+    
+    const existing = document.getElementById('accessory-height-popover');
+    if (existing) existing.remove();
+    
+    const popover = document.createElement('div');
+    popover.id = 'accessory-height-popover';
+    popover.style.cssText = `
+        position: absolute;
+        background: rgba(20, 20, 25, 0.95);
+        border: 1px solid var(--highlight, #ff0080);
+        box-shadow: 0 4px 15px rgba(255, 0, 128, 0.3);
+        border-radius: 8px;
+        padding: 8px 12px;
+        z-index: 2000;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        color: #fff;
+        font-family: sans-serif;
+        font-size: 11px;
+        min-width: 150px;
+    `;
+    
+    const rect = event.currentTarget.getBoundingClientRect();
+    popover.style.left = (window.scrollX + rect.left) + 'px';
+    popover.style.top = (window.scrollY + rect.top - 65) + 'px';
+    
+    const wall = plan[itemIndex];
+    let acc = null;
+    if (isLeg) {
+        const daszek = wall.accessories.find(a => a.id === 'daszek');
+        if (daszek && daszek.accessories) acc = daszek.accessories[accIndex];
+    } else {
+        acc = wall.accessories[accIndex];
+    }
+    
+    if (!acc) return;
+    
+    if (acc.heightPct === undefined) {
+        if (acc.slot === 1) acc.heightPct = 33;
+        else if (acc.slot === 3) acc.heightPct = 66;
+        else acc.heightPct = 50;
+    }
+    
+    popover.innerHTML = `
+        <div style="display:flex; justify-content:space-between; font-weight:bold; align-items:center;">
+            <span>Wysokość: ${acc.heightPct}%</span>
+            <span style="cursor:pointer; color:#ff5555; font-size:12px; font-weight:bold;" onclick="document.getElementById('accessory-height-popover').remove()">✕</span>
+        </div>
+        <input type="range" min="10" max="90" value="${acc.heightPct}" style="width:100%; cursor:pointer;" id="heightRangeInput">
+    `;
+    
+    document.body.appendChild(popover);
+    
+    const slider = popover.querySelector('#heightRangeInput');
+    slider.oninput = (e) => {
+        const val = parseInt(e.target.value, 10);
+        acc.heightPct = val;
+        popover.querySelector('span').innerText = `Wysokość: ${val}%`;
+        
+        if (typeof is3DMode !== 'undefined' && is3DMode) {
+            if (typeof update3DScene === 'function') update3DScene();
+        } else {
+            if (typeof render === 'function') render();
+        }
+    };
+    
+    const outsideClickListener = (e) => {
+        if (!popover.contains(e.target) && e.target !== event.currentTarget) {
+            popover.remove();
+            document.removeEventListener('click', outsideClickListener);
+        }
+    };
+    setTimeout(() => {
+        document.addEventListener('click', outsideClickListener);
+    }, 10);
 };
 
 window.onresize = () => {

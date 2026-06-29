@@ -65,6 +65,7 @@ async function executePDFGeneration() {
     const abortPdf = () => {
         if (!was3DMode) { is3DMode = false; container3D.style.display = 'none'; container3D.style.opacity = '1'; }
         showDimensions = originalDimState; isBlueprintMode = originalBlueState;
+        if (typeof window.updateDimensionsButtonUI === 'function') window.updateDimensionsButtonUI();
         if (human3DModel) human3DModel.visible = true; // Przywrócenie człowieka w razie awarii
         if (is3DMode) update3DScene();
         isPdfGenerating = false;
@@ -161,6 +162,7 @@ async function executePDFGeneration() {
 
     if (!was3DMode) { is3DMode = false; container3D.style.display = 'none'; container3D.style.opacity = '1'; }
     showDimensions = originalDimState; isBlueprintMode = originalBlueState;
+    if (typeof window.updateDimensionsButtonUI === 'function') window.updateDimensionsButtonUI();
     if (is3DMode) update3DScene();
 
     let tableData = []; let totalFinal = 0; let totalBase = 0;
@@ -1961,80 +1963,99 @@ async function randomizeProjectGraphics(btnElement) {
         name: 'MOCK_ZIELONA_APLA_FALLBACK.jpg'
     };
 
+    let files = [];
     try {
-        const response = await fetch('https://api.github.com/repos/MPZAdsystem/CONFIG/contents/Zapisane%20grafiki');
-        if (!response.ok) throw new Error('GitHub API Error');
-        const files = await response.json();
-
-        const validExts = ['jpg', 'jpeg', 'png', 'pdf', 'tif', 'tiff'];
-
-        const parsedGraphics = files
-            .filter(f => f.type === 'file' && validExts.includes(f.name.split('.').pop().toLowerCase()))
-            .map(f => {
-                const nameLower = f.name.toLowerCase();
-                const dimMatch = f.name.match(/(\d+)\s*[xX*]\s*(\d+)/);
-                let w = 100, h = 100;
-                if (dimMatch) {
-                    w = parseInt(dimMatch[1], 10);
-                    h = parseInt(dimMatch[2], 10);
-                }
-
-                // Pobranie kategorii z końcówki nazwy pliku
-                const baseName = f.name.substring(0, f.name.lastIndexOf('.'));
-                const tokens = baseName.split(/[_-\s]+/);
-                const lastToken = tokens[tokens.length - 1].toLowerCase();
-                
-                const ignoreTokens = ['sego', 'foldable', 'adframe', 'multiframe', 'general', 'generic', 'uni', 'universal', 'brand'];
-                let category = null;
-                if (lastToken && isNaN(lastToken) && !ignoreTokens.includes(lastToken) && !lastToken.includes('x')) {
-                    category = lastToken;
-                }
-
-                return {
-                    name: f.name,
-                    url: f.download_url,
-                    width: w,
-                    height: h,
-                    ratio: w / h,
-                    isGeneric: nameLower.includes('general') || nameLower.includes('generic'),
-                    systems: ['sego', 'foldable', 'adframe', 'multiframe'].filter(sys => nameLower.includes(sys)),
-                    category: category,
-                    isUniversal: nameLower.includes('uni') || nameLower.includes('universal'),
-                    isBrand: nameLower.includes('brand')
-                };
-            });
-
-        // Dobór spójnej tematyki dla całego stoiska
-        let chosenCategory = null;
-        const categories = parsedGraphics.map(g => g.category).filter(c => c !== null);
-        const uniqueCategories = [...new Set(categories)];
-        if (uniqueCategories.length > 0) {
-            chosenCategory = uniqueCategories[Math.floor(Math.random() * uniqueCategories.length)];
-            console.log("🎨 Wylosowany motyw graficzny dla stoiska:", chosenCategory);
+        const response = await fetch('Api/api_graphics.php');
+        if (response.ok) {
+            files = await response.json();
         }
+    } catch (e) {
+        console.warn("Local graphics API failed, falling back to static list", e);
+    }
 
-        let brandCount = 0;
+    if (!files || files.length === 0) {
+        const folderName = 'Zapisane grafiki';
+        const staticNames = [
+            'Foldable 300x250.png',
+            'General 300x250 eco 2.png',
+            'Sego 100x250.jpg',
+            'general 100x250 - hummingbird.png',
+            'general 100x250 eco 2.png',
+            'general 100x250 eco.png',
+            'general 300x250 -metal tiger.png',
+            'general 300x250 eco.png'
+        ];
+        files = staticNames.map(name => ({
+            name: name,
+            download_url: folderName + '/' + encodeURIComponent(name)
+        }));
+    }
 
-        // Inteligentny Solver Proporcji z uwzględnieniem tolerancji, kategorii i systemów
+    try {
+        const systemKeywords = ['sego', 'multiframe', 'foldable', 'flex', 'adframe', 'lmd', 'lms', 'ctf'];
+        const noiseKeywords = ['general', 'generic', 'uni', 'universal', 'brand', 'mock', 'apla', 'fallback', 'zapisane', 'grafiki'];
+
+        const parsedGraphics = files.map(f => {
+            const nameLower = f.name.toLowerCase();
+            const dimMatch = f.name.match(/(\d+)\s*[xX*]\s*(\d+)/);
+            let w = 100, h = 100;
+            if (dimMatch) {
+                w = parseInt(dimMatch[1], 10);
+                h = parseInt(dimMatch[2], 10);
+            }
+
+            const matchedSystems = systemKeywords.filter(sys => nameLower.includes(sys));
+
+            let baseName = f.name.substring(0, f.name.lastIndexOf('.')) || f.name;
+            let themeClean = baseName.toLowerCase();
+            themeClean = themeClean.replace(/\d+\s*[xX*]\s*\d+/, '');
+            
+            systemKeywords.forEach(sys => {
+                themeClean = themeClean.replace(new RegExp('\\b' + sys + '\\b', 'g'), '');
+            });
+            noiseKeywords.forEach(n => {
+                themeClean = themeClean.replace(new RegExp('\\b' + n + '\\b', 'g'), '');
+            });
+            themeClean = themeClean.replace(/[-_\s]+/g, ' ').trim();
+
+            return {
+                name: f.name,
+                url: f.download_url,
+                width: w,
+                height: h,
+                ratio: w / h,
+                systems: matchedSystems,
+                themeKeyword: themeClean || null
+            };
+        });
+
+        let chosenThemeKeyword = null;
+
+        const isSystemCompatible = (graphicSystems, currentSystem) => {
+            if (graphicSystems.length === 0) return true;
+            const sysLower = currentSystem.toLowerCase();
+            return graphicSystems.some(keyword => {
+                if (keyword === 'sego') return sysLower.includes('sego');
+                if (keyword === 'multiframe') return sysLower.includes('multiframe');
+                if (keyword === 'foldable') return sysLower.includes('foldable');
+                if (keyword === 'flex') return sysLower.includes('flex');
+                if (keyword === 'adframe') return sysLower.includes('adframe') || sysLower === 'kasetony_niestandardowe';
+                if (keyword === 'lmd') return sysLower.includes('lmd');
+                if (keyword === 'lms') return sysLower.includes('lms');
+                if (keyword === 'ctf') return sysLower.includes('ctf');
+                return sysLower.includes(keyword);
+            });
+        };
+
         const findBestGraphic = (targetW, targetH) => {
             const targetRatio = targetW / targetH;
-            const sysLower = currentSystem === 'kasetony_niestandardowe' ? 'adframe' : currentSystem.toLowerCase();
 
-            // Pula przefiltrowana pod kątem kompatybilności systemowej i limitu brandu
-            let pool = parsedGraphics.filter(g => {
-                const isSystemCompatible = g.systems.length === 0 || g.systems.includes(sysLower) || g.isGeneric;
-                if (!isSystemCompatible) return false;
-                if (brandCount >= 2 && g.isBrand) return false;
-                return true;
-            });
-
+            let pool = parsedGraphics.filter(g => isSystemCompatible(g.systems, currentSystem));
             if (pool.length === 0) return greenFallback;
 
-            // Próba dobrania tematycznego (kategoria wiodąca lub universalne)
-            if (chosenCategory) {
-                const themedPool = pool.filter(g => g.category === chosenCategory || g.isUniversal);
-                const hasMatchingThemed = themedPool.some(g => Math.abs(g.ratio - targetRatio) <= 0.4);
-                if (hasMatchingThemed) {
+            if (chosenThemeKeyword) {
+                const themedPool = pool.filter(g => g.name.toLowerCase().includes(chosenThemeKeyword));
+                if (themedPool.length > 0) {
                     pool = themedPool;
                 }
             }
@@ -2046,17 +2067,15 @@ async function randomizeProjectGraphics(btnElement) {
             });
 
             // Bezpiecznik: jeśli rozjazd proporcji przekracza 0.4, ładujemy zieleń
-            if (minDiff > 0.4) {
-                return greenFallback;
-            }
-
             const bestMatches = pool.filter(g => Math.abs(Math.abs(g.ratio - targetRatio) - minDiff) < 0.02);
             const selected = bestMatches[Math.floor(Math.random() * bestMatches.length)];
-            
-            if (selected.isBrand) {
-                brandCount++;
+
+            if (selected && !chosenThemeKeyword && selected.themeKeyword) {
+                chosenThemeKeyword = selected.themeKeyword;
+                console.log("🎨 Wylosowany motyw graficzny dla stoiska (zestaw):", chosenThemeKeyword);
             }
-            return selected;
+
+            return selected || greenFallback;
         };
 
         // ═══════════════════════════════════════════════════════════
