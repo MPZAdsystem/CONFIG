@@ -1,3 +1,15 @@
+window.showHallEnvironment = false;
+function toggleHallEnvironment() {
+  window.showHallEnvironment = !window.showHallEnvironment;
+  const btn = document.getElementById('btnToggleHallEnv');
+  if (btn) {
+    btn.classList.toggle('active', window.showHallEnvironment);
+    btn.innerText = window.showHallEnvironment ? '🏢 Otoczenie Hali (WŁ)' : '🏢 Otoczenie Hali';
+  }
+  if (typeof render === 'function') render();
+}
+window.toggleHallEnvironment = toggleHallEnvironment;
+
 function updateLighting() {
   if (!scene) return;
   let ambVal = parseFloat(document.getElementById('ambLightSlider').value);
@@ -13,8 +25,27 @@ function updateLighting() {
 
   studioLights.forEach(lData => {
     let light = new THREE.DirectionalLight(0xffffff, dirVal);
-    light.position.set(lData.offsetX, 300, lData.offsetY);
-    light.target.position.set(0, 125, 0);
+    light.position.set(lData.offsetX, 450, lData.offsetY); // Podwyższone źródło dla lepszego kąta cieni
+    light.target.position.set(0, 100, 0);
+
+    // Włączenie generowania cieni dla światła kierunkowego (tylko 2 główne, by nie przeciążać GPU)
+    if (lData.id === 4 || lData.id === 1) {
+      light.castShadow = true;
+      light.shadow.mapSize.width = 2048; // Zwiększona jakość cieni
+      light.shadow.mapSize.height = 2048;
+      light.shadow.camera.near = 0.5;
+      light.shadow.camera.far = 1800;
+      
+      const d = 1200;
+      light.shadow.camera.left = -d;
+      light.shadow.camera.right = d;
+      light.shadow.camera.top = d;
+      light.shadow.camera.bottom = -d;
+      light.shadow.bias = -0.0004;
+    } else {
+      light.castShadow = false;
+    }
+
     scene.add(light);
     scene.add(light.target);
     windowDirLights.push(light);
@@ -33,7 +64,13 @@ function setLedMode(mode, colorHex) {
   if (mode === 'static' && colorHex) {
     currentLedColor = colorHex;
     const colorObj = new THREE.Color(colorHex);
-    window.activeLedMaterials.forEach(mat => mat.emissive.copy(colorObj));
+    window.activeLedMaterials.forEach(mat => {
+      if (mat.userData && mat.userData.isRgbLed) {
+        mat.emissive.copy(colorObj);
+      } else {
+        mat.emissive.setHex(0xffffff); // Neutralna biel 5000K dla kasetonów
+      }
+    });
     document.getElementById('ledColorPicker').value = colorHex;
   }
 }
@@ -48,6 +85,7 @@ function rebuildGrid(colorCenterLine, colorGrid) {
 }
 
 function setSceneBg(type, btnElement = null) {
+  window.currentBgType = type;
   if (!scene) return;
 
   scene.environment = null;
@@ -76,7 +114,12 @@ function setSceneBg(type, btnElement = null) {
     const hallHeight = 800;
 
     const floorGeom = new THREE.CircleGeometry(hallRadius, 64);
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3, metalness: 0.4 });
+    const floorTex = createBrickFloorTexture('#141414', '#000000', hallRadius); // Antracyt z czarną fugą
+    const floorMat = new THREE.MeshStandardMaterial({
+      map: floorTex,
+      roughness: 0.6,
+      metalness: 0.1
+    });
     windowExpoFloor = new THREE.Mesh(floorGeom, floorMat);
     windowExpoFloor.rotation.x = -Math.PI / 2;
     windowExpoFloor.position.y = -0.5;
@@ -118,10 +161,9 @@ function setSceneBg(type, btnElement = null) {
     const quadHeight = 1000;
 
     const floorGeom = new THREE.CircleGeometry(quadRadius, 64);
-    const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x000000,
-      roughness: 1.0,
-      metalness: 0.0
+    const floorTex = createBrickFloorTexture('#141414', '#000000', quadRadius);
+    const floorMat = new THREE.MeshBasicMaterial({
+      map: floorTex
     });
     windowExpoFloor = new THREE.Mesh(floorGeom, floorMat);
     windowExpoFloor.rotation.x = -Math.PI / 2;
@@ -196,11 +238,9 @@ function setSceneBg(type, btnElement = null) {
     const quadHeight = 1200;
 
     const floorGeom = new THREE.CircleGeometry(quadRadius, 64);
-    const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x000000,
-      roughness: 1.0,
-      metalness: 0.0,
-      envMapIntensity: 0.0
+    const floorTex = createBrickFloorTexture('#141414', '#000000', quadRadius);
+    const floorMat = new THREE.MeshBasicMaterial({
+      map: floorTex
     });
     windowExpoFloor = new THREE.Mesh(floorGeom, floorMat);
     windowExpoFloor.rotation.x = -Math.PI / 2;
@@ -281,8 +321,12 @@ function init3D() {
   renderer.setSize(container.clientWidth, container.clientHeight);
 
   renderer.outputEncoding = THREE.sRGBEncoding;
-  renderer.toneMapping = THREE.LinearToneMapping;
-  renderer.toneMappingExposure = 0.85;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+
+  // Włączenie cieni w rendererze
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   renderer.domElement.addEventListener('webglcontextlost', function (event) {
     event.preventDefault();
@@ -297,8 +341,8 @@ function init3D() {
   const arBtn = ARButton.createButton(renderer, { optionalFeatures: ['hit-test'] });
   arBtn.id = 'ARButton';
 
-  const leftFabContainer = document.querySelector('.fab-container-left');
-  if (leftFabContainer) leftFabContainer.appendChild(arBtn);
+  const arContainer = document.getElementById('ARButtonContainer') || document.querySelector('.fab-container-left');
+  if (arContainer) arContainer.appendChild(arBtn);
 
   const reticleGeom = new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2);
   const reticleMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
@@ -352,8 +396,8 @@ function init3D() {
 
   controls = new THREE.OrbitControls(camera, renderer.domElement);
   controls.target.set(0, 125, 0);
-  controls.autoRotate = false;
-  controls.autoRotateSpeed = 1.5;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 0.25;
   controls.enableDamping = true;
   controls.update();
 
@@ -456,8 +500,14 @@ function init3D() {
               let side = matIndex === 4 ? 'Out' : 'In';
               plan[planIdx].quadTextures[side + quadIdx + 'Name'] = file.name;
             } else {
-              if (matIndex === 4) plan[planIdx].textureFrontName = file.name;
-              else plan[planIdx].textureBackName = file.name;
+              const isFlipped = plan[planIdx] ? plan[planIdx].isFlipped : false;
+              if (isFlipped) {
+                if (matIndex === 4) plan[planIdx].textureBackName = file.name;
+                else plan[planIdx].textureFrontName = file.name;
+              } else {
+                if (matIndex === 4) plan[planIdx].textureFrontName = file.name;
+                else plan[planIdx].textureBackName = file.name;
+              }
             }
             refreshGraphicsList();
             handleDroppedFile(file, fileExt, (source) => applyTextureToMesh(mesh, matIndex, planIdx, source, quadIdx, false));
@@ -529,32 +579,113 @@ function init3D() {
 // FUNKCJA ŁADOWANIA MODELU LUDZIKA (Wyciągnięta do poziomu globalnego)
 // =================================================================
 function loadWalkingMan() {
+  if (human3DModel) {
+    scene.remove(human3DModel);
+    human3DModel = null;
+  }
+
   const loader = new THREE.GLTFLoader();
-  const modelUrl = "https://raw.githubusercontent.com/Valaron86/hall-image/50708911485c87399051b9673d42829ec6758060/man.glb";
+  const isSoldier = window.currentHumanType === 'soldier';
+
+  const modelUrl = isSoldier
+    ? "https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/models/gltf/Soldier.glb"
+    : "https://raw.githubusercontent.com/Valaron86/hall-image/50708911485c87399051b9673d42829ec6758060/man.glb";
 
   loader.load(modelUrl, function (gltf) {
     const model = gltf.scene;
     human3DModel = model;
-    model.scale.set(66, 66, 66);
 
+    if (isSoldier) {
+      model.scale.set(100, 100, 100);
+    } else {
+      model.scale.set(66, 66, 66);
+    }
+
+    const initialRotation = humanPos.rotation !== undefined ? humanPos.rotation : 180;
     model.position.set(humanPos.x, 0, humanPos.z);
-    model.rotation.y = Math.PI;
+    model.rotation.y = initialRotation * Math.PI / 180;
 
     const box = new THREE.Box3().setFromObject(model);
-    model.position.y += Math.abs(box.min.y);
+    const elevation = typeof globalElevationY !== 'undefined' ? globalElevationY : 0;
+    model.position.y = elevation + Math.abs(box.min.y);
 
-    model.traverse(function (node) {
-      if (node.isMesh) {
-        node.castShadow = true;
-        node.receiveShadow = true;
-      }
-    });
+    if (isSoldier) {
+      model.traverse(function (node) {
+        if (node.isMesh) {
+          node.castShadow = true;
+          node.receiveShadow = true;
+        }
+      });
+    } else {
+      model.traverse(function (node) {
+        // Ukrywanie linii pomocniczych, szkieletów (LineSegments/Line) i chmur punktów, które rysują białe kontury
+        if (node.isLine || node.isLineSegments || node.isPoints || (node.type && (node.type.includes('Line') || node.type.includes('Points')))) {
+          node.visible = false;
+          return;
+        }
+
+        if (node.isMesh) {
+          const nameLower = node.name.toLowerCase();
+          if (nameLower.includes('outline') || nameLower.includes('helper') || nameLower.includes('edge') || nameLower.includes('collider')) {
+            node.visible = false;
+            return;
+          }
+
+          if (node.geometry) {
+            node.geometry.deleteAttribute('color');
+          }
+
+          if (node.material) {
+            const mats = Array.isArray(node.material) ? node.material : [node.material];
+            const newMats = mats.map((mat, idx) => {
+              if (!mat.map) {
+                return new THREE.MeshStandardMaterial({
+                  color: 0x000000,
+                  roughness: 1.0,
+                  metalness: 0.0,
+                  skinning: true,
+                  visible: false
+                });
+              }
+
+              const newMat = new THREE.MeshStandardMaterial({
+                map: mat.map,
+                color: 0xffffff,
+                roughness: 1.0,
+                metalness: 0.0,
+                transparent: mat.transparent,
+                alphaTest: 0.5,
+                depthWrite: true,
+                side: THREE.FrontSide,
+                shadowSide: THREE.FrontSide,
+                skinning: true
+              });
+
+              newMat.map.minFilter = THREE.LinearFilter;
+              newMat.map.magFilter = THREE.LinearFilter;
+              newMat.map.generateMipmaps = false;
+              newMat.map.wrapS = THREE.ClampToEdgeWrapping;
+              newMat.map.wrapT = THREE.ClampToEdgeWrapping;
+              newMat.map.needsUpdate = true;
+
+              return newMat;
+            });
+
+            node.material = Array.isArray(node.material) ? newMats : newMats[0];
+          }
+
+          node.castShadow = true;
+          node.receiveShadow = false;
+        }
+      });
+    }
 
     scene.add(model);
 
     if (gltf.animations && gltf.animations.length > 0) {
       mixer = new THREE.AnimationMixer(model);
-      const action = mixer.clipAction(gltf.animations[0]);
+      const animIdx = isSoldier ? 1 : 0;
+      const action = mixer.clipAction(gltf.animations[animIdx]);
       action.play();
     }
   }, undefined, function (error) {
@@ -580,11 +711,25 @@ function animate3D() {
 
       if (controls) controls.update();
 
-      if (currentLedMode === 'auto') {
-        const time = Date.now() * 0.001;
-        const hslColor = new THREE.Color().setHSL((time * 0.05) % 1, 1, 0.5);
-        if (window.activeLedMaterials) {
-          window.activeLedMaterials.forEach(mat => mat.emissive.copy(hslColor));
+      // Dynamiczny efekt "oddychania" diod LED oraz zmiana kolorów dla trybu auto
+      if (window.activeLedMaterials && window.activeLedMaterials.length > 0) {
+        const ledTime = Date.now() * 0.002;
+        const baseIntensity = typeof currentLedIntensity !== 'undefined' ? currentLedIntensity : 1.5;
+        const breathingIntensity = baseIntensity * (0.85 + 0.15 * Math.sin(ledTime * 1.5));
+        
+        window.activeLedMaterials.forEach(mat => {
+          mat.emissiveIntensity = breathingIntensity;
+        });
+
+        if (currentLedMode === 'auto') {
+          const hslColor = new THREE.Color().setHSL((ledTime * 0.02) % 1, 1, 0.5);
+          window.activeLedMaterials.forEach(mat => {
+            if (mat.userData && mat.userData.isRgbLed) {
+              mat.emissive.copy(hslColor);
+            } else {
+              mat.emissive.setHex(0xffffff); // Biel 5000K
+            }
+          });
         }
       }
 
@@ -598,6 +743,331 @@ function animate3D() {
     isAnimating = false;
     if (renderer) renderer.setAnimationLoop(null);
   }
+}
+
+function createCarpetTexture(w, h, baseColorHex, gridColorHex) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  
+  ctx.fillStyle = baseColorHex;
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Dyskretne ziarno tkaniny
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+  for (let i = 0; i < 1500; i++) {
+    let rx = Math.random() * 512;
+    let ry = Math.random() * 512;
+    ctx.fillRect(rx, ry, 2, 2);
+  }
+
+  // Wrysowanie dylatacji płyt w teksturę zamiast oddzielnych linii 3D
+  ctx.strokeStyle = gridColorHex;
+  ctx.lineWidth = 4;
+  const stepX = 512 / (w / 50);
+  const stepY = 512 / (h / 50);
+
+  for (let x = 0; x <= 512; x += stepX) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 512); ctx.stroke();
+  }
+  for (let y = 0; y <= 512; y += stepY) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  if (typeof THREE.sRGBEncoding !== 'undefined') tex.encoding = THREE.sRGBEncoding;
+  return tex;
+}
+
+function createBrickFloorTexture(baseColorHex, gridColorHex, radius) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  
+  ctx.fillStyle = baseColorHex;
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Subtle concrete texture grain
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.015)';
+  for (let i = 0; i < 2000; i++) {
+    let rx = Math.random() * 512;
+    let ry = Math.random() * 512;
+    ctx.fillRect(rx, ry, 1, 1);
+  }
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.03)';
+  for (let i = 0; i < 2000; i++) {
+    let rx = Math.random() * 512;
+    let ry = Math.random() * 512;
+    ctx.fillRect(rx, ry, 1, 1);
+  }
+
+  // Draw grout lines (joint width)
+  ctx.strokeStyle = gridColorHex;
+  ctx.lineWidth = 3;
+
+  // Horizontal seams (representing 100cm rows)
+  ctx.beginPath();
+  ctx.moveTo(0, 0); ctx.lineTo(512, 0);
+  ctx.moveTo(0, 256); ctx.lineTo(512, 256);
+  ctx.moveTo(0, 512); ctx.lineTo(512, 512);
+  ctx.stroke();
+
+  // Row 0 vertical seams (x: 0, 256, 512)
+  ctx.beginPath();
+  ctx.moveTo(0, 0); ctx.lineTo(0, 256);
+  ctx.moveTo(256, 0); ctx.lineTo(256, 256);
+  ctx.moveTo(512, 0); ctx.lineTo(512, 256);
+  ctx.stroke();
+
+  // Row 1 vertical seams offset by 50% (x: 128, 384)
+  ctx.beginPath();
+  ctx.moveTo(128, 256); ctx.lineTo(128, 512);
+  ctx.moveTo(384, 256); ctx.lineTo(384, 512);
+  ctx.stroke();
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  const repeatCount = radius / 100;
+  tex.repeat.set(repeatCount, repeatCount);
+  if (typeof THREE.sRGBEncoding !== 'undefined') tex.encoding = THREE.sRGBEncoding;
+  return tex;
+}
+
+function buildOctanormBooth3D(cx, cz) {
+  const group = new THREE.Group();
+  group.position.set(cx, 0, cz);
+
+  const aluMat = new THREE.MeshStandardMaterial({ color: 0xd0d4dc, metalness: 0.85, roughness: 0.25 });
+  const panelMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f7, roughness: 0.65, metalness: 0.05 });
+  const carpetTex = createCarpetTexture(300, 300, '#22252a', 'rgba(10, 12, 15, 0.7)');
+  const carpetMat = new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.9 });
+  const spotMat = new THREE.MeshStandardMaterial({ color: 0xdadada, metalness: 0.9, roughness: 0.2 });
+
+  // 1. Podłoga wykładzinowa 300x300 cm (jedna płachta z teksturą)
+  const floorGeo = new THREE.PlaneGeometry(300, 300);
+  floorGeo.rotateX(-Math.PI / 2);
+  const floorMesh = new THREE.Mesh(floorGeo, carpetMat);
+  floorMesh.position.set(0, 0.5, 0);
+  floorMesh.receiveShadow = true;
+  group.add(floorMesh);
+
+  // 2. Słupki Octanorm (szerokość 4.5cm, wysokość 250cm)
+  const postGeo = new THREE.BoxGeometry(4.5, 250, 4.5);
+  const addPost = (px, pz) => {
+    const post = new THREE.Mesh(postGeo, aluMat);
+    post.position.set(px, 125, pz);
+    post.castShadow = true;
+    group.add(post);
+  };
+
+  // Narożne słupki
+  addPost(-150, -150); addPost(150, -150);
+  addPost(-150, 150);  addPost(150, 150);
+  // Pośrednie słupki na ścianach (układ 3x3 modułowy)
+  addPost(-50, -150);  addPost(50, -150);  // Tył
+  addPost(150, -50);   addPost(150, 50);   // Prawa ściana
+
+  // 3. Ściany wypełniające białe (Back Wall & Right Wall)
+  const panelH = 230;
+  const panelThick = 1.2;
+
+  // Tylna ściana (3 sekcje po ~95cm)
+  const backPanelGeo = new THREE.BoxGeometry(95.5, panelH, panelThick);
+  [-100, 0, 100].forEach(px => {
+    const p = new THREE.Mesh(backPanelGeo, panelMat);
+    p.position.set(px, 115, -150);
+    p.castShadow = true;
+    group.add(p);
+  });
+
+  // Prawa ściana (3 sekcje po ~95cm)
+  const rightPanelGeo = new THREE.BoxGeometry(panelThick, panelH, 95.5);
+  [-100, 0, 100].forEach(pz => {
+    const p = new THREE.Mesh(rightPanelGeo, panelMat);
+    p.position.set(150, 115, pz);
+    p.castShadow = true;
+    group.add(p);
+  });
+
+  // 4. Rygle aluminiowe dolne i górne (Beam rails)
+  const railHGeo = new THREE.BoxGeometry(300, 4, 4);
+  const railVGeo = new THREE.BoxGeometry(4, 4, 300);
+
+  [2, 230].forEach(ry => {
+    let rB = new THREE.Mesh(railHGeo, aluMat); rB.position.set(0, ry, -150); group.add(rB);
+    let rF = new THREE.Mesh(railHGeo, aluMat); rF.position.set(0, ry, 150); group.add(rF);
+    let rR = new THREE.Mesh(railVGeo, aluMat); rR.position.set(150, ry, 0); group.add(rR);
+    let rL = new THREE.Mesh(railVGeo, aluMat); rL.position.set(-150, ry, 0); group.add(rL);
+  });
+
+  // Górne rygle zwieńczające ramę (wysokość 250cm)
+  let rTopF = new THREE.Mesh(railHGeo, aluMat); rTopF.position.set(0, 248, 150); group.add(rTopF);
+  let rTopL = new THREE.Mesh(railVGeo, aluMat); rTopL.position.set(-150, 248, 0); group.add(rTopL);
+  let rTopR = new THREE.Mesh(railVGeo, aluMat); rTopR.position.set(150, 248, 0); group.add(rTopR);
+  let rTopB = new THREE.Mesh(railHGeo, aluMat); rTopB.position.set(0, 248, -150); group.add(rTopB);
+
+  // 5. Fryz / Fascia board z napisem "COMPANY NAME" i grafiką swoosh
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024; canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 1024, 128);
+  
+  // Dynamiczna grafika dekoracyjna z motywem łuków
+  ctx.fillStyle = '#e63946'; ctx.beginPath(); ctx.moveTo(800, 0); ctx.quadraticCurveTo(850, 128, 1024, 60); ctx.lineTo(1024, 0); ctx.fill();
+  ctx.fillStyle = '#f4a261'; ctx.beginPath(); ctx.moveTo(750, 0); ctx.quadraticCurveTo(820, 128, 980, 128); ctx.lineTo(880, 0); ctx.fill();
+  ctx.fillStyle = '#ffb703'; ctx.beginPath(); ctx.moveTo(700, 0); ctx.quadraticCurveTo(760, 128, 900, 128); ctx.lineTo(820, 0); ctx.fill();
+
+  ctx.fillStyle = '#1d3557'; ctx.font = 'bold 38px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('COMPANY NAME', 400, 64);
+  ctx.fillStyle = '#e63946'; ctx.font = 'bold 32px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('A1', 40, 64);
+
+  const fasciaTex = new THREE.CanvasTexture(canvas);
+  if (typeof THREE.sRGBEncoding !== 'undefined') fasciaTex.encoding = THREE.sRGBEncoding;
+  const fasciaMat = new THREE.MeshStandardMaterial({ map: fasciaTex, roughness: 0.4 });
+
+  // Fryz Przód
+  const fasciaFrontGeo = new THREE.BoxGeometry(292, 18, 1.5);
+  const fasciaFront = new THREE.Mesh(fasciaFrontGeo, fasciaMat);
+  fasciaFront.position.set(0, 239, 150);
+  group.add(fasciaFront);
+
+  // Fryz Lewa strona
+  const fasciaLeftGeo = new THREE.BoxGeometry(1.5, 18, 292);
+  const fasciaLeft = new THREE.Mesh(fasciaLeftGeo, fasciaMat);
+  fasciaLeft.position.set(-150, 239, 0);
+  group.add(fasciaLeft);
+
+  // 6. Reflektorki oświetleniowe (Spotlights)
+  [-60, 60].forEach(spX => {
+    const spotGroup = new THREE.Group();
+    spotGroup.position.set(spX, 232, 145);
+
+    const armGeo = new THREE.CylinderGeometry(0.8, 0.8, 12);
+    armGeo.rotateX(Math.PI / 4);
+    const arm = new THREE.Mesh(armGeo, spotMat);
+    spotGroup.add(arm);
+
+    const headGeo = new THREE.ConeGeometry(4.5, 10, 16);
+    headGeo.rotateX(-Math.PI / 3);
+    const head = new THREE.Mesh(headGeo, spotMat);
+    head.position.set(0, -6, -6);
+    spotGroup.add(head);
+
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xfffaed }));
+    bulb.position.set(0, -9, -9);
+    spotGroup.add(bulb);
+
+    group.add(spotGroup);
+  });
+
+  return group;
+}
+
+function buildOctanormBooth4x33D(cx, cz) {
+  const group = new THREE.Group();
+  group.position.set(cx, 0, cz);
+
+  const aluMat = new THREE.MeshStandardMaterial({ color: 0xd0d4dc, metalness: 0.85, roughness: 0.25 });
+  const panelMat = new THREE.MeshStandardMaterial({ color: 0xf0f3f6, roughness: 0.65, metalness: 0.05 });
+  const carpetTex = createCarpetTexture(400, 300, '#1a2430', 'rgba(10, 15, 22, 0.7)');
+  const carpetMat = new THREE.MeshStandardMaterial({ map: carpetTex, roughness: 0.9 });
+  const spotMat = new THREE.MeshStandardMaterial({ color: 0xdadada, metalness: 0.9, roughness: 0.2 });
+
+  // 1. Podłoga 400x300 cm (jedna płachta z teksturą)
+  const floorGeo = new THREE.PlaneGeometry(400, 300);
+  floorGeo.rotateX(-Math.PI / 2);
+  const floorMesh = new THREE.Mesh(floorGeo, carpetMat);
+  floorMesh.position.set(0, 0.5, 0);
+  floorMesh.receiveShadow = true;
+  group.add(floorMesh);
+
+  // 2. Słupki Octanorm (wysokość 250cm)
+  const postGeo = new THREE.BoxGeometry(4.5, 250, 4.5);
+  const addPost = (px, pz) => {
+    const post = new THREE.Mesh(postGeo, aluMat);
+    post.position.set(px, 125, pz);
+    post.castShadow = true;
+    group.add(post);
+  };
+
+  // Narożne słupki
+  addPost(-200, -150); addPost(200, -150);
+  addPost(-200, 150);  addPost(200, 150);
+  // Pośrednie słupki
+  addPost(-100, -150); addPost(0, -150); addPost(100, -150); // Tył (4 sekcje)
+  addPost(-200, -50);  addPost(-200, 50);                   // Lewa (3 sekcje)
+  addPost(200, -50);   addPost(200, 50);                    // Prawa (3 sekcje)
+
+  // 3. Ściany wypełniające białe (Back, Left & Right Walls - Układ U)
+  const panelH = 230;
+  const panelThick = 1.2;
+
+  // Tylna ściana 4m (4 sekcje)
+  const backPanelGeo = new THREE.BoxGeometry(95.5, panelH, panelThick);
+  [-150, -50, 50, 150].forEach(px => {
+    const p = new THREE.Mesh(backPanelGeo, panelMat);
+    p.position.set(px, 115, -150);
+    p.castShadow = true;
+    group.add(p);
+  });
+
+  // Lewa ściana 3m & Prawa ściana 3m (po 3 sekcje)
+  const sidePanelGeo = new THREE.BoxGeometry(panelThick, panelH, 95.5);
+  [-100, 0, 100].forEach(pz => {
+    const pL = new THREE.Mesh(sidePanelGeo, panelMat); pL.position.set(-200, 115, pz); group.add(pL);
+    const pR = new THREE.Mesh(sidePanelGeo, panelMat); pR.position.set(200, 115, pz); group.add(pR);
+  });
+
+  // 4. Rygle aluminiowe
+  const rail400Geo = new THREE.BoxGeometry(400, 4, 4);
+  const rail300Geo = new THREE.BoxGeometry(4, 4, 300);
+
+  [2, 230, 248].forEach(ry => {
+    let rB = new THREE.Mesh(rail400Geo, aluMat); rB.position.set(0, ry, -150); group.add(rB);
+    let rF = new THREE.Mesh(rail400Geo, aluMat); rF.position.set(0, ry, 150); group.add(rF);
+    let rL = new THREE.Mesh(rail300Geo, aluMat); rL.position.set(-200, ry, 0); group.add(rL);
+    let rR = new THREE.Mesh(rail300Geo, aluMat); rR.position.set(200, ry, 0); group.add(rR);
+  });
+
+  // 5. Fryz / Fascia board (Front 4m) z napisem "TECH CORP" i motywem cyan
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024; canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 1024, 128);
+
+  ctx.fillStyle = '#00b4d8'; ctx.beginPath(); ctx.moveTo(750, 0); ctx.quadraticCurveTo(850, 128, 1024, 40); ctx.lineTo(1024, 0); ctx.fill();
+  ctx.fillStyle = '#90e0ef'; ctx.beginPath(); ctx.moveTo(700, 0); ctx.quadraticCurveTo(780, 128, 950, 128); ctx.lineTo(850, 0); ctx.fill();
+
+  ctx.fillStyle = '#03045e'; ctx.font = 'bold 38px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('TECH CORP', 400, 64);
+  ctx.fillStyle = '#00b4d8'; ctx.font = 'bold 32px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('B2', 40, 64);
+
+  const fasciaTex = new THREE.CanvasTexture(canvas);
+  if (typeof THREE.sRGBEncoding !== 'undefined') fasciaTex.encoding = THREE.sRGBEncoding;
+  const fasciaMat = new THREE.MeshStandardMaterial({ map: fasciaTex, roughness: 0.4 });
+
+  const fasciaFront = new THREE.Mesh(new THREE.BoxGeometry(392, 18, 1.5), fasciaMat);
+  fasciaFront.position.set(0, 239, 150);
+  group.add(fasciaFront);
+
+  // 6. Reflektorki (3 sztuki na przedniej belce 4m)
+  [-100, 0, 100].forEach(spX => {
+    const spotGroup = new THREE.Group();
+    spotGroup.position.set(spX, 232, 145);
+
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 12), spotMat); arm.rotation.x = Math.PI / 4; spotGroup.add(arm);
+    const head = new THREE.Mesh(new THREE.ConeGeometry(4.5, 10, 16), spotMat); head.rotation.x = -Math.PI / 3; head.position.set(0, -6, -6); spotGroup.add(head);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(2, 8, 8), new THREE.MeshBasicMaterial({ color: 0xfffaed })); bulb.position.set(0, -9, -9); spotGroup.add(bulb);
+
+    group.add(spotGroup);
+  });
+
+  return group;
 }
 
 function update3DScene() {
@@ -880,6 +1350,7 @@ function update3DScene() {
         toneMapped: false,
         envMapIntensity: 0.0
       });
+      ledMat.userData = { isRgbLed: true };
       window.activeLedMaterials.push(ledMat);
 
       const ledMesh = buildMiteredRing(hw, hd, ledProfile, ledMat);
@@ -1012,7 +1483,7 @@ function update3DScene() {
     if (item.type === 'wall') {
       const moduleLetter = wallLetters.get(item);
       const group = new THREE.Group();
-      group.position.set(item.cx, globalElevationY, item.cz);
+      group.position.set(item.cx, globalElevationY + (item.elevation || 0), item.cz);
       group.rotation.y = -item.angle * Math.PI / 180;
 
       if (item.isFoldable) {
@@ -1052,7 +1523,10 @@ function update3DScene() {
         group.add(frameGroup);
       }
       else {
-        const geom = new THREE.BoxGeometry(item.length, item.height, 12);
+        const wDim = (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? item.length - 0.2 : item.length;
+        const hDim = (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? item.height - 0.2 : item.height;
+        const dDim = (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? 11.8 : 12;
+        const geom = new THREE.BoxGeometry(wDim, hDim, dDim);
         let hexColor = item.isDoor ? 0x004466 : 0x999999;
 
         // POPRAWKA: frameMat reaguje teraz na tryb Blueprint (staje się półprzezroczysty, by odsłonić supporty)
@@ -1067,11 +1541,36 @@ function update3DScene() {
         const texLoader = new THREE.TextureLoader();
         const getWallMat = (texUrl) => {
           if (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) return new THREE.MeshStandardMaterial({ color: 0x4488ff, transparent: true, opacity: 0.1 });
-          if (!texUrl) return new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1.0 });
+          
+          let mat;
+          const baseIntensity = typeof currentLedIntensity !== 'undefined' ? currentLedIntensity : 1.5;
+          const baseEmissiveColor = typeof currentLedColor !== 'undefined' ? new THREE.Color(currentLedColor) : new THREE.Color(0xffffff);
 
-          let tex = texLoader.load(texUrl);
-          tex.encoding = THREE.sRGBEncoding;
-          return new THREE.MeshStandardMaterial({ map: tex, roughness: 1.0 });
+          if (!texUrl) {
+            mat = new THREE.MeshStandardMaterial({ 
+              color: 0xffffff, 
+              roughness: 1.0,
+              metalness: 0.0,
+              emissive: baseEmissiveColor,
+              emissiveIntensity: baseIntensity * 0.15
+            });
+          } else {
+            let tex = texLoader.load(texUrl);
+            tex.encoding = THREE.sRGBEncoding;
+            mat = new THREE.MeshStandardMaterial({ 
+              map: tex, 
+              roughness: 1.0,
+              metalness: 0.0,
+              emissive: baseEmissiveColor,
+              emissiveMap: tex,
+              emissiveIntensity: baseIntensity * 0.6
+            });
+          }
+
+          if (window.activeLedMaterials) {
+            window.activeLedMaterials.push(mat);
+          }
+          return mat;
         };
 
         let matFront = getWallMat(item.textureFront);
@@ -1169,12 +1668,12 @@ function update3DScene() {
           const th = item.thickness || 12;
           const len = item.length;
           
-          if (item.leftFoot !== false) {
+          if (item.leftFoot !== false && !item.elevation && !item.isStacked) {
             const fL = new THREE.Mesh(footG, footM);
             fL.position.set(-len / 2 + th / 2, 0.3, 0);
             group.add(fL);
           }
-          if (item.rightFoot !== false) {
+          if (item.rightFoot !== false && !item.elevation && !item.isStacked) {
             const fR = new THREE.Mesh(footG, footM);
             fR.position.set(len / 2 - th / 2, 0.3, 0);
             group.add(fR);
@@ -1226,22 +1725,52 @@ function update3DScene() {
 
       const getMat = (texUrl) => {
         if (isBlueprintMode) return new THREE.MeshStandardMaterial({ color: 0x4488ff, transparent: true, opacity: 0.1 });
-        if (!texUrl) return new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, emissive: 0xffffff, emissiveIntensity: 0.15 });
-        let tex = texLoader.load(texUrl);
-        tex.encoding = THREE.sRGBEncoding;
-        return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.4 });
+        
+        let mat;
+        const baseIntensity = typeof currentLedIntensity !== 'undefined' ? currentLedIntensity : 1.5;
+        const baseEmissiveColor = typeof currentLedColor !== 'undefined' ? new THREE.Color(currentLedColor) : new THREE.Color(0xffffff);
+
+        if (!texUrl) {
+          mat = new THREE.MeshStandardMaterial({ 
+            color: 0xffffff, 
+            roughness: 1.0, 
+            metalness: 0.0,
+            emissive: baseEmissiveColor, 
+            emissiveIntensity: baseIntensity * 0.15 
+          });
+        } else {
+          let tex = texLoader.load(texUrl);
+          tex.encoding = THREE.sRGBEncoding;
+          mat = new THREE.MeshStandardMaterial({ 
+            map: tex, 
+            roughness: 1.0, 
+            metalness: 0.0,
+            emissive: baseEmissiveColor, 
+            emissiveMap: tex, 
+            emissiveIntensity: baseIntensity * 0.6 
+          });
+        }
+
+        if (window.activeLedMaterials) {
+          window.activeLedMaterials.push(mat);
+        }
+        return mat;
       };
 
-      const roofGeom = new THREE.BoxGeometry(100, 250, 12);
+      const roofLen = (item.accData && item.accData.roofLength) ? item.accData.roofLength : 250;
+      const roofZ = (roofLen / 2) + 6;
+      const legZ = roofLen + 12;
+
+      const roofGeom = new THREE.BoxGeometry(100, roofLen, 12);
       const roofMesh = new THREE.Mesh(roofGeom, [frameMat, frameMat, frameMat, frameMat, getMat(item.accData.texRoofFront), getMat(item.accData.texRoofBack)]);
-      roofMesh.rotation.x = -Math.PI / 2; roofMesh.position.set(0, item.wallHeight - 6, 131);
+      roofMesh.rotation.x = -Math.PI / 2; roofMesh.position.set(0, item.wallHeight - 6, roofZ);
       roofMesh.userData = { isDaszekPart: true, planIndex: item.planIndex, accIdx: item.accIndex, part: 'Roof' };
       roofMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(roofGeom), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 })));
       group.add(roofMesh);
 
       const legGeom = new THREE.BoxGeometry(100, legHeight, 12);
       const legMesh = new THREE.Mesh(legGeom, [frameMat, frameMat, frameMat, frameMat, getMat(item.accData.texLegFront), getMat(item.accData.texLegBack)]);
-      legMesh.position.set(0, legHeight / 2, 262);
+      legMesh.position.set(0, legHeight / 2, legZ);
       legMesh.userData = { isDaszekPart: true, planIndex: item.planIndex, accIdx: item.accIndex, part: 'Leg' };
       legMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(legGeom), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 })));
       group.add(legMesh);
@@ -1251,7 +1780,7 @@ function update3DScene() {
       const legLetter = wallLetters.get(item.planIndex + '_leg');
 
       if (roofLetter) {
-        addModuleOverlayMesh(roofLetter, `100x250 cm`, roofMesh, 0, 12);
+        addModuleOverlayMesh(roofLetter, `100x${roofLen} cm`, roofMesh, 0, 12);
       }
       if (legLetter) {
         addModuleOverlayMesh(legLetter, `100x${legHeight} cm`, legMesh, 0, 12);
@@ -1261,7 +1790,7 @@ function update3DScene() {
       if (typeof currentSystem !== 'undefined' && (currentSystem === 'SEGO' || currentSystem === 'SEGO_2_0')) {
         // Anatomia pionowej Nogi (Leg)
         const legGroup = new THREE.Group();
-        legGroup.position.set(0, 0, 262);
+        legGroup.position.set(0, 0, legZ);
         buildSegoInternalAnatomy({ length: 100, height: legHeight }, legGroup);
         if (legLetter) {
           addModuleLetterMesh(legLetter, legGroup, 40, 12);
@@ -1270,12 +1799,12 @@ function update3DScene() {
 
         // Anatomia poziomego Dachu (Roof)
         const roofGroup = new THREE.Group();
-        roofGroup.position.set(0, item.wallHeight - 6, 131);
+        roofGroup.position.set(0, item.wallHeight - 6, roofZ);
         roofGroup.rotation.x = -Math.PI / 2;
 
         const roofAnatomySubGroup = new THREE.Group();
-        roofAnatomySubGroup.position.set(0, -125, 0); // Przesunięcie o połowę długości (250 / 2), aby wycentrować anatomię
-        buildSegoInternalAnatomy({ length: 100, height: 250 }, roofAnatomySubGroup);
+        roofAnatomySubGroup.position.set(0, -roofLen / 2, 0); // Przesunięcie o połowę długości, aby wycentrować anatomię
+        buildSegoInternalAnatomy({ length: 100, height: roofLen }, roofAnatomySubGroup);
         if (roofLetter) {
           addModuleLetterMesh(roofLetter, roofAnatomySubGroup, 40, 12);
         }
@@ -1305,11 +1834,17 @@ function update3DScene() {
       group.position.set(item.cx, globalElevationY, item.cz);
       group.rotation.y = -item.wallAngle * Math.PI / 180;
 
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(80, isTV ? 50 : 5, isTV ? 5 : 25), new THREE.MeshStandardMaterial({ color: isTV ? 0xffcc00 : 0xff9900 }));
+      let color = isTV ? 0xffcc00 : 0xff9900;
+      if (item.hasCollision) {
+        color = 0xff0000;
+      }
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(80, isTV ? 50 : 5, isTV ? 5 : 25), new THREE.MeshStandardMaterial({ color: color }));
       let zOffset = (item.dir === 1 ? 1 : -1) * (6 + (isTV ? 2.5 : 12.5));
 
       let yPos = item.wallHeight / 2;
-      if (item.accData.heightPct !== undefined) {
+      if (item.accData.heightCm !== undefined) {
+        yPos = item.accData.heightCm;
+      } else if (item.accData.heightPct !== undefined) {
         yPos = item.wallHeight * (item.accData.heightPct / 100);
       } else if (item.accData.slot === 1) {
         yPos = item.wallHeight * 0.33;
@@ -1331,10 +1866,36 @@ function update3DScene() {
 
       const getFreeMat = (texUrl) => {
         if (isBlueprintMode) return new THREE.MeshStandardMaterial({ color: 0x4488ff, transparent: true, opacity: 0.1 });
-        if (!texUrl) return new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.1 });
-        let tex = texLoader.load(texUrl);
-        tex.encoding = THREE.sRGBEncoding;
-        return new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.4 });
+        
+        let mat;
+        const baseIntensity = typeof currentLedIntensity !== 'undefined' ? currentLedIntensity : 1.5;
+        const baseEmissiveColor = typeof currentLedColor !== 'undefined' ? new THREE.Color(currentLedColor) : new THREE.Color(0xffffff);
+
+        if (!texUrl) {
+          mat = new THREE.MeshStandardMaterial({ 
+            color: 0xffffff, 
+            roughness: 1.0, 
+            metalness: 0.0,
+            emissive: baseEmissiveColor, 
+            emissiveIntensity: baseIntensity * 0.15 
+          });
+        } else {
+          let tex = texLoader.load(texUrl);
+          tex.encoding = THREE.sRGBEncoding;
+          mat = new THREE.MeshStandardMaterial({ 
+            map: tex, 
+            roughness: 1.0, 
+            metalness: 0.0,
+            emissive: baseEmissiveColor, 
+            emissiveMap: tex, 
+            emissiveIntensity: baseIntensity * 0.6 
+          });
+        }
+
+        if (window.activeLedMaterials) {
+          window.activeLedMaterials.push(mat);
+        }
+        return mat;
       };
       const frontMat = getFreeMat(item.textureFront);
 
@@ -1395,10 +1956,36 @@ function update3DScene() {
 
       const getFreeSMat = (texUrl) => {
         if (isBlueprintMode) return new THREE.MeshStandardMaterial({ color: 0x4488ff, transparent: true, opacity: 0.1 });
-        if (!texUrl) return new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, emissive: 0xffffff, emissiveIntensity: 0.15 });
-        let tex = texLoader.load(texUrl);
-        tex.encoding = THREE.sRGBEncoding;
-        return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.4 });
+        
+        let mat;
+        const baseIntensity = typeof currentLedIntensity !== 'undefined' ? currentLedIntensity : 1.5;
+        const baseEmissiveColor = typeof currentLedColor !== 'undefined' ? new THREE.Color(currentLedColor) : new THREE.Color(0xffffff);
+
+        if (!texUrl) {
+          mat = new THREE.MeshStandardMaterial({ 
+            color: 0xffffff, 
+            roughness: 1.0, 
+            metalness: 0.0,
+            emissive: baseEmissiveColor, 
+            emissiveIntensity: baseIntensity * 0.15 
+          });
+        } else {
+          let tex = texLoader.load(texUrl);
+          tex.encoding = THREE.sRGBEncoding;
+          mat = new THREE.MeshStandardMaterial({ 
+            map: tex, 
+            roughness: 1.0, 
+            metalness: 0.0,
+            emissive: baseEmissiveColor, 
+            emissiveMap: tex, 
+            emissiveIntensity: baseIntensity * 0.6 
+          });
+        }
+
+        if (window.activeLedMaterials) {
+          window.activeLedMaterials.push(mat);
+        }
+        return mat;
       };
       const frontMat = getFreeSMat(item.textureFront); const backMat = getFreeSMat(item.textureBack);
 
@@ -1423,10 +2010,36 @@ function update3DScene() {
 
         const getQuadMat = (texUrl) => {
           if (isBlueprintMode) return new THREE.MeshStandardMaterial({ color: 0x4488ff, transparent: true, opacity: 0.1 });
-          if (!texUrl) return new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
-          let tex = texLoader.load(texUrl);
-          tex.encoding = THREE.sRGBEncoding;
-          return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.4 });
+          
+          let mat;
+          const baseIntensity = typeof currentLedIntensity !== 'undefined' ? currentLedIntensity : 1.5;
+          const baseEmissiveColor = typeof currentLedColor !== 'undefined' ? new THREE.Color(currentLedColor) : new THREE.Color(0xffffff);
+
+          if (!texUrl) {
+            mat = new THREE.MeshStandardMaterial({ 
+              color: 0xffffff, 
+              roughness: 1.0, 
+              metalness: 0.0,
+              emissive: baseEmissiveColor, 
+              emissiveIntensity: baseIntensity * 0.15 
+            });
+          } else {
+            let tex = texLoader.load(texUrl);
+            tex.encoding = THREE.sRGBEncoding;
+            mat = new THREE.MeshStandardMaterial({ 
+              map: tex, 
+              roughness: 1.0, 
+              metalness: 0.0,
+              emissive: baseEmissiveColor, 
+              emissiveMap: tex, 
+              emissiveIntensity: baseIntensity * 0.6 
+            });
+          }
+
+          if (window.activeLedMaterials) {
+            window.activeLedMaterials.push(mat);
+          }
+          return mat;
         };
         const matOut = getQuadMat(tOut); const matIn = getQuadMat(tIn);
 
@@ -1461,11 +2074,36 @@ function update3DScene() {
         const geom = new THREE.CylinderGeometry(radius, radius, item.height, 128, 1, true, thetaStart, thetaLen);
         let tName = (isOut ? 'Out' : 'In') + segIdx; let tData = item.quadTextures[tName];
         let mat;
-        if (isBlueprintMode) mat = new THREE.MeshStandardMaterial({ color: 0x4488ff, transparent: true, opacity: 0.1 });
-        else if (tData) {
+        const baseIntensity = typeof currentLedIntensity !== 'undefined' ? currentLedIntensity : 1.5;
+        const baseEmissiveColor = typeof currentLedColor !== 'undefined' ? new THREE.Color(currentLedColor) : new THREE.Color(0xffffff);
+
+        if (isBlueprintMode) {
+          mat = new THREE.MeshStandardMaterial({ color: 0x4488ff, transparent: true, opacity: 0.1 });
+        } else if (tData) {
           let tex = texLoader.load(tData); if (!isOut) { tex.wrapS = THREE.RepeatWrapping; tex.repeat.x = -1; }
-          mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.4, side: isOut ? THREE.FrontSide : THREE.BackSide, transparent: true, alphaTest: 0.1 });
-        } else mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8, side: isOut ? THREE.FrontSide : THREE.BackSide });
+          mat = new THREE.MeshStandardMaterial({ 
+            map: tex, 
+            roughness: 1.0, 
+            metalness: 0.0,
+            emissive: baseEmissiveColor, 
+            emissiveMap: tex, 
+            emissiveIntensity: baseIntensity * 0.6, 
+            side: isOut ? THREE.FrontSide : THREE.BackSide, 
+            transparent: true, 
+            alphaTest: 0.1 
+          });
+          if (window.activeLedMaterials) window.activeLedMaterials.push(mat);
+        } else {
+          mat = new THREE.MeshStandardMaterial({ 
+            color: 0xffffff, 
+            roughness: 1.0, 
+            metalness: 0.0,
+            emissive: baseEmissiveColor,
+            emissiveIntensity: baseIntensity * 0.15,
+            side: isOut ? THREE.FrontSide : THREE.BackSide 
+          });
+          if (window.activeLedMaterials) window.activeLedMaterials.push(mat);
+        }
 
         const mesh = new THREE.Mesh(geom, mat); mesh.position.set(0, 400 + item.height / 2, 0); mesh.userData = { isWall: true, planIndex: item.planIndex, quadIdx: segIdx, isRingOut: isOut }; group.add(mesh);
         const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geom, 30), new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.1 })); edges.position.copy(mesh.position); group.add(edges);
@@ -2174,49 +2812,198 @@ function update3DScene() {
     }
   });
 
-  if (showDimensions) {
-    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, maxY = 0;
-    let hasWalls = false;
+  // ─── OBLICZANIE GRANIC STOISKA 3D (Bounding Box) ───
+  let minX3D = Infinity, maxX3D = -Infinity, minZ3D = Infinity, maxZ3D = -Infinity;
+  let found3DObjects = false;
 
+  if (Array.isArray(computed3DData) && computed3DData.length > 0) {
     computed3DData.forEach(item => {
+      if (!item) return;
+      let cx = isFinite(item.cx) ? item.cx : 0;
+      let cz = isFinite(item.cz) ? item.cz : 0;
+
       if (item.type === 'wall' || item.type === 'daszek') {
-        hasWalls = true;
-        let rad = -item.angle * Math.PI / 180;
-        let dx = (item.length / 2) * Math.cos(rad);
-        let dz = (item.length / 2) * Math.sin(rad);
+        found3DObjects = true;
+        let len = item.length || 100;
+        let rad = -(item.angle || 0) * Math.PI / 180;
+        let dx = (len / 2) * Math.cos(rad);
+        let dz = (len / 2) * Math.sin(rad);
+        let thick = item.thickness || 12;
+        let perpX = Math.abs(Math.sin(rad)) * (thick / 2);
+        let perpZ = Math.abs(Math.cos(rad)) * (thick / 2);
 
-        let p1x = item.cx - dx, p1z = item.cz - dz;
-        let p2x = item.cx + dx, p2z = item.cz + dz;
+        let p1x = cx - dx, p1z = cz - dz;
+        let p2x = cx + dx, p2z = cz + dz;
 
-        let perpX = Math.abs(Math.sin(rad)) * 6;
-        let perpZ = Math.abs(Math.cos(rad)) * 6;
-
-        minX = Math.min(minX, p1x - perpX, p2x - perpX);
-        maxX = Math.max(maxX, p1x + perpX, p2x + perpX);
-        minZ = Math.min(minZ, p1z - perpZ, p2z - perpZ);
-        maxZ = Math.max(maxZ, p1z + perpZ, p2z + perpZ);
-        maxY = Math.max(maxY, item.height || item.wallHeight);
+        minX3D = Math.min(minX3D, p1x - perpX, p2x - perpX);
+        maxX3D = Math.max(maxX3D, p1x + perpX, p2x + perpX);
+        minZ3D = Math.min(minZ3D, p1z - perpZ, p2z - perpZ);
+        maxZ3D = Math.max(maxZ3D, p1z + perpZ, p2z + perpZ);
+      } else if (item.type === 'kantorek_1x1') {
+        found3DObjects = true;
+        minX3D = Math.min(minX3D, cx - 50);
+        maxX3D = Math.max(maxX3D, cx + 50);
+        minZ3D = Math.min(minZ3D, cz - 50);
+        maxZ3D = Math.max(maxZ3D, cz + 50);
+      } else if (item.width || item.length || item.depth || item.diameter) {
+        found3DObjects = true;
+        let w = item.width || item.length || item.diameter || 100;
+        let d = item.depth || item.diameter || 100;
+        minX3D = Math.min(minX3D, cx - w / 2);
+        maxX3D = Math.max(maxX3D, cx + w / 2);
+        minZ3D = Math.min(minZ3D, cz - d / 2);
+        maxZ3D = Math.max(maxZ3D, cz + d / 2);
       }
     });
-
-    if (hasWalls) {
-      const totalW = maxX - minX;
-      const zBehind = minZ - 60;
-      const zFront = maxZ + 40;
-
-      const p1Total = new THREE.Vector3(minX, 0, zBehind);
-      const p2Total = new THREE.Vector3(maxX, 0, zBehind);
-      const dimTotal = addDimension3D(p1Total, p2Total, `Szerokość całkowita: ${totalW.toFixed(0)} cm`, new THREE.Vector3(0, 0, 0), 0.7);
-      scene.add(dimTotal); sceneObjects.push(dimTotal);
-
-      const p1HR = new THREE.Vector3(maxX + 40, 0, zFront);
-      const p2HR = new THREE.Vector3(maxX + 40, maxY, zFront);
-      const dimHR = addDimension3D(p1HR, p2HR, `Wys. ${maxY.toFixed(0)} cm`, new THREE.Vector3(0, 0, 0), 0.6);
-      scene.add(dimHR); sceneObjects.push(dimHR);
-    }
   }
 
-  if (typeof arGroup !== 'undefined' && arGroup) {
+  if (typeof floorConfig !== 'undefined' && floorConfig.type !== 'none' && floorConfig.width > 0 && floorConfig.depth > 0) {
+    found3DObjects = true;
+    let fx = isFinite(floorConfig.offsetX) ? floorConfig.offsetX : 0;
+    let fz = isFinite(floorConfig.offsetY) ? floorConfig.offsetY : 0;
+    let fw = floorConfig.width;
+    let fd = floorConfig.depth;
+
+    minX3D = minX3D !== Infinity ? Math.min(minX3D, fx - fw / 2) : (fx - fw / 2);
+    maxX3D = maxX3D !== -Infinity ? Math.max(maxX3D, fx + fw / 2) : (fx + fw / 2);
+    minZ3D = minZ3D !== Infinity ? Math.min(minZ3D, fz - fd / 2) : (fz - fd / 2);
+    maxZ3D = maxZ3D !== -Infinity ? Math.max(maxZ3D, fz + fd / 2) : (fz + fd / 2);
+  }
+
+  const hasWalls3D = Array.isArray(computed3DData) && computed3DData.some(item => item && item.type === 'wall');
+
+  // ─── GENEROWANIE ALEJEK WYSTAWIENNICZYCH 3D I STOISK W TLE ───
+  if (typeof window.showHallEnvironment !== 'undefined' && window.showHallEnvironment) {
+    const bMinX = (found3DObjects && isFinite(minX3D)) ? minX3D : -150;
+    const bMaxX = (found3DObjects && isFinite(maxX3D)) ? maxX3D : 150;
+    const bMinZ = (found3DObjects && isFinite(minZ3D)) ? minZ3D : -150;
+    const bMaxZ = (found3DObjects && isFinite(maxZ3D)) ? maxZ3D : 150;
+
+    const aislesGroup = new THREE.Group();
+    const aisleWidth = 300; // Rozszerzenie alejek do 3m (300cm)
+    const aisleOffset = 50; // Odsunięcie 50cm od obrysu stoiska/podłogi
+    const hallLen = 8000; // Rozciągnięcie alejek na całą halę
+
+    const isBW = typeof showModuleListMode !== 'undefined' && showModuleListMode === 'bw';
+    const isBlue = typeof isBlueprintMode !== 'undefined' && isBlueprintMode;
+    const aisleColor = isBlue ? 0x2c4263 : (isBW ? 0x333333 : 0x5c6570); // Architektoniczny beton
+    const borderColor = isBlue ? 0x5a7ba8 : (isBW ? 0x555555 : 0x3b4249);
+
+    const useBasicAisle = typeof window.currentBgType !== 'undefined' && (window.currentBgType === 'dark_hall' || window.currentBgType === 'dark_sketch');
+    const aisleMat = useBasicAisle
+      ? new THREE.MeshBasicMaterial({
+          color: window.currentBgType === 'dark_hall' ? 0x181818 : 0x5c6570, // Antracytowe dla dark hall, średnioszare dla dark sketch
+          transparent: true,
+          opacity: 0.85
+        })
+      : new THREE.MeshStandardMaterial({
+          color: aisleColor,
+          roughness: 1.0,
+          metalness: 0.0,
+          transparent: true,
+          opacity: 0.85
+        });
+
+    const borderMat = new THREE.LineBasicMaterial({
+      color: borderColor,
+      transparent: true,
+      opacity: 0.7
+    });
+
+    const create3DAisleSection = (w, d, cx, cz) => {
+      if (!isFinite(w) || !isFinite(d) || !isFinite(cx) || !isFinite(cz) || w <= 0 || d <= 0) return;
+      const geom = new THREE.PlaneGeometry(w, d);
+      geom.rotateX(-Math.PI / 2);
+      const mesh = new THREE.Mesh(geom, aisleMat);
+      mesh.position.set(cx, 1.0, cz);
+      mesh.receiveShadow = true;
+      aislesGroup.add(mesh);
+
+      const halfW = w / 2, halfD = d / 2;
+      const points = [
+        new THREE.Vector3(-halfW, 1.02, -halfD),
+        new THREE.Vector3(halfW, 1.02, -halfD),
+        new THREE.Vector3(halfW, 1.02, halfD),
+        new THREE.Vector3(-halfW, 1.02, halfD),
+        new THREE.Vector3(-halfW, 1.02, -halfD)
+      ];
+      const lineGeom = new THREE.BufferGeometry().setFromPoints(points);
+      const lineMesh = new THREE.Line(lineGeom, borderMat);
+      lineMesh.position.set(cx, 0, cz);
+      aislesGroup.add(lineMesh);
+    };
+
+    const zNorth = bMinZ - aisleOffset - aisleWidth / 2;
+    const zSouth = bMaxZ + aisleOffset + aisleWidth / 2;
+    const xWest = bMinX - aisleOffset - aisleWidth / 2;
+    const xEast = bMaxX + aisleOffset + aisleWidth / 2;
+
+    // ELIMINACJA Z-FIGHTING: Ciągłe pasy poziome (Północ/Południe) + podzielone pasy pionowe (Zachód/Wschód) z dylatacją na przecięciach
+    const zN_bot = zNorth + aisleWidth / 2;
+    const zS_top = zSouth - aisleWidth / 2;
+    const gap = 1; // 1 cm gap (dilatation) at intersections
+
+    const d1 = (zNorth - aisleWidth / 2 - gap) - (-hallLen / 2);
+    const cz1 = (-hallLen / 2 + zNorth - aisleWidth / 2 - gap) / 2;
+
+    const d2 = zS_top - zN_bot - 2 * gap;
+    const cz2 = (zN_bot + zS_top) / 2;
+
+    const d3 = hallLen / 2 - (zSouth + aisleWidth / 2 + gap);
+    const cz3 = (zSouth + aisleWidth / 2 + gap + hallLen / 2) / 2;
+
+    // A. Tył (Północ) - Cały ciągły pas poziomy 80m
+    create3DAisleSection(hallLen, aisleWidth, 0, zNorth);
+    // B. Przód (Południe) - Cały ciągły pas poziomy 80m
+    create3DAisleSection(hallLen, aisleWidth, 0, zSouth);
+
+    // C. Lewa (Zachód) - 3 sekcje z dylatacją
+    create3DAisleSection(aisleWidth, d1, xWest, cz1);
+    create3DAisleSection(aisleWidth, d2, xWest, cz2);
+    create3DAisleSection(aisleWidth, d3, xWest, cz3);
+
+    // D. Prawa (Wschód) - 3 sekcje z dylatacją
+    create3DAisleSection(aisleWidth, d1, xEast, cz1);
+    create3DAisleSection(aisleWidth, d2, xEast, cz2);
+    create3DAisleSection(aisleWidth, d3, xEast, cz3);
+
+    scene.add(aislesGroup);
+    sceneObjects.push(aislesGroup);
+
+    // ─── TLE: STOISKA OCTANORM PO DRUGIEJ STRONIE ALEJEK ───
+    let oct1Cx = (bMinX + bMaxX) / 2;
+    let oct1Cz = bMinZ - 50 - 300 - 180;
+    const octanormBooth1 = buildOctanormBooth3D(oct1Cx, oct1Cz);
+    scene.add(octanormBooth1);
+    sceneObjects.push(octanormBooth1);
+
+    // Drugie stoisko Octanorm 4x3m z prawej strony (układ U-shape 4x3)
+    let oct2Cx = bMaxX + 50 + 300 + 50 + 200;
+    let oct2Cz = (bMinZ + bMaxZ) / 2;
+    const octanormBooth2 = buildOctanormBooth4x33D(oct2Cx, oct2Cz);
+    scene.add(octanormBooth2);
+    sceneObjects.push(octanormBooth2);
+  }
+
+  if (showDimensions && hasWalls3D) {
+    const totalW = maxX3D - minX3D;
+    const zBehind = minZ3D - 60;
+    const zFront = maxZ3D + 40;
+    let maxY = 250;
+    computed3DData.forEach(item => { if (item.height) maxY = Math.max(maxY, item.height); });
+
+    const p1Total = new THREE.Vector3(minX3D, 0, zBehind);
+    const p2Total = new THREE.Vector3(maxX3D, 0, zBehind);
+    const dimTotal = addDimension3D(p1Total, p2Total, `Szerokość całkowita: ${totalW.toFixed(0)} cm`, new THREE.Vector3(0, 0, 0), 0.7);
+    scene.add(dimTotal); sceneObjects.push(dimTotal);
+
+    const p1HR = new THREE.Vector3(maxX3D + 40, 0, zFront);
+    const p2HR = new THREE.Vector3(maxX3D + 40, maxY, zFront);
+    const dimHR = addDimension3D(p1HR, p2HR, `Wys. ${maxY.toFixed(0)} cm`, new THREE.Vector3(0, 0, 0), 0.6);
+    scene.add(dimHR); sceneObjects.push(dimHR);
+  }
+
+  if (typeof arGroup !== 'undefined' && arGroup && typeof isARMode !== 'undefined' && isARMode) {
     sceneObjects.forEach(obj => {
       scene.remove(obj);
       arGroup.add(obj);
@@ -2224,6 +3011,16 @@ function update3DScene() {
   }
   if (human3DModel) {
     human3DModel.position.x = humanPos.x;
+    human3DModel.position.z = humanPos.z;
+    
+    // Obliczenie wysokości z uwzględnieniem podwyższenia podłogi (globalElevationY)
+    human3DModel.position.y = 0;
+    const box = new THREE.Box3().setFromObject(human3DModel);
+    const elevation = typeof globalElevationY !== 'undefined' ? globalElevationY : 0;
+    human3DModel.position.y = elevation + Math.abs(box.min.y);
+
+    const rotation = humanPos.rotation !== undefined ? humanPos.rotation : 180;
+    human3DModel.rotation.y = rotation * Math.PI / 180;
   }
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -2310,6 +3107,31 @@ function update3DScene() {
   // Refresh module list table in sidebar if active
   if (typeof showModuleListMode !== 'undefined' && showModuleListMode && typeof window.buildModuleListTable === 'function') {
     window.buildModuleListTable();
+  }
+
+  // Włączenie cieni dla wszystkich nowo wygenerowanych obiektów w scenie
+  if (scene) {
+    scene.traverse((child) => {
+      if (child.isMesh) {
+        if (child === windowExpoFloor) {
+          child.receiveShadow = true;
+          child.castShadow = false;
+        } else if (child === windowExpoCeiling || child === windowExpoWalls) {
+          child.receiveShadow = false;
+          child.castShadow = false;
+        } else if (child.name === 'windowGridHelper' || child.isLine || child.isSprite) {
+          child.castShadow = false;
+          child.receiveShadow = false;
+        } else {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      }
+    });
+  }
+
+  if (typeof renderer !== 'undefined' && renderer && scene && camera) {
+    renderer.render(scene, camera);
   }
 }
 
@@ -2406,6 +3228,98 @@ function render() {
   for (let index = 0; index < plan.length; index++) {
     let item = plan[index];
 
+    // ─── MODUŁ NADSTAWKOWY / STACKED WALL (BUDOWANIE DO GÓRY) ─────────────────
+    if (item.type === 'wall' && (item.isStacked || item.stackedOnIndex !== undefined)) {
+      let parent3D = (item.stackedOnIndex !== undefined) ? computed3DData.find(d => d.type === 'wall' && d.planIndex === item.stackedOnIndex) : null;
+      if (!parent3D) {
+        for (let i = computed3DData.length - 1; i >= 0; i--) {
+          if (computed3DData[i].type === 'wall' && computed3DData[i].planIndex < index) {
+            parent3D = computed3DData[i]; break;
+          }
+        }
+      }
+
+      let pCx = parent3D ? parent3D.cx : 0;
+      let pCz = parent3D ? parent3D.cz : 0;
+      let pAngle = parent3D ? parent3D.angle : 0;
+      let pHeight = parent3D ? parent3D.height : 250;
+      let pElev = parent3D ? (parent3D.elevation || 0) : 0;
+
+      item.elevation = pElev + pHeight;
+      const thick = item.thickness || 12;
+      const fx = stageCenterStartX + pCx;
+      const fy = stageCenterStartY + pCz;
+      const isSel = selectedItemIndex === index;
+      const isMSel = isMultiSel(index);
+
+      let wallClasses = 'sego-wall stacked-wall';
+      if (isSel) wallClasses += ' selected';
+      if (isMSel) wallClasses += ' multi-selected';
+
+      let stackedWallEl = document.createElement('div');
+      stackedWallEl.className = wallClasses;
+      stackedWallEl.style.width = item.length + 'px';
+      stackedWallEl.style.height = thick + 'px';
+      stackedWallEl.style.left = (fx - item.length / 2) + 'px';
+      stackedWallEl.style.top = (fy - thick / 2) + 'px';
+      stackedWallEl.style.transformOrigin = '50% 50%';
+      stackedWallEl.style.transform = `rotate(${pAngle}deg)`;
+      if (item.color) { stackedWallEl.style.borderColor = item.color; stackedWallEl.style.boxShadow = `0 0 8px ${item.color}`; }
+
+      const isBW = typeof showModuleListMode !== 'undefined' && showModuleListMode === 'bw';
+      const textRot = (pAngle % 360 >= 90 && pAngle % 360 <= 270) ? 180 : 0;
+      let heightLabel = `<br><span style="font-size:7px;color:#ffcc00;font-weight:bold;">⬆️+${item.elevation}</span>`;
+      stackedWallEl.innerHTML = `<span style="transform: rotate(${textRot}deg); pointer-events: none; text-align:center; line-height:1;">${item.length}${heightLabel}</span>`;
+
+      stackedWallEl.onclick = (e) => selectItem(index, e);
+      stackedWallEl.onmousedown = function (e) {
+        if (e.target.tagName === 'SPAN') return;
+        e.preventDefault(); e.stopPropagation();
+        selectItem(index, e);
+      };
+      stackedWallEl.ondragover = (e) => { e.preventDefault(); e.stopPropagation(); };
+      stackedWallEl.ondrop = (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+          let file = e.dataTransfer.files[0];
+          let validExts = ['jpg', 'jpeg', 'png', 'pdf', 'tiff', 'tif'];
+          let fileExt = file.name.split('.').pop().toLowerCase();
+          if (validExts.includes(fileExt)) {
+            const isFlipped = item.isFlipped !== undefined ? item.isFlipped : (parent3D ? parent3D.isFlipped : false);
+            if (isFlipped) {
+              item.textureBackName = file.name;
+            } else {
+              item.textureFrontName = file.name;
+            }
+            handleDroppedFile(file, fileExt, (source) => {
+              let dataUrl = typeof source === 'string' ? source : source.toDataURL('image/jpeg', 0.95);
+              if (isFlipped) {
+                item.textureBack = dataUrl;
+              } else {
+                item.textureFront = dataUrl;
+              }
+              if (typeof refreshGraphicsList === 'function') refreshGraphicsList();
+              render();
+            });
+          } else alert("Obsługiwane formaty to: JPG, PNG, TIFF, PDF");
+        }
+      };
+      layer.appendChild(stackedWallEl);
+
+      addItemToBom(item.name, 1, item.price, counts);
+      baseCost += item.price;
+      if (DB.segoStackConn) {
+        addItemToBom(DB.segoStackConn.name, 2, DB.segoStackConn.price, counts);
+        baseCost += (2 * DB.segoStackConn.price);
+      }
+
+      computed3DData.push({
+        type: 'wall', planIndex: index, cx: pCx, cz: pCz, length: item.length, height: item.height || 250, angle: pAngle, color: item.color, isDoor: item.isDoor, labelEN: item.labelEN, textureFront: item.textureFront, textureBack: item.textureBack, textureFrontName: item.textureFrontName, textureBackName: item.textureBackName, isFoldable: item.isFoldable, thickness: thick, isFlipped: item.isFlipped !== undefined ? item.isFlipped : (parent3D ? parent3D.isFlipped : false), leftFoot: false, rightFoot: false, elevation: item.elevation, isStacked: true
+      });
+
+      continue; // ZIGNORUJ STRZAŁKĘ RYSOWANIA
+    }
+
     // ─── WOLNA ŚCIANA (wyrwana z łańcucha) ─────────────────────────────────────
     if (item.type === 'wall' && item.offsetX !== undefined) {
       const freeAngle = item.freeAngle || 0;
@@ -2482,6 +3396,12 @@ function render() {
       // --- DODAWANIE DO BOM I NALICZANIE KOSZTÓW DLA WOLNEJ ŚCIANY ---
       addItemToBom(item.name, 1, item.price, counts);
       baseCost += item.price;
+      if (item.elevation > 0 || item.isStacked) {
+        if (DB.segoStackConn) {
+          addItemToBom(DB.segoStackConn.name, 2, DB.segoStackConn.price, counts);
+          baseCost += (2 * DB.segoStackConn.price);
+        }
+      }
       if (item.isDoor) {
         addItemToBom(DB.sego100x250.name, 1, DB.sego100x250.price, counts);
         baseCost += DB.sego100x250.price;
@@ -2547,7 +3467,7 @@ function render() {
       maxY = Math.max(maxY, epY1 + perpY, epY2 + perpY);
 
       // Dodaj do computed3DData z obliczonymi wFlags stopkami
-      computed3DData.push({ type: 'wall', planIndex: index, cx: item.offsetX, cz: item.offsetY, length: item.length, height: item.height || 250, angle: freeAngle, color: item.color, isDoor: item.isDoor, labelEN: item.labelEN, isFoldable: item.isFoldable, thickness: thick, isFlipped: item.isFlipped, leftFoot: wFlags.leftFoot, rightFoot: wFlags.rightFoot });
+      computed3DData.push({ type: 'wall', planIndex: index, cx: item.offsetX, cz: item.offsetY, length: item.length, height: item.height || 250, angle: freeAngle, color: item.color, isDoor: item.isDoor, labelEN: item.labelEN, isFoldable: item.isFoldable, thickness: thick, isFlipped: item.isFlipped, leftFoot: wFlags.leftFoot, rightFoot: wFlags.rightFoot, elevation: item.elevation || 0, isStacked: item.isStacked || false });
 
       // --- ZACHOWAJ PRZERWĘ W ŁAŃCUCHU ---
       let tempX = x, tempY = y;
@@ -3084,6 +4004,11 @@ function render() {
 
           tempX = pendingTurnItem.cornerX + sV1 * Math.cos(rad1) + sV2 * Math.cos(rad2);
           tempY = pendingTurnItem.cornerY + sV1 * Math.sin(rad1) + sV2 * Math.sin(rad2);
+        } else if (lastItemType === 'wall' || lastItemType === 'jump') {
+          // Połączenie na prosto (180 deg / kolinearne) - dodaj 3mm (0.3cm) odstępu
+          let radCol = currentAngle * Math.PI / 180;
+          tempX += 0.3 * Math.cos(radCol);
+          tempY += 0.3 * Math.sin(radCol);
         }
 
         let rad = currentAngle * Math.PI / 180;
@@ -3177,6 +4102,8 @@ function render() {
 
       nodes.push({ x: x, y: y, angle: currentAngle });
       let thisNodeIndex = nodes.length - 1;
+      let wFlags = feetFlags[index] || { leftFoot: true, rightFoot: true };
+      computed3DData.push({ type: 'wall', planIndex: index, cx: wallStartX + (x - wallStartX) / 2 - stageCenterStartX, cz: wallStartY + (y - wallStartY) / 2 - stageCenterStartY, length: item.length, height: item.height, angle: currentAngle, color: item.color, isDoor: item.isDoor, labelEN: item.labelEN, textureFront: item.textureFront, textureBack: item.textureBack, textureFrontName: item.textureFrontName, textureBackName: item.textureBackName, isFoldable: item.isFoldable, thickness: item.thickness, isFlipped: item.isFlipped, leftFoot: wFlags.leftFoot, rightFoot: wFlags.rightFoot, elevation: item.elevation || 0, isStacked: item.isStacked || false });
 
       item.endNodeIndex = thisNodeIndex;
       if (item.isFlipped === undefined) {
@@ -3213,9 +4140,6 @@ function render() {
       let cx = wallStartX + (x - wallStartX) / 2;
       let cy = wallStartY + (y - wallStartY) / 2;
 
-      let wFlags = feetFlags[index] || { leftFoot: true, rightFoot: true };
-      computed3DData.push({ type: 'wall', planIndex: index, cx: cx - stageCenterStartX, cz: cy - stageCenterStartY, length: item.length, height: item.height, angle: currentAngle, color: item.color, isDoor: item.isDoor, labelEN: item.labelEN, textureFront: item.textureFront, textureBack: item.textureBack, textureFrontName: item.textureFrontName, textureBackName: item.textureBackName, isFoldable: item.isFoldable, thickness: item.thickness, isFlipped: item.isFlipped, leftFoot: wFlags.leftFoot, rightFoot: wFlags.rightFoot });
-
       let thick = item.thickness || 12;
       let wall = document.createElement('div');
       wall.className = 'sego-wall' + (selectedItemIndex === index ? ' selected' : '') + (isMultiSel(index) ? ' multi-selected' : '');
@@ -3237,6 +4161,7 @@ function render() {
       }
       let textRot = (currentAngle % 360 >= 90 && currentAngle % 360 <= 270) ? 180 : 0;
       let heightLabel = item.height === 300 ? `<br><span style="font-size:8px;color:${isBW ? '#888888' : item.color};">3m</span>` : '';
+      if (item.elevation) heightLabel += `<br><span style="font-size:7px;color:#ffcc00;">⬆️+${item.elevation}</span>`;
       wall.innerHTML = `<span style="transform: rotate(${textRot}deg); pointer-events: none; text-align:center; line-height:1;">${item.length}${heightLabel}</span>`;
       wall.onclick = (e) => selectItem(index, e);
       layer.appendChild(wall);
@@ -3275,16 +4200,27 @@ function render() {
       }
 
       if (item.accessories && item.accessories.length > 0) {
+        // Pre-calculate wall accessories collisions
+        let wallAccs = item.accessories.filter(a => a.id !== 'daszek' && a.id !== 'daszek100x200');
+        let wallCollisions = new Set();
+        if (window.checkAccessoriesCollisions) {
+          wallCollisions = window.checkAccessoriesCollisions(wallAccs, item.height || 250);
+        }
+
         item.accessories.forEach((acc, accIdx) => {
           let effectiveDir = item.isFlipped ? -acc.dir : acc.dir;
 
-          if (acc.id === 'daszek') {
+          if (acc.id === 'daszek' || acc.id === 'daszek100x200') {
+            let roofModule = acc.id === 'daszek100x200' ? DB.sego100x200 : DB.sego100x250;
+            let roofLen = acc.roofLength || (acc.id === 'daszek100x200' ? 200 : 250);
+            let roofName = acc.id === 'daszek100x200' ? "- Daszek: Moduł 100x200 (Dach)" : "- Daszek: Moduł 100x250 (Dach)";
+
             let legPrice = item.height === 300 ? DB.sego100x300.price : DB.sego100x250.price;
             let legName = item.height === 300 ? DB.sego100x300.name : DB.sego100x250.name;
-            addItemToBom("- Daszek: Moduł 100x250 (Dach)", 1, DB.sego100x250.price, counts);
+            addItemToBom(roofName, 1, roofModule.price, counts);
             addItemToBom(`- Daszek: ${legName} (Noga)`, 1, legPrice, counts);
             addItemToBom("- Daszek: Bridge Connector", 4, DB.bridge.price, counts);
-            baseCost += DB.sego100x250.price + legPrice + (4 * DB.bridge.price);
+            baseCost += roofModule.price + legPrice + (4 * DB.bridge.price);
 
             let dAngle = effectiveDir === 1 ? 0 : 180;
             let finalAngle = currentAngle + dAngle;
@@ -3298,36 +4234,44 @@ function render() {
             const daszekX = cx - startOffset * Math.sin(finalAngle * Math.PI / 180);
             const daszekY = cy + startOffset * Math.cos(finalAngle * Math.PI / 180);
 
-            daszekEl.style.width = '100px'; daszekEl.style.height = '250px'; daszekEl.style.left = daszekX + 'px'; daszekEl.style.top = daszekY + 'px'; daszekEl.style.marginLeft = '-50px'; daszekEl.style.transformOrigin = '50% 0'; daszekEl.style.transform = `rotate(${finalAngle}deg)`;
+            daszekEl.style.width = '100px'; daszekEl.style.height = roofLen + 'px'; daszekEl.style.left = daszekX + 'px'; daszekEl.style.top = daszekY + 'px'; daszekEl.style.marginLeft = '-50px'; daszekEl.style.transformOrigin = '50% 0'; daszekEl.style.transform = `rotate(${finalAngle}deg)`;
             if (isBW) {
               daszekEl.style.backgroundColor = '#111111';
               daszekEl.style.borderColor = '#000000';
               daszekEl.style.borderTopColor = '#000000';
               daszekEl.style.borderBottomColor = '#000000';
             }
-            let dRad = finalAngle * Math.PI / 180; let dEndX = daszekX - 250 * Math.sin(dRad); let dEndY = daszekY + 250 * Math.cos(dRad);
+            let dRad = finalAngle * Math.PI / 180; let dEndX = daszekX - roofLen * Math.sin(dRad); let dEndY = daszekY + roofLen * Math.cos(dRad);
             minX = Math.min(minX, dEndX - 50); maxX = Math.max(maxX, dEndX + 50); minY = Math.min(minY, dEndY - 50); maxY = Math.max(maxY, dEndY + 50);
             daszekEl.innerHTML = `<div class="acc-controls"><span class="acc-btn" onclick="toggleAccDir(${index}, ${accIdx}, event)">🔄</span><span class="acc-btn" onclick="removeAccessory(${index}, ${accIdx}, event)" style="color:#ff5555">❌</span></div>`;
             layer.appendChild(daszekEl);
 
             if (!acc.accessories) acc.accessories = [];
+            
+            // Pre-calculate leg accessories collisions
+            let legCollisions = new Set();
+            if (window.checkAccessoriesCollisions) {
+              legCollisions = window.checkAccessoriesCollisions(acc.accessories, item.height || 250);
+            }
+
             acc.accessories.forEach((legAcc, legAccIdx) => {
               addItemToBom(legAcc.name, 1, legAcc.price, counts); baseCost += legAcc.price;
 
-              let legX = daszekX - 244 * Math.sin(dRad); let legY = daszekY - 244 * Math.cos(dRad); // Wait, legY is cy + 244 originally, let's keep direction correct
-              legX = daszekX - 244 * Math.sin(dRad);
-              legY = daszekY + 244 * Math.cos(dRad);
-              computed3DData.push({ type: 'accessory', id: legAcc.id, accData: legAcc, cx: legX - stageCenterStartX, cz: legY - stageCenterStartY, wallHeight: item.height, wallAngle: finalAngle, dir: legAcc.dir, labelEN: legAcc.labelEN });
+              let legX = daszekX - (roofLen + 6) * Math.sin(dRad);
+              let legY = daszekY + (roofLen + 6) * Math.cos(dRad);
+              
+              let hasColl = legCollisions.has(legAccIdx);
+              computed3DData.push({ type: 'accessory', id: legAcc.id, accData: legAcc, cx: legX - stageCenterStartX, cz: legY - stageCenterStartY, wallHeight: item.height, wallAngle: finalAngle, dir: legAcc.dir, labelEN: legAcc.labelEN, hasCollision: hasColl });
 
               let accEl = document.createElement('div'); accEl.className = 'sego-accessory'; accEl.style.width = '24px'; accEl.style.height = '24px';
               let offsetRad = (finalAngle + (legAcc.dir === 1 ? 90 : -90)) * Math.PI / 180;
               let accX = legX + 18 * Math.cos(offsetRad); let accY = legY + 18 * Math.sin(offsetRad);
 
               accEl.style.left = (accX - 12) + 'px'; accEl.style.top = (accY - 12 - (legAccIdx * 5)) + 'px';
-              if (isBW) {
-                accEl.style.background = '#222222';
-                accEl.style.border = '1px solid #000000';
-                accEl.style.boxShadow = 'none';
+              if (isBW || hasColl) {
+                accEl.style.background = hasColl ? '#ff2222' : '#222222';
+                accEl.style.border = hasColl ? '1px solid #ff0000' : '1px solid #000000';
+                accEl.style.boxShadow = hasColl ? '0 0 8px #ff0000' : 'none';
                 accEl.style.color = '#ffffff';
               } else {
                 accEl.style.background = legAcc.color;
@@ -3338,17 +4282,20 @@ function render() {
             });
           } else {
             addItemToBom(acc.name, 1, acc.price, counts); baseCost += acc.price;
-            computed3DData.push({ type: 'accessory', id: acc.id, accData: acc, cx: cx - stageCenterStartX, cz: cy - stageCenterStartY, wallHeight: item.height, wallAngle: currentAngle, dir: effectiveDir, labelEN: acc.labelEN });
+            
+            let wallIdx = wallAccs.indexOf(acc);
+            let hasColl = wallIdx !== -1 && wallCollisions.has(wallIdx);
+            computed3DData.push({ type: 'accessory', id: acc.id, accData: acc, cx: cx - stageCenterStartX, cz: cy - stageCenterStartY, wallHeight: item.height, wallAngle: currentAngle, dir: effectiveDir, labelEN: acc.labelEN, hasCollision: hasColl });
 
             let accEl = document.createElement('div'); accEl.className = 'sego-accessory'; accEl.style.width = '24px'; accEl.style.height = '24px';
 
             let offsetRad = (currentAngle + (effectiveDir === 1 ? 90 : -90)) * Math.PI / 180;
             let accX = cx + 18 * Math.cos(offsetRad); let accY = cy + 18 * Math.sin(offsetRad);
             accEl.style.left = (accX - 12) + 'px'; accEl.style.top = (accY - 12 - (accIdx * 5)) + 'px';
-            if (isBW) {
-              accEl.style.background = '#222222';
-              accEl.style.border = '1px solid #000000';
-              accEl.style.boxShadow = 'none';
+            if (isBW || hasColl) {
+              accEl.style.background = hasColl ? '#ff2222' : '#222222';
+              accEl.style.border = hasColl ? '1px solid #ff0000' : '1px solid #000000';
+              accEl.style.boxShadow = hasColl ? '0 0 8px #ff0000' : 'none';
               accEl.style.color = '#ffffff';
             } else {
               accEl.style.background = acc.color;
@@ -3361,7 +4308,16 @@ function render() {
       }
 
       lastItemType = 'wall'; addItemToBom(item.name, 1, item.price, counts); baseCost += item.price;
-      if (item.isDoor) { addItemToBom(DB.sego100x250.name, 1, DB.sego100x250.price, counts); baseCost += DB.sego100x250.price; }
+      if (item.elevation > 0 || item.isStacked) {
+        if (DB.segoStackConn) {
+          addItemToBom(DB.segoStackConn.name, 2, DB.segoStackConn.price, counts);
+          baseCost += (2 * DB.segoStackConn.price);
+        }
+      }
+      if (item.isDoor) {
+        let frameMod = item.height === 300 ? DB.sego100x300 : DB.sego100x250;
+        addItemToBom(frameMod.name, 1, frameMod.price, counts); baseCost += frameMod.price;
+      }
       // Stopki dla standardowej ściany - USUNIĘTO (mini stopy tylko przy kantorkach)
 
     } else if (item.type === 'turn') {
@@ -3541,6 +4497,71 @@ function render() {
     document.getElementById('bomList').innerHTML = bomHTML || '<center style="color:#444">Projekt pusty</center>';
     document.getElementById('totalPrice').innerText = Math.round(finalEUR).toLocaleString() + ' €';
 
+    // Assign letters A-Z dynamically for the current state of computed3DData
+    const tempWallLetters = new Map();
+    const tempModules = [];
+    
+    computed3DData.forEach(d3 => {
+      if (d3.type === 'wall') {
+        tempModules.push({ itemIndex: d3.planIndex, part: 'wall', cx: d3.cx, key: d3 });
+      } else if (d3.type === 'daszek') {
+        let rot = -d3.angle * Math.PI / 180;
+        let roofLen = (d3.accData && d3.accData.roofLength) ? d3.accData.roofLength : 250;
+        tempModules.push({ itemIndex: d3.planIndex, part: 'roof', cx: d3.cx + (roofLen / 2 + 6) * Math.sin(rot) });
+        tempModules.push({ itemIndex: d3.planIndex, part: 'leg', cx: d3.cx + (roofLen + 12) * Math.sin(rot) });
+      }
+    });
+    
+    tempModules.sort((a, b) => a.cx - b.cx);
+    
+    tempModules.forEach((mod, idx) => {
+      const letter = String.fromCharCode(65 + idx % 26);
+      if (mod.part === 'wall') {
+        tempWallLetters.set(mod.key, letter);
+        tempWallLetters.set(mod.itemIndex + '_wall', letter);
+      } else {
+        tempWallLetters.set(mod.itemIndex + '_' + mod.part, letter);
+      }
+    });
+
+    // Scan accessories layout positions
+    const shelfDetails = [];
+    const tvDetails = [];
+    
+    plan.forEach((item, pIdx) => {
+      if (item.type === 'wall') {
+        const wallLetter = tempWallLetters.get(pIdx + '_wall') || 'A';
+        
+        if (item.accessories) {
+          item.accessories.forEach(acc => {
+            if (acc.id === 'shelfKit' || acc.id === 'tvPanel') {
+              const side = acc.dir === 1 ? 'front' : 'tył';
+              const y = acc.heightCm !== undefined ? acc.heightCm : (acc.heightPct !== undefined ? Math.round(item.height * acc.heightPct / 100) : Math.round(item.height / 2));
+              const desc = `moduł ${wallLetter} ${side} / wys: ${y}cm`;
+              if (acc.id === 'shelfKit') shelfDetails.push(desc);
+              if (acc.id === 'tvPanel') tvDetails.push(desc);
+            }
+            if (acc.id === 'daszek' || acc.id === 'daszek100x200') {
+              const legLetter = tempWallLetters.get(pIdx + '_leg') || 'A';
+              if (acc.accessories) {
+                acc.accessories.forEach(legAcc => {
+                  if (legAcc.id === 'shelfKit' || legAcc.id === 'tvPanel') {
+                    const side = legAcc.dir === 1 ? 'front' : 'tył';
+                    const y = legAcc.heightCm !== undefined ? legAcc.heightCm : (legAcc.heightPct !== undefined ? Math.round(item.height * legAcc.heightPct / 100) : Math.round(item.height / 2));
+                    const desc = `moduł ${legLetter} ${side} / wys: ${y}cm`;
+                    if (legAcc.id === 'shelfKit') shelfDetails.push(desc);
+                    if (legAcc.id === 'tvPanel') tvDetails.push(desc);
+                  }
+                });
+              }
+            }
+          });
+        }
+      }
+    });
+
+    const formatDetails = (list) => list.map((d, i) => `#${i + 1} - ${d}`).join(' / ');
+
     let bomItems = [];
     for (let name in counts) {
       if (counts[name].qty > 0) {
@@ -3567,10 +4588,22 @@ function render() {
           intranetId = window.KASETON_PRICES[name].intranetId || null;
         }
 
+        let description = '';
+        if (typeof DB !== 'undefined') {
+          if (name === DB.shelfKit.name && shelfDetails.length > 0) {
+            description = formatDetails(shelfDetails);
+          } else if (name === DB.tvPanel.name && tvDetails.length > 0) {
+            description = formatDetails(tvDetails);
+          }
+        }
+        
+        counts[name].description = description;
+
         bomItems.push({
           name: name,
           qty: counts[name].qty,
-          intranetId: intranetId
+          intranetId: intranetId,
+          description: description
         });
       }
     }
@@ -3595,19 +4628,68 @@ function render() {
     });
     document.getElementById('totalPower').innerText = `⚡ Moc: ${Math.round(totalPowerW)} W`;
   }
+  // --- RENDEROWANIE ALEJEK 2D (BETON 300 cm ciągnący się przez halę) ---
+  if (typeof window.showHallEnvironment !== 'undefined' && window.showHallEnvironment) {
+    let minX2 = minX, maxX2 = maxX, minY2 = minY, maxY2 = maxY;
+    if (typeof floorConfig !== 'undefined' && floorConfig.type !== 'none' && floorConfig.width > 0 && floorConfig.depth > 0) {
+      let fx1 = stageCenterStartX + floorConfig.offsetX - floorConfig.width / 2;
+      let fx2 = stageCenterStartX + floorConfig.offsetX + floorConfig.width / 2;
+      let fy1 = stageCenterStartY + floorConfig.offsetY - floorConfig.depth / 2;
+      let fy2 = stageCenterStartY + floorConfig.offsetY + floorConfig.depth / 2;
+
+      minX2 = minX !== Infinity ? Math.min(minX, fx1) : fx1;
+      maxX2 = maxX !== -Infinity ? Math.max(maxX, fx2) : fx2;
+      minY2 = minY !== Infinity ? Math.min(minY, fy1) : fy1;
+      maxY2 = maxY !== -Infinity ? Math.max(maxY, fy2) : fy2;
+    }
+
+    const bMinX2D = (minX2 !== Infinity) ? minX2 : stageCenterStartX - 150;
+    const bMaxX2D = (maxX2 !== -Infinity) ? maxX2 : stageCenterStartX + 150;
+    const bMinY2D = (minY2 !== Infinity) ? minY2 : stageCenterStartY - 150;
+    const bMaxY2D = (maxY2 !== -Infinity) ? maxY2 : stageCenterStartY + 150;
+
+    const aisleW = 300; // Rozszerzenie alejek do 3m
+    const aisleGap = 50; // Odsunięcie 50 cm od obrysu stoiska/podłogi
+    const inf2D = 4000; // Długie aleje w nieskończoność
+    const isBW = typeof showModuleListMode !== 'undefined' && showModuleListMode === 'bw';
+    const aisleBg = isBW ? 'rgba(50, 50, 50, 0.15)' : 'rgba(100, 110, 120, 0.15)';
+    const aisleBorder = isBW ? '1px dashed #666' : '1px dashed #6c757d';
+    const aisleTextColor = isBW ? '#555' : '#a0aab2';
+
+    const create2DAisle = (left, top, w, h, text) => {
+      let el = document.createElement('div');
+      el.className = 'aisle-2d-strip';
+      el.style.cssText = `position:absolute; left:${left}px; top:${top}px; width:${w}px; height:${h}px; background:${aisleBg}; border:${aisleBorder}; pointer-events:none; z-index:0; display:flex; align-items:center; justify-content:center; color:${aisleTextColor}; font-size:11px; font-weight:bold; letter-spacing:1px; font-family:'Segoe UI', sans-serif; box-sizing:border-box;`;
+      el.innerHTML = `<span style="opacity:0.7;">🚶 ${text}</span>`;
+      layer.appendChild(el);
+    };
+
+    const midX2D = (bMinX2D + bMaxX2D) / 2;
+    const midY2D = (bMinY2D + bMaxY2D) / 2;
+
+    // Góra (Północ)
+    create2DAisle(midX2D - inf2D / 2, bMinY2D - aisleGap - aisleW, inf2D, aisleW, 'ALEJKA BETON 300 cm');
+    // Dół (Południe)
+    create2DAisle(midX2D - inf2D / 2, bMaxY2D + aisleGap, inf2D, aisleW, 'ALEJKA BETON 300 cm');
+    // Lewa (Zachód)
+    create2DAisle(bMinX2D - aisleGap - aisleW, midY2D - inf2D / 2, aisleW, inf2D, 'ALEJKA BETON 300 cm');
+    // Prawa (Wschód)
+    create2DAisle(bMaxX2D + aisleGap, midY2D - inf2D / 2, aisleW, inf2D, 'ALEJKA BETON 300 cm');
+  }
+
   if (placedWalls.length > 0) {
     const totalW = maxX - minX;
     const totalD = maxY - minY;
-
+    const aisleW = 300; const aisleGap = 50;
     let lineW = document.createElement('div');
     lineW.className = 'total-dim-2d';
-    lineW.style.cssText = `position:absolute; border-bottom:2px solid var(--highlight); width:${totalW}px; left:${minX}px; top:${maxY + 50}px; text-align:center; padding-bottom:5px; color:var(--highlight); font-weight:bold; font-size:16px; pointer-events:none; z-index:1;`;
+    lineW.style.cssText = `position:absolute; border-bottom:2px solid var(--highlight); width:${totalW}px; left:${minX}px; top:${maxY + (window.showHallEnvironment ? aisleGap + aisleW : 0) + 20}px; text-align:center; padding-bottom:5px; color:var(--highlight); font-weight:bold; font-size:16px; pointer-events:none; z-index:1;`;
     lineW.innerText = `${totalW.toFixed(0)} cm`;
     layer.appendChild(lineW);
 
     let lineD = document.createElement('div');
     lineD.className = 'total-dim-2d';
-    lineD.style.cssText = `position:absolute; border-right:2px solid var(--highlight); height:${totalD}px; left:${maxX + 50}px; top:${minY}px; display:flex; align-items:center; padding-left:10px; color:var(--highlight); font-weight:bold; font-size:16px; pointer-events:none; z-index:1;`;
+    lineD.style.cssText = `position:absolute; border-right:2px solid var(--highlight); height:${totalD}px; left:${maxX + (window.showHallEnvironment ? aisleGap + aisleW : 0) + 20}px; top:${minY}px; display:flex; align-items:center; padding-left:10px; color:var(--highlight); font-weight:bold; font-size:16px; pointer-events:none; z-index:1;`;
     lineD.innerText = `${totalD.toFixed(0)} cm`;
     layer.appendChild(lineD);
   }
@@ -3628,14 +4710,37 @@ function render() {
   } else { if (collWarningEl) collWarningEl.remove(); }
 
   // --- REPREZENTACJA CZŁOWIEKA 2D NA MODELU 2D ---
-  // --- REPREZENTACJA CZŁOWIEKA 2D NA MODELU 2D ---
-  // --- REPREZENTACJA CZŁOWIEKA 2D NA MODELU 2D ---
   (function () {
     const stage = document.getElementById('stage');
     if (!stage) return;
 
+    // Definiowanie globalnych metod zaznaczania i obracania człowieka
+    window.selectHuman = function(e) {
+      if (e) e.stopPropagation();
+      window.isHumanSelected = true;
+      selectedItemIndex = null;
+      if (typeof selectedItemIndices !== 'undefined') selectedItemIndices.clear();
+      render();
+    };
+
+    window.rotateHuman = function(e) {
+      if (e) e.stopPropagation();
+      let r = humanPos.rotation !== undefined ? humanPos.rotation : 180;
+      humanPos.rotation = (r + 45) % 360;
+      if (human3DModel) {
+        human3DModel.rotation.y = humanPos.rotation * Math.PI / 180;
+        if (renderer && scene && camera) {
+          renderer.render(scene, camera);
+        }
+      }
+      render();
+    };
+
     const oldMan2D = document.getElementById('man2DElement');
     if (oldMan2D) oldMan2D.remove();
+
+    const isSel = !!window.isHumanSelected;
+    const rotation = humanPos.rotation !== undefined ? humanPos.rotation : 180;
 
     const man2D = document.createElement('div');
     man2D.id = 'man2DElement';
@@ -3644,15 +4749,27 @@ function render() {
     man2D.style.height = '30px';
     man2D.style.borderRadius = '50%';
     man2D.style.backgroundColor = '#00ff88';
-    man2D.style.border = '2px solid #000';
-    man2D.style.boxShadow = '0 0 10px #00ff88';
+    man2D.style.border = isSel ? '3px solid #00ff88' : '2px solid #000';
+    man2D.style.boxShadow = isSel ? '0 0 15px #00ff88, inset 0 0 5px #00ff88' : '0 0 10px #00ff88';
     man2D.style.cursor = 'move';
     man2D.style.zIndex = '99';
     man2D.style.display = 'flex';
     man2D.style.alignItems = 'center';
     man2D.style.justifyContent = 'center';
-    man2D.style.fontSize = '16px';
-    man2D.innerHTML = '🧍';
+
+    let controlsHTML = '';
+    if (isSel) {
+      controlsHTML = `
+        <div class="acc-controls" style="display: flex; position: absolute; top: -35px; left: 50%; transform: translateX(-50%); z-index: 100;">
+          <span class="acc-btn" onclick="window.rotateHuman(event)" title="Obróć człowieka" style="background:#00ff88; color:#000; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:12px; border: 1px solid #000; font-weight:bold;">🔄</span>
+        </div>
+      `;
+    }
+
+    man2D.innerHTML = `
+      <span style="pointer-events: none; display: block; transform: rotate(${rotation - 180}deg); font-size: 16px;">🧍</span>
+      ${controlsHTML}
+    `;
 
     let px = stageCenterStartX + humanPos.x;
     let py = stageCenterStartY + humanPos.z;
@@ -3660,9 +4777,16 @@ function render() {
     man2D.style.left = (px - 15) + 'px';
     man2D.style.top = (py - 15) + 'px';
 
+    man2D.onclick = function(e) {
+      window.selectHuman(e);
+    };
+
     man2D.onmousedown = function (e) {
+      if (e.target.classList.contains('acc-btn')) return; // ignorowanie przeciągania na przycisku obrotu
       e.preventDefault();
       e.stopPropagation();
+      window.selectHuman(e);
+      
       let startX = e.clientX;
       let startY = e.clientY;
       let initX = humanPos.x;

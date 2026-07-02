@@ -14,7 +14,14 @@ const DB = {
 
     sego85x250: { name: "Moduł 85x250", labelEN: "Wall 85x250", catNo: "SEGO-LIG-BOX-85X250", intranetId: 18347, type: "wall", length: 85, height: 250, price: 512 },
 
-    door100: { name: "SEGO Door 100 (H:250)", labelEN: "Door 100x250", catNo: "SEGO-DOOR-KIT-100X250", intranetId: 17143, type: "wall", length: 100, height: 250, price: 191, color: "#00d2ff", isDoor: true },
+    sego100x100: { name: "Moduł 100x100", labelEN: "Wall 100x100", catNo: "SEGO-LIG-BOX-100X100", intranetId: 13695, type: "wall", length: 100, height: 100, price: 1900 },
+
+    sego100x200: { name: "Moduł 100x200", labelEN: "Wall 100x200", catNo: "SEGO-LIG-BOX-100X200", intranetId: 13692, type: "wall", length: 100, height: 200, price: 794 },
+
+
+    door100: { name: "SEGO Door 100 (H:250)", labelEN: "Door 100x250", catNo: "SEGO-DOOR-KIT-100X250", intranetId: 17143, type: "wall", length: 100, height: 250, price: 191, color: "#00d2ff", isDoor: true, isFlipped: true },
+
+    door100x300: { name: "SEGO Door 100 (H:300)", labelEN: "Door 100x300", catNo: "SEGO-DOOR-KIT-100X300", intranetId: 18493, type: "wall", length: 100, height: 300, price: 191, color: "#00d2ff", isDoor: true, isFlipped: true },
 
     sego300x300: { name: "Moduł 300x300", labelEN: "Wall 300x300", catNo: "SEGO-LIG-BOX-300X300", intranetId: 18494, type: "wall", length: 300, height: 300, price: 1453, color: "var(--tall-color)" },
 
@@ -28,7 +35,11 @@ const DB = {
 
     shelfKit: { id: "shelfKit", name: "Shelf Kit", labelEN: "Shelf Kit", catNo: "SEGO-SHELF-KIT", intranetId: 13529, type: "accessory", price: 157, color: "#ff9900", short: "SH" },
 
-    daszek: { id: "daszek", name: "Daszek", labelEN: "Roof Tunnel", catNo: "SEGO-ROOF-TUNNEL", type: "accessory", price: 0, color: "#cc00ff", short: "DSZ" },
+    daszek: { id: "daszek", name: "Daszek 100x250", labelEN: "Roof Tunnel 100x250", catNo: "SEGO-ROOF-TUNNEL", roofLength: 250, type: "accessory", price: 0, color: "#cc00ff", short: "DSZ" },
+
+    daszek100x200: { id: "daszek100x200", name: "Daszek 100x200", labelEN: "Roof Tunnel 100x200", catNo: "SEGO-ROOF-TUNNEL-200", roofLength: 200, type: "accessory", price: 0, color: "#cc00ff", short: "DSZ2" },
+
+    segoStackConn: { name: "SEGO 180 Connector", labelEN: "SEGO 180 Connector", catNo: "SEGO-180-CON", intranetId: 16963, price: 52.3 },
 
     clamp: { name: "Łącznik prosty (Clamp)", catNo: "SEGO-LAC-PRO", intranetId: 13530, price: 7 },
 
@@ -419,6 +430,7 @@ let mixer; // Mikser animacji Three.js
 let humanPos = { x: 0, z: 350 }; // Pozycja człowieka w układzie 3D (x, z)
 let human3DModel = null; // Referencja do obiektu 3D człowieka
 let isDraggingHuman3D = false; // Flaga przeciągania modelu ludzkiego w 3D
+window.currentHumanType = 'dennis'; // Typ wybranego modelu człowieka ('dennis' lub 'soldier')
 
 
 const clock = new THREE.Clock(); // Zegar odmierzający czas między klatkami
@@ -570,84 +582,268 @@ window.cycleLegAccSlot = function (pIdx, aIdx, legAccIdx, e) {
 
 };
 
+window.checkAccessoriesCollisions = function (accessoriesList, wallHeight) {
+    const collisions = new Set();
+    const ranges = accessoriesList.map(acc => {
+        const isTV = acc.id === 'tvPanel';
+        const h = isTV ? 50 : 5;
+        const y = acc.heightCm !== undefined ? acc.heightCm : (acc.heightPct !== undefined ? Math.round(wallHeight * acc.heightPct / 100) : Math.round(wallHeight / 2));
+        return { min: y - h / 2, max: y + h / 2 };
+    });
+
+    for (let i = 0; i < accessoriesList.length; i++) {
+        for (let j = i + 1; j < accessoriesList.length; j++) {
+            if (accessoriesList[i].dir === accessoriesList[j].dir) {
+                const r1 = ranges[i];
+                const r2 = ranges[j];
+                if (r1.min < r2.max && r1.max > r2.min) {
+                    collisions.add(i);
+                    collisions.add(j);
+                }
+            }
+        }
+    }
+    return collisions;
+};
+
 window.showHeightSlider = function (itemIndex, accIndex, isLeg, event) {
     event.stopPropagation();
     
-    const existing = document.getElementById('accessory-height-popover');
+    // Remove any existing modal
+    const existing = document.getElementById('accessory-height-modal');
     if (existing) existing.remove();
-    
-    const popover = document.createElement('div');
-    popover.id = 'accessory-height-popover';
-    popover.style.cssText = `
-        position: absolute;
-        background: rgba(20, 20, 25, 0.95);
-        border: 1px solid var(--highlight, #ff0080);
-        box-shadow: 0 4px 15px rgba(255, 0, 128, 0.3);
-        border-radius: 8px;
-        padding: 8px 12px;
-        z-index: 2000;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        color: #fff;
-        font-family: sans-serif;
-        font-size: 11px;
-        min-width: 150px;
-    `;
-    
-    const rect = event.currentTarget.getBoundingClientRect();
-    popover.style.left = (window.scrollX + rect.left) + 'px';
-    popover.style.top = (window.scrollY + rect.top - 65) + 'px';
-    
+
     const wall = plan[itemIndex];
-    let acc = null;
+    if (!wall) return;
+
+    let wallHeight = wall.height || 250;
+    let titleText = `Konfiguracja Akcesoriów - Moduł ${window.wallLetters ? (window.wallLetters.get(wall) || 'A') : 'A'}`;
+    
+    let accessories = [];
+    let daszek = null;
     if (isLeg) {
-        const daszek = wall.accessories.find(a => a.id === 'daszek');
-        if (daszek && daszek.accessories) acc = daszek.accessories[accIndex];
+        daszek = wall.accessories.find(a => a.id === 'daszek' || a.id === 'daszek100x200');
+        if (daszek) {
+            if (!daszek.accessories) daszek.accessories = [];
+            accessories = daszek.accessories;
+            const legLetter = window.wallLetters ? (window.wallLetters.get(itemIndex + '_leg') || 'A') : 'A';
+            titleText = `Konfiguracja Akcesoriów - Noga Daszku (Moduł ${legLetter})`;
+        }
     } else {
-        acc = wall.accessories[accIndex];
+        accessories = wall.accessories.filter(a => a.id !== 'daszek' && a.id !== 'daszek100x200');
     }
-    
-    if (!acc) return;
-    
-    if (acc.heightPct === undefined) {
-        if (acc.slot === 1) acc.heightPct = 33;
-        else if (acc.slot === 3) acc.heightPct = 66;
-        else acc.heightPct = 50;
+
+    if (accessories.length === 0) {
+        alert("Brak akcesoriów (półek / paneli TV) na tym module do skonfigurowania!");
+        return;
     }
+
+    // Create a deep copy of the accessories to work with
+    let accessoriesCopy = JSON.parse(JSON.stringify(accessories));
+
+    // Initialize heightCm if not present
+    accessoriesCopy.forEach(acc => {
+        if (acc.heightCm === undefined) {
+            if (acc.heightPct !== undefined) {
+                acc.heightCm = Math.round(wallHeight * acc.heightPct / 100);
+            } else if (acc.slot === 1) {
+                acc.heightCm = Math.round(wallHeight * 0.33);
+            } else if (acc.slot === 3) {
+                acc.heightCm = Math.round(wallHeight * 0.66);
+            } else {
+                acc.heightCm = Math.round(wallHeight / 2);
+            }
+        }
+        // Clamp heightCm to bounds
+        const minH = 30;
+        const maxH = wallHeight - 30;
+        if (acc.heightCm < minH) acc.heightCm = minH;
+        if (acc.heightCm > maxH) acc.heightCm = maxH;
+    });
+
+    // Create Modal HTML elements
+    const modal = document.createElement('div');
+    modal.id = 'accessory-height-modal';
+    modal.className = 'height-modal-overlay';
     
-    popover.innerHTML = `
-        <div style="display:flex; justify-content:space-between; font-weight:bold; align-items:center;">
-            <span>Wysokość: ${acc.heightPct}%</span>
-            <span style="cursor:pointer; color:#ff5555; font-size:12px; font-weight:bold;" onclick="document.getElementById('accessory-height-popover').remove()">✕</span>
-        </div>
-        <input type="range" min="10" max="90" value="${acc.heightPct}" style="width:100%; cursor:pointer;" id="heightRangeInput">
-    `;
-    
-    document.body.appendChild(popover);
-    
-    const slider = popover.querySelector('#heightRangeInput');
-    slider.oninput = (e) => {
-        const val = parseInt(e.target.value, 10);
-        acc.heightPct = val;
-        popover.querySelector('span').innerText = `Wysokość: ${val}%`;
+    const renderModalContent = () => {
+        const collisions = window.checkAccessoriesCollisions(accessoriesCopy, wallHeight);
         
-        if (typeof is3DMode !== 'undefined' && is3DMode) {
-            if (typeof update3DScene === 'function') update3DScene();
-        } else {
-            if (typeof render === 'function') render();
-        }
+        let previewHtml = '';
+        // Build 2D Preview items
+        accessoriesCopy.forEach((acc, i) => {
+            const isTV = acc.id === 'tvPanel';
+            const h = isTV ? 50 : 5;
+            const y = acc.heightCm;
+            
+            // Scaled position (e.g. wall is 350px tall for 250cm, scale = 350 / wallHeight)
+            const scale = 350 / wallHeight;
+            const bottomPx = (y - h/2) * scale;
+            const heightPx = h * scale;
+            
+            const isColliding = collisions.has(i);
+            const bgColor = isColliding ? '#ff2a2a' : (isTV ? '#ffcc00' : '#ff9900');
+            const borderColor = isColliding ? '#ff0000' : (isTV ? '#cca300' : '#cc7700');
+            const color = isColliding ? '#fff' : '#000';
+            
+            const sideLabel = acc.dir === 1 ? 'F' : 'T'; // Front / Tył
+            
+            previewHtml += `
+                <div class="height-preview-acc" style="
+                    bottom: ${bottomPx}px;
+                    height: ${heightPx}px;
+                    background: ${bgColor};
+                    border: 1px solid ${borderColor};
+                    color: ${color};
+                " title="${acc.name} (${y} cm, ${acc.dir === 1 ? 'Front' : 'Tył'})">
+                    ${acc.short} (${sideLabel})
+                </div>
+            `;
+        });
+
+        let listHtml = '';
+        accessoriesCopy.forEach((acc, i) => {
+            const isTV = acc.id === 'tvPanel';
+            const accName = acc.name;
+            const currentHeight = acc.heightCm;
+            const maxH = wallHeight - 30;
+            const isColliding = collisions.has(i);
+            
+            listHtml += `
+                <div class="height-control-row ${isColliding ? 'colliding-row' : ''}">
+                    <div style="display:flex; justify-content:space-between; font-weight:bold; margin-bottom:8px; align-items:center;">
+                        <span style="color: ${isColliding ? '#ff5555' : '#00e5ff'}; font-size:12px;">
+                            ${isColliding ? '⚠️ ' : ''}${accName} (#${i+1})
+                        </span>
+                        ${isColliding ? '<span style="color:#ff2a2a; font-size:10px; font-weight:bold; text-transform:uppercase;">Kolizja wysokości!</span>' : ''}
+                    </div>
+                    <div style="display:flex; gap:15px; align-items:center;">
+                        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+                            <span style="font-size:10px; color:#888;">Wysokość:</span>
+                            <input type="range" class="modal-slider" data-idx="${i}" min="30" max="${maxH}" value="${currentHeight}" style="width:100%;">
+                        </div>
+                        <div style="width:80px; display:flex; flex-direction:column; gap:4px;">
+                            <span style="font-size:10px; color:#888;">Wpisz (cm):</span>
+                            <input type="number" class="modal-num-input" data-idx="${i}" min="30" max="${maxH}" value="${currentHeight}">
+                        </div>
+                        <div style="width:90px; display:flex; flex-direction:column; gap:4px;">
+                            <span style="font-size:10px; color:#888;">Strona:</span>
+                            <select class="modal-side-select" data-idx="${i}">
+                                <option value="1" ${acc.dir === 1 ? 'selected' : ''}>Front</option>
+                                <option value="-1" ${acc.dir === -1 ? 'selected' : ''}>Tył</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        modal.innerHTML = `
+            <div class="height-modal-container" onclick="event.stopPropagation();">
+                <div class="height-modal-header">
+                    <h2>${titleText}</h2>
+                    <span class="height-modal-close" id="modalCloseBtn">✕</span>
+                </div>
+                <div class="height-modal-body">
+                    <div class="height-modal-preview-col">
+                        <h4 style="margin: 0 0 15px 0; color: #888;">Rzut na płasko (Bok)</h4>
+                        <div style="display:flex; gap:20px; align-items:center; height: 100%;">
+                            <div style="display:flex; flex-direction:column; align-items:center; gap:5px;">
+                                <div class="height-preview-module-wrapper">
+                                    <div class="height-preview-module">
+                                        <div class="height-preview-grid-line" style="bottom: 30px;"></div>
+                                        <div class="height-preview-grid-line" style="bottom: calc(100% - 30px);"></div>
+                                        <div class="height-preview-grid-label" style="bottom: 30px;">30 cm</div>
+                                        <div class="height-preview-grid-label" style="bottom: calc(100% - 30px); transform:translateY(-100%);">${wallHeight - 30} cm</div>
+                                        ${previewHtml}
+                                    </div>
+                                </div>
+                                <span style="font-size:11px; color:#aaa; font-weight:bold;">Podgląd Modułu</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="height-modal-controls-col">
+                        <div class="height-modal-scrollable-controls">
+                            ${listHtml}
+                        </div>
+                        <div class="height-modal-footer">
+                            <button id="modalCancelBtn" class="btn-bottom neon-pink">Anuluj</button>
+                            <button id="modalSaveBtn" class="btn-bottom neon-green">Zapisz</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Attach event listeners
+        modal.querySelector('#modalCloseBtn').onclick = () => modal.remove();
+        modal.querySelector('#modalCancelBtn').onclick = () => modal.remove();
+        
+        modal.querySelector('#modalSaveBtn').onclick = () => {
+            // Apply changes
+            accessoriesCopy.forEach((accCopy, i) => {
+                accCopy.heightPct = Math.round((accCopy.heightCm / wallHeight) * 100);
+                
+                const origAcc = accessories[i];
+                origAcc.heightCm = accCopy.heightCm;
+                origAcc.heightPct = accCopy.heightPct;
+                origAcc.dir = accCopy.dir;
+            });
+            
+            // Save to plan
+            if (isLeg) {
+                if (daszek) daszek.accessories = accessories;
+            } else {
+                const daszekItems = wall.accessories.filter(a => a.id === 'daszek' || a.id === 'daszek100x200');
+                wall.accessories = [...daszekItems, ...accessories];
+            }
+            
+            modal.remove();
+            
+            // Re-render scene
+            if (typeof is3DMode !== 'undefined' && is3DMode) {
+                if (typeof update3DScene === 'function') update3DScene();
+            } else {
+                if (typeof render === 'function') render();
+            }
+        };
+
+        // Attach sliders change listeners
+        modal.querySelectorAll('.modal-slider').forEach(slider => {
+            slider.oninput = (e) => {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                const val = parseInt(e.target.value, 10);
+                accessoriesCopy[idx].heightCm = val;
+                renderModalContent();
+            };
+        });
+
+        // Attach numeric input listeners
+        modal.querySelectorAll('.modal-num-input').forEach(input => {
+            input.onchange = (e) => {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                let val = parseInt(e.target.value, 10);
+                const maxH = wallHeight - 30;
+                if (isNaN(val) || val < 30) val = 30;
+                if (val > maxH) val = maxH;
+                accessoriesCopy[idx].heightCm = val;
+                renderModalContent();
+            };
+        });
+
+        // Attach side select listeners
+        modal.querySelectorAll('.modal-side-select').forEach(select => {
+            select.onchange = (e) => {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                const val = parseInt(e.target.value, 10);
+                accessoriesCopy[idx].dir = val;
+                renderModalContent();
+            };
+        });
     };
-    
-    const outsideClickListener = (e) => {
-        if (!popover.contains(e.target) && e.target !== event.currentTarget) {
-            popover.remove();
-            document.removeEventListener('click', outsideClickListener);
-        }
-    };
-    setTimeout(() => {
-        document.addEventListener('click', outsideClickListener);
-    }, 10);
+
+    renderModalContent();
+    document.body.appendChild(modal);
 };
 
 window.onresize = () => {
@@ -694,13 +890,15 @@ document.addEventListener('keydown', function (e) {
 
         }
 
-        if (selectedItemIndices.size > 0) {
+        if (selectedItemIndices.size > 0 || window.isHumanSelected) {
 
             e.preventDefault();
 
             selectedItemIndices.clear();
 
             selectedItemIndex = null;
+
+            window.isHumanSelected = false;
 
             render();
 
@@ -720,7 +918,23 @@ document.addEventListener('keydown', function (e) {
 
         // SEGO / INNE
 
-        if (!e.shiftKey) {
+        if (e.altKey) {
+
+            if (e.key === '1') { e.preventDefault(); if (typeof addStackedModule === 'function') addStackedModule(100); }
+
+            if (e.key === '2') { e.preventDefault(); if (typeof addStackedModule === 'function') addStackedModule(200); }
+
+            if (e.key === '3') { e.preventDefault(); if (typeof addStackedModule === 'function') addStackedModule(250); }
+
+            if (e.key === '4') { e.preventDefault(); if (typeof addStackedModule === 'function') addStackedModule(300); }
+
+        } else if (e.ctrlKey && e.key === '1') {
+
+            e.preventDefault();
+
+            addModule('sego100x200');
+
+        } else if (!e.shiftKey) {
 
             if (e.key === '1') { e.preventDefault(); addModule('sego100x250'); }
 
@@ -741,6 +955,8 @@ document.addEventListener('keydown', function (e) {
             if (e.key === '3' || e.key === '#') { e.preventDefault(); addModule('sego300x300'); }
 
             if (e.key === '4' || e.key === '$') { e.preventDefault(); addModule('sego85x300'); }
+
+            if (e.key === '5' || e.key === '%') { e.preventDefault(); addModule('door100x300'); }
 
         }
 
@@ -907,7 +1123,7 @@ document.addEventListener('keydown', function (e) {
 
             if (e.key === '+' || e.key === '=') {
 
-                const upgradeMap = { "Moduł 300x250": "sego300x300", "Moduł 200x250": "sego200x300", "Moduł 100x250": "sego100x300", "Moduł 85x250": "sego85x300" };
+                const upgradeMap = { "Moduł 300x250": "sego300x300", "Moduł 200x250": "sego200x300", "Moduł 100x250": "sego100x300", "Moduł 85x250": "sego85x300", "SEGO Door 100 (H:250)": "door100x300" };
 
                 if (upgradeMap[item.name]) {
 
@@ -923,7 +1139,7 @@ document.addEventListener('keydown', function (e) {
 
             if (e.key === '-' || e.key === '_') {
 
-                const downgradeMap = { "Moduł 300x300": "sego300x250", "Moduł 200x300": "sego200x250", "Moduł 100x300": "sego100x250", "Moduł 85x300": "sego85x250" };
+                const downgradeMap = { "Moduł 300x300": "sego300x250", "Moduł 200x300": "sego200x250", "Moduł 100x300": "sego100x250", "Moduł 85x300": "sego85x250", "SEGO Door 100 (H:300)": "door100" };
 
                 if (downgradeMap[item.name]) {
 
@@ -1118,26 +1334,22 @@ document.addEventListener('keydown', function (event) {
 
     }
 
-    // 4. Klawisz 'R' -> Dodanie Daszku do zaznaczonego modułu
-
-    if (event.key.toLowerCase() === 'r') {
-
+    // 4. Klawisz 'R' / Shift+'R' -> Dodanie Daszku
+    if (event.key === 'R' || (event.key.toLowerCase() === 'r' && event.shiftKey)) {
         event.preventDefault();
-
-        // Daszek wymaga, aby jakiś moduł na scenie był kliknięty (zaznaczony)
-
+        if (typeof addAccessory === 'function') addAccessory('daszek100x200');
+    } else if (event.key.toLowerCase() === 'r') {
+        event.preventDefault();
         if (typeof addAccessory === 'function') addAccessory('daszek');
-
     }
 
-    // 5. Klawisz 'D' -> Dodanie Drzwi 100cm
-
-    if (event.key.toLowerCase() === 'd') {
-
+    // 5. Klawisz 'D' / Shift+'D' -> Dodanie Drzwi
+    if (event.key === 'D' || (event.key.toLowerCase() === 'd' && event.shiftKey)) {
         event.preventDefault();
-
+        if (typeof addModule === 'function') addModule('door100x300');
+    } else if (event.key.toLowerCase() === 'd') {
+        event.preventDefault();
         if (typeof addModule === 'function') addModule('door100');
-
     }
 
 });

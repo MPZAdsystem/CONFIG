@@ -1,3 +1,4 @@
+if (typeof window.toggleHallEnvironment === 'undefined') window.toggleHallEnvironment = function() {};
 function runFlavorLoading(callback) {
     const overlay = document.getElementById('loadingOverlay');
     const bar = document.getElementById('flavorProgressBar');
@@ -755,18 +756,19 @@ function refreshManualPanel() {
 function updateDimensionsButtonUI() {
     const btn = document.getElementById('btnToggleDimensions');
     if (!btn) return;
+    
+    const isBlocked = typeof currentSystem !== 'undefined' && ['wydruki', 'mframe_pallet', 'prompt_generator'].includes(currentSystem);
+    btn.style.display = isBlocked ? 'none' : 'flex';
+    
+    btn.classList.toggle('active', showDimensions);
+    btn.style.background = '';
+    btn.style.color = '';
+    btn.style.border = '';
+    btn.style.boxShadow = '';
     if (showDimensions) {
-        btn.style.background = 'linear-gradient(135deg, #0984e3, #00d2ff)';
-        btn.style.color = '#fff';
-        btn.style.border = 'none';
-        btn.style.boxShadow = '0 4px 15px rgba(0, 210, 255, 0.5)';
-        btn.innerHTML = '📏 Wizualizacja techniczna (WŁ)';
+        btn.innerHTML = '📐 Wizualizacja techniczna (WŁ)';
     } else {
-        btn.style.background = 'linear-gradient(135deg, #444, #222)';
-        btn.style.color = '#ccc';
-        btn.style.border = '1px solid #555';
-        btn.style.boxShadow = '0 4px 10px rgba(0,0,0,0.3)';
-        btn.innerHTML = '📏 Wizualizacja techniczna';
+        btn.innerHTML = '📐 Wizualizacja techniczna';
     }
 }
 window.updateDimensionsButtonUI = updateDimensionsButtonUI;
@@ -778,24 +780,20 @@ function updateModuleListButtonUI() {
     const isBlocked = typeof currentSystem !== 'undefined' && ['wydruki', 'mframe_pallet', 'prompt_generator'].includes(currentSystem);
     btn.style.display = isBlocked ? 'none' : 'flex';
     
+    btn.classList.remove('active', 'bw-mode');
+    btn.style.background = '';
+    btn.style.color = '';
+    btn.style.border = '';
+    btn.style.boxShadow = '';
+
     if (showModuleListMode === 'bw') {
-        btn.style.background = 'linear-gradient(135deg, #555, #333)';
-        btn.style.color = '#fff';
-        btn.style.border = '1px solid #888';
-        btn.style.boxShadow = '0 4px 15px rgba(255, 255, 255, 0.2)';
-        btn.innerHTML = '📋 Lista modułów (B/W)';
+        btn.classList.add('bw-mode');
+        btn.innerHTML = '📋 Numerowanie modułów (B/W)';
     } else if (showModuleListMode) {
-        btn.style.background = 'linear-gradient(135deg, #9c27b0, #cc00ff)';
-        btn.style.color = '#fff';
-        btn.style.border = 'none';
-        btn.style.boxShadow = '0 4px 15px rgba(204, 0, 255, 0.5)';
-        btn.innerHTML = '📋 Lista modułów (WŁ)';
+        btn.classList.add('active');
+        btn.innerHTML = '📋 Numerowanie modułów (WŁ)';
     } else {
-        btn.style.background = 'linear-gradient(135deg, #444, #222)';
-        btn.style.color = '#ccc';
-        btn.style.border = '1px solid #555';
-        btn.style.boxShadow = '0 4px 10px rgba(0,0,0,0.3)';
-        btn.innerHTML = '📋 Lista modułów';
+        btn.innerHTML = '📋 Numerowanie modułów';
     }
 }
 window.updateModuleListButtonUI = updateModuleListButtonUI;
@@ -851,7 +849,7 @@ function buildModuleListTable() {
 
         if (part === 'wall') {
             letter = window.wallLetters ? window.wallLetters.get(item) : '';
-            name = `[Moduł ${letter}] ${item.labelEN || 'Wall'}`;
+            name = item.isStacked ? `[Nadstawka ${letter}] ${item.labelEN || 'Wall'}` : `[Moduł ${letter}] ${item.labelEN || 'Wall'}`;
             widthCm = item.length;
             heightCm = item.height;
         } else if (part === 'roof') {
@@ -1006,6 +1004,9 @@ window.toggleModuleListMode = toggleModuleListMode;
 document.addEventListener('DOMContentLoaded', () => {
     updateDimensionsButtonUI();
     updateModuleListButtonUI();
+    if (typeof window.updateBottomToolbarGroups === 'function') {
+        window.updateBottomToolbarGroups();
+    }
 });
 
 function toggleDimensions() {
@@ -1056,7 +1057,7 @@ function refreshGraphicsList() {
     plan.forEach((item, index) => {
         if ((item.type === 'wall' || item.type === 'freestanding' || item.type === 'freestanding_s') && (item.textureFrontName || item.textureBackName)) {
             hasFiles = true;
-            let dispName = item.type === 'wall' ? ('Moduł ' + (index + 1)) : (item.type === 'freestanding_s' ? 'Vario S-80' : 'Trybunka');
+            let dispName = item.type === 'wall' ? (item.isStacked ? ('Nadstawka Moduł ' + (index + 1)) : ('Moduł ' + (index + 1))) : (item.type === 'freestanding_s' ? 'Vario S-80' : 'Trybunka');
             html += `<div class="graphics-item"><div class="graphics-item-title">${dispName}: ${item.name}</div>`;
             if (item.textureFrontName) html += `<div>Przód: <span class="graphics-item-file">${item.textureFrontName}</span></div>`;
             if (item.textureBackName) html += `<div>Tył: <span class="graphics-item-file">${item.textureBackName}</span></div>`;
@@ -1090,11 +1091,12 @@ function refreshGraphicsList() {
         }
         if (item.accessories) {
             item.accessories.forEach(acc => {
-                if (acc.id === 'daszek') {
+                if (acc.id === 'daszek' || acc.id === 'daszek100x200') {
                     let dHasFiles = acc.texRoofFrontName || acc.texRoofBackName || acc.texLegFrontName || acc.texLegBackName;
                     if (dHasFiles) {
                         hasFiles = true;
-                        html += `<div class="graphics-item"><div class="graphics-item-title">Daszek na Moduł ${index + 1}</div>`;
+                        let daszekTitle = acc.id === 'daszek100x200' ? `Daszek 100x200 na Moduł ${index + 1}` : `Daszek 100x250 na Moduł ${index + 1}`;
+                        html += `<div class="graphics-item"><div class="graphics-item-title">${daszekTitle}</div>`;
                         if (acc.texRoofFrontName) html += `<div>Dach Góra: <span class="graphics-item-file">${acc.texRoofFrontName}</span></div>`;
                         if (acc.texRoofBackName) html += `<div>Dach Dół: <span class="graphics-item-file">${acc.texRoofBackName}</span></div>`;
                         if (acc.texLegFrontName) html += `<div>Noga Przód: <span class="graphics-item-file">${acc.texLegFrontName}</span></div>`;
@@ -1115,6 +1117,17 @@ function toggleAutoRotate() {
     if (!btn) return;
     if (controls.autoRotate) { btn.classList.add('active'); btn.innerText = "🔄 Auto-Obrót: WŁ"; }
     else { btn.classList.remove('active'); btn.innerText = "🔄 Auto-Obrót: WYŁ"; }
+}
+
+function toggleHumanModel() {
+    window.currentHumanType = window.currentHumanType === 'soldier' ? 'dennis' : 'soldier';
+    const btn = document.getElementById('btnToggleHuman');
+    if (btn) {
+        btn.innerText = window.currentHumanType === 'soldier' ? '💂 Postać: Żołnierz' : '🧍 Postać: Dennis';
+    }
+    if (typeof loadWalkingMan === 'function') {
+        loadWalkingMan();
+    }
 }
 
 function openManualModal() {
@@ -1183,6 +1196,19 @@ function toggle3D() {
         is3DMode = !is3DMode;
         const container = document.getElementById('stage3DContainer');
 
+        const btnToggle2D3D = document.getElementById('btnToggle2D3D');
+        if (btnToggle2D3D) {
+            btnToggle2D3D.innerHTML = is3DMode ? '❌ Wróć do 2D' : '👁️ Podgląd 3D';
+            btnToggle2D3D.classList.toggle('active', is3DMode);
+            btnToggle2D3D.style.background = '';
+            btnToggle2D3D.style.borderColor = '';
+            btnToggle2D3D.style.color = '';
+        }
+        const btn3d = document.querySelector('.btn-3d');
+        if (btn3d) {
+            btn3d.innerHTML = is3DMode ? '❌ Wróć do 2D' : '👁️ Wygeneruj Podgląd 3D';
+        }
+
         const btnRadial = document.getElementById('btnToggleRadial');
         if (btnRadial) {
             btnRadial.style.display = (is3DMode && currentSystem === 'foldable') ? 'flex' : 'none';
@@ -1197,11 +1223,18 @@ function toggle3D() {
         }
         const btnToggleDimensions = document.getElementById('btnToggleDimensions');
         if (btnToggleDimensions) {
-            btnToggleDimensions.style.display = is3DMode ? 'flex' : 'none';
+            btnToggleDimensions.style.display = 'flex';
         }
         const btnModuleList = document.getElementById('btnModuleList');
         if (btnModuleList) {
             btnModuleList.style.display = 'flex';
+        }
+        const btnCorners = document.getElementById('btnAutoResolveCorners');
+        if (btnCorners) {
+            btnCorners.style.display = is3DMode ? 'none' : 'flex';
+        }
+        if (typeof window.updateBottomToolbarGroups === 'function') {
+            window.updateBottomToolbarGroups();
         }
 
         if (is3DMode) {
@@ -1234,6 +1267,9 @@ function toggle3D() {
             if (blPanel) blPanel.style.display = 'none';
             
             // Keep module list mode active when leaving 3D
+        }
+        if (typeof window.updateBottomToolbarGroups === 'function') {
+            window.updateBottomToolbarGroups();
         }
     } catch (error) {
         alert("Wystąpił błąd silnika 3D: " + error.message);
@@ -1321,6 +1357,29 @@ function toggleSidebar() {
     setTimeout(() => window.dispatchEvent(new Event('resize')), 600);
 }
 
+function toggleBottomToolbar() {
+    const toolbar = document.getElementById('bottomToolbar');
+    const toggleBtn = document.getElementById('bottomToolbarToggleBtn');
+    const icon = document.getElementById('bottomToolbarToggleIcon');
+
+    if (!toolbar) return;
+
+    toolbar.classList.toggle('collapsed');
+    if (toggleBtn) toggleBtn.classList.toggle('collapsed');
+
+    if (icon) {
+        if (toolbar.classList.contains('collapsed')) {
+            icon.innerText = '▲';
+        } else {
+            icon.innerText = '▼';
+        }
+    }
+
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 600);
+}
+
+
+
 function toggleCategory(id, headerEl) {
     const content = document.getElementById(id);
     if (!content || !headerEl) return;
@@ -1406,11 +1465,16 @@ function switchSystem(newSystem) {
             toggleModuleListMode();
         }
 
-        const wydrukiBtns = ['btnWydrukiReport', 'btnWydrukiMatch', 'btnWydrukiClearStage', 'btnClearWydruki'];
+        const wydrukiBtns = ['btnWydrukiReport', 'btnWydrukiMatch', 'btnWydrukiClearStage', 'btnClearWydruki', 'btnWydrukiImport', 'btnWydrukiAnalyze'];
         wydrukiBtns.forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = 'none';
         });
+        const btnCorners = document.getElementById('btnAutoResolveCorners');
+        if (btnCorners) btnCorners.style.display = 'none';
+        if (typeof window.updateBottomToolbarGroups === 'function') {
+            window.updateBottomToolbarGroups();
+        }
 
         if (typeof render === 'function') render();
         console.log("🚀 System switched to BLOCKED: " + newSystem);
@@ -1471,11 +1535,18 @@ function switchSystem(newSystem) {
 
     const btnToggleDimensions = document.getElementById('btnToggleDimensions');
     if (btnToggleDimensions) {
-        btnToggleDimensions.style.display = is3DMode ? 'flex' : 'none';
+        btnToggleDimensions.style.display = 'flex';
     }
     const btnModuleList = document.getElementById('btnModuleList');
     if (btnModuleList) {
         btnModuleList.style.display = 'flex';
+    }
+    const btnCorners = document.getElementById('btnAutoResolveCorners');
+    if (btnCorners) {
+        btnCorners.style.display = is3DMode ? 'none' : 'flex';
+    }
+    if (typeof window.updateBottomToolbarGroups === 'function') {
+        window.updateBottomToolbarGroups();
     }
 
     const allPanels = document.querySelectorAll('.system-ui-panel');
@@ -1510,11 +1581,14 @@ function switchSystem(newSystem) {
         wypPanel.style.display = hideWyp ? 'none' : 'block';
     }
 
-    const wydrukiBtns = ['btnWydrukiReport', 'btnWydrukiMatch', 'btnWydrukiClearStage', 'btnClearWydruki'];
+    const wydrukiBtns = ['btnWydrukiReport', 'btnWydrukiMatch', 'btnWydrukiClearStage', 'btnClearWydruki', 'btnWydrukiImport', 'btnWydrukiAnalyze'];
     wydrukiBtns.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = (newSystem === 'wydruki') ? 'flex' : 'none';
     });
+    if (typeof window.updateBottomToolbarGroups === 'function') {
+        window.updateBottomToolbarGroups();
+    }
 
     const targetPanel = document.getElementById('ui-system-' + newSystem);
     if (targetPanel) {
@@ -1539,6 +1613,9 @@ function switchSystem(newSystem) {
     }
 
     if (newSystem === 'kasetony_niestandardowe') {
+        if (typeof syncKasetonUiFromConfig === 'function') {
+            syncKasetonUiFromConfig();
+        }
         setTimeout(() => {
             if (typeof openKasetonModal === 'function') openKasetonModal();
         }, 400);
@@ -1550,13 +1627,12 @@ function toggleRadialMenus() {
     const btn = document.getElementById('btnToggleRadial');
     if (!layer || !btn) return;
 
+    btn.classList.toggle('active', radialMenusVisible);
     if (radialMenusVisible) {
         layer.style.display = 'block';
-        btn.style.opacity = '1.0';
-        btn.innerHTML = '⚙️ Konfigurator wydruków';
+        btn.innerHTML = '⚙️ Konfigurator';
     } else {
         layer.style.display = 'none';
-        btn.style.opacity = '0.5';
         btn.innerHTML = '⚙️ Ukryto menu';
     }
 }
@@ -1697,6 +1773,9 @@ function openKasetonModal() {
             inner.style.animation = '';
         }
     }
+    if (typeof syncKasetonUiFromConfig === 'function') {
+        syncKasetonUiFromConfig();
+    }
 }
 
 function closeKasetonModal() {
@@ -1725,6 +1804,7 @@ function onKasetonSystemChange(sel) {
         const isLED = KASETON_LED_SYSTEMS.includes(sys);
         const powerSec = document.getElementById('kasetonPowerSection');
         const lightSec = document.getElementById('kasetonLightSection');
+        const cableExitSec = document.getElementById('kasetonCableExitSection');
 
         if (powerSec) {
             if (isLED) powerSec.classList.add('visible');
@@ -1733,6 +1813,20 @@ function onKasetonSystemChange(sel) {
         if (lightSec) {
             if (isLED) lightSec.classList.add('visible');
             else lightSec.classList.remove('visible');
+        }
+        if (cableExitSec) {
+            if (isLED) cableExitSec.classList.add('visible');
+            else cableExitSec.classList.remove('visible');
+        }
+
+        if (!isLED) {
+            const cableExitSelect = document.getElementById('kasetonCableExit');
+            if (cableExitSelect) {
+                cableExitSelect.value = 'back_print';
+                if (typeof window.onKasetonCableExitChange === 'function') {
+                    window.onKasetonCableExitChange(cableExitSelect);
+                }
+            }
         }
     }
 
@@ -1751,17 +1845,20 @@ function onKasetonSystemChange(sel) {
         else topSec.classList.remove('visible');
     }
 
-    // CTF: hide cut section (no cuts in CTF box system)
+    // CTF: cut section is now allowed
     const cutSec = document.getElementById('kasetonCut');
     if (cutSec) {
         const cutParent = cutSec.closest('.kaseton-section');
-        if (cutParent) cutParent.style.display = isCTF ? 'none' : '';
+        if (cutParent) cutParent.style.display = '';
     }
 
-    // CTF: restrict usage options to freestanding + suspended only
+    // CTF / LMD: restrict usage options
     const usageEl = document.getElementById('kasetonUsage');
     if (usageEl) {
         if (isCTF) {
+            usageEl.innerHTML = '<option value="freestanding">Wolnostojący (Stopy)</option>' +
+                '<option value="suspended">Podwieszany (Linki)</option>';
+        } else if (sys === 'LMD') {
             usageEl.innerHTML = '<option value="freestanding">Wolnostojący (Stopy)</option>' +
                 '<option value="suspended">Podwieszany (Linki)</option>';
         } else if (sys === 'STF' || sys === 'STFL') {
@@ -1784,7 +1881,11 @@ function onKasetonSystemChange(sel) {
     const widthEl = document.getElementById('kasetonWidth');
     const depthEl = document.getElementById('kasetonDepth');
     const height3DEl = document.getElementById('kasetonHeight3D');
-    if (isCTF) {
+    if (sys === 'CTF') {
+        if (widthEl) { widthEl.min = 25; widthEl.max = 800; }
+        if (depthEl) { depthEl.min = 25; depthEl.max = 800; }
+        if (height3DEl) { height3DEl.min = 25; height3DEl.max = 800; }
+    } else if (sys === 'CTF_LED') {
         if (widthEl) { widthEl.min = 30; widthEl.max = 800; }
         if (depthEl) { depthEl.min = 30; depthEl.max = 800; }
         if (height3DEl) { height3DEl.min = 30; height3DEl.max = 800; }
@@ -1829,7 +1930,43 @@ function onKasetonSystemChange(sel) {
     }
 
     console.log('🔲 Kaseton system changed to:', sys);
+
+    // Update custom cut configuration buttons visibility
+    const cutEl = document.getElementById('kasetonCut');
+    if (cutEl && typeof onKasetonCutChange === 'function') {
+        const showCustom = (cutEl.value === 'custom');
+        const btnCustomCut = document.getElementById('btnConfigureCustomCut');
+        const btnCTFFrontBack = document.getElementById('btnConfigureCustomCTFFrontBack');
+        const btnCTFLeftRight = document.getElementById('btnConfigureCustomCTFLeftRight');
+        const btnCTFTopBottom = document.getElementById('btnConfigureCustomCTFTopBottom');
+        
+        if (btnCustomCut) btnCustomCut.style.display = (showCustom && !isCTF) ? 'block' : 'none';
+        if (btnCTFFrontBack) btnCTFFrontBack.style.display = (showCustom && isCTF) ? 'block' : 'none';
+        if (btnCTFLeftRight) btnCTFLeftRight.style.display = (showCustom && isCTF) ? 'block' : 'none';
+        if (btnCTFTopBottom) btnCTFTopBottom.style.display = (showCustom && isCTF) ? 'block' : 'none';
+    }
 }
+
+window.onKasetonCableExitChange = function(sel) {
+    if (!sel) return;
+    const val = sel.value;
+    const container = document.getElementById('kasetonCableDrillValContainer');
+    const label = document.getElementById('kasetonCableDrillLabel');
+    const input = document.getElementById('kasetonCableDrillVal');
+    
+    if (!container || !label || !input) return;
+    
+    if (val === 'drill_top' || val === 'drill_bottom') {
+        container.style.display = 'flex';
+        label.innerText = 'odległość od lewej krawędzi (mm)';
+    } else if (val === 'drill_left' || val === 'drill_right') {
+        container.style.display = 'flex';
+        label.innerText = 'odległość od dolnej krawędzi (mm)';
+    } else {
+        container.style.display = 'none';
+        input.value = '';
+    }
+};
 
 function updateKasetonLightOptions() {
     const sysEl = document.getElementById('kasetonSystem');
@@ -1846,6 +1983,7 @@ function updateKasetonLightOptions() {
         html += '<option value="zarowka">żarówka</option>';
         html += '<option value="plafon_dol">Plafon LED (dół)</option>';
         html += '<option value="plafon_gora">Plafon LED (góra)</option>';
+        html += '<option value="plafon_gora_dol">Plafon LED (góra + dół)</option>';
         if (topVal === 'mdf') {
             html += '<option value="paski_led">paski LED obwodowo pod blatem</option>';
         }
@@ -1860,8 +1998,8 @@ function updateKasetonLightOptions() {
     } else {
         // Standardowe opcje LED
         lightEl.innerHTML = `
-            <option value="power_long">Krawędziowo - Długie boki (Góra/Dół)</option>
-            <option value="power_short">Krawędziowo - Krótkie boki (Lewo/Prawo)</option>
+            <option value="power_long">Krawędziowo - Długie boki</option>
+            <option value="power_short">Krawędziowo - Krótkie boki</option>
             <option value="power_around">Po obwodzie (Wszystkie 4 boki)</option>
         `;
         if (['power_long', 'power_short', 'power_around'].includes(currentVal)) {
@@ -1878,6 +2016,95 @@ function kasetonAfterglowTrigger(el) {
     void el.offsetWidth;
     el.classList.add('afterglow');
     setTimeout(() => el.classList.remove('afterglow'), 700);
+}
+
+window.ignoreWarningOnce = false;
+
+function checkKasetonWarnings(config) {
+    const warnings = [];
+    
+    // Rule 1: CTF_LED + zarowka + height > 150
+    if (config.system === 'CTF_LED') {
+        if (config.light === 'zarowka' && config.depth > 150) {
+            warnings.push({
+                title: 'Za wysoki kaseton na oświetlenie żarówkowe',
+                message: `Wybrano opcję oświetlenia "Żarówka" dla kasetonu o wysokości ${config.depth} cm. Maksymalna zalecana wysokość dla oświetlenia żarówkowego to 150 cm. Powyżej tej wysokości światło żarówki nie doświetli dostatecznie całego kasetonu.`,
+                suggestionText: 'Zmień układ oświetlenia na opcję doświetlaną plafonami (góra + dół) dla równomiernego oświetlenia.',
+                apply: () => {
+                    const lightEl = document.getElementById('kasetonLight');
+                    if (lightEl) {
+                        lightEl.value = 'plafon_gora_dol';
+                        submitKasetonConfig();
+                    }
+                }
+            });
+        }
+    }
+
+    // Rule 2: CTF_LED + zarowka + (W < 50 || D < 50)
+    if (config.system === 'CTF_LED' && config.light === 'zarowka') {
+        const W = config.width;
+        const D = config.height3D;
+        if (W < 50 || D < 50) {
+            warnings.push({
+                title: 'Żarówka zbyt blisko wydruku',
+                message: `Wybrano oświetlenie żarówkowe dla kasetonu o szerokości ${W} cm i głębokości 3D ${D} cm. Żarówka znajduje się zbyt blisko wydruku na szerokości lub głębokości konstrukcji, co może skutkować przegrzaniem tkaniny lub powstawaniem plam świetlnych.`,
+                suggestionText: 'Zmiana na CTF z blatem z płyty meblowej MDF z paskiem ledowym zamontowanym podblatowo.',
+                apply: () => {
+                    const topEl = document.getElementById('kasetonTop');
+                    if (topEl) {
+                        topEl.value = 'mdf';
+                        updateKasetonLightOptions();
+                        const lightEl = document.getElementById('kasetonLight');
+                        if (lightEl) {
+                            lightEl.value = 'paski_led';
+                        }
+                        submitKasetonConfig();
+                    }
+                }
+            });
+        }
+    }
+    
+    return warnings;
+}
+
+function showWarningModal(warning) {
+    const existing = document.getElementById('kaseton-warning-modal');
+    if (existing) existing.remove();
+    
+    const overlay = document.createElement('div');
+    overlay.id = 'kaseton-warning-modal';
+    overlay.className = 'height-modal-overlay';
+    overlay.style.zIndex = '20000';
+    overlay.style.display = 'flex';
+    
+    overlay.innerHTML = `
+        <div class="height-modal-container" style="max-width: 480px; min-height: auto;" onclick="event.stopPropagation();">
+            <div class="height-modal-header" style="border-bottom: 1px solid #ff4466;">
+                <h2 style="color: #ff4466; text-shadow: 0 0 10px rgba(255, 68, 102, 0.4);">⚠️ Ostrzeżenie konfiguracji</h2>
+                <span class="height-modal-close" onclick="document.getElementById('kaseton-warning-modal').remove()">✕</span>
+            </div>
+            <div style="padding: 20px; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; gap: 15px;">
+                <h3 style="margin: 0; color: #ffcc00; font-size: 14px;">${warning.title}</h3>
+                <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #ddd;">${warning.message}</p>
+                <div style="background: rgba(255, 204, 0, 0.1); border-left: 3px solid #ffcc00; padding: 10px; border-radius: 4px; font-size: 11px; color: #ffcc00; line-height: 1.4;">
+                    <b>Sugerowane rozwiązanie:</b> ${warning.suggestionText}
+                </div>
+            </div>
+            <div class="height-modal-footer" style="padding: 15px 20px; background: rgba(0,0,0,0.2); display: flex; justify-content: flex-end; gap: 12px;">
+                <button class="btn-bottom neon-pink" style="min-width: 100px;" onclick="window.ignoreWarningOnce = true; document.getElementById('kaseton-warning-modal').remove(); submitKasetonConfig();">Ignoruj</button>
+                <button id="applyWarningSuggestion" class="btn-bottom neon-green" style="min-width: 150px;">Zastosuj sugestię</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+    
+    overlay.querySelector('#applyWarningSuggestion').onclick = () => {
+        overlay.remove();
+        warning.apply();
+    };
 }
 
 function submitKasetonConfig() {
@@ -1900,7 +2127,9 @@ function submitKasetonConfig() {
     const usage = usageEl ? usageEl.value : '';
 
     const isCTF = (sys === 'CTF' || sys === 'CTF_LED');
-    const minDim = isCTF ? 30 : 40;
+    let minDim = 40;
+    if (sys === 'CTF') minDim = 25;
+    else if (sys === 'CTF_LED') minDim = 30;
     const maxDim = isCTF ? 800 : 1000;
 
     if (!sys) {
@@ -1919,28 +2148,210 @@ function submitKasetonConfig() {
         return;
     }
 
+    const coatingEl = document.getElementById('kasetonCoating');
+    const ralEl = document.getElementById('kasetonRal');
+    const coating = coatingEl ? coatingEl.value : 'none';
+    const ral = (coatingEl && coating !== 'none' && ralEl) ? ralEl.value.trim() : '';
+
+    if (coating.includes('custom') && !ral) {
+        alert('⚠️ Podaj numer RAL dla malowania niestandardowego!');
+        if (ralEl) ralEl.focus();
+        return;
+    }
+
+    const packingEl = document.getElementById('kasetonPacking');
+    const packing = packingEl ? packingEl.value : 'kartony';
+
     const config = {
         system: sys,
         width: width,
         depth: depth,
         cut: cut,
         print: print,
-        usage: usage
+        usage: usage,
+        coating: coating,
+        ral: ral,
+        packing: packing
     };
+
+    if (cut === 'custom') {
+        if (window.currentKasetonConfig && window.currentKasetonConfig.customSupports) {
+            let cs = JSON.parse(JSON.stringify(window.currentKasetonConfig.customSupports));
+            if (isCTF) {
+                cs.frontBack = cs.frontBack || { vertical: [], horizontal: [] };
+                cs.leftRight = cs.leftRight || { vertical: [], horizontal: [] };
+                cs.topBottom = cs.topBottom || { vertical: [], horizontal: [] };
+
+                const height3D = parseInt(document.getElementById('kasetonHeight3D')?.value || 120);
+
+                cs.frontBack.vertical = (cs.frontBack.vertical || []).map(vs => {
+                    let pos = vs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > width - 5) pos = width - 5;
+                    return { pos };
+                });
+                cs.frontBack.horizontal = (cs.frontBack.horizontal || []).map(hs => {
+                    let pos = hs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > depth - 5) pos = depth - 5;
+                    return { pos };
+                });
+
+                cs.leftRight.vertical = (cs.leftRight.vertical || []).map(vs => {
+                    let pos = vs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > height3D - 5) pos = height3D - 5;
+                    return { pos };
+                });
+                cs.leftRight.horizontal = (cs.leftRight.horizontal || []).map(hs => {
+                    let pos = hs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > depth - 5) pos = depth - 5;
+                    return { pos };
+                });
+
+                cs.topBottom.vertical = (cs.topBottom.vertical || []).map(vs => {
+                    let pos = vs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > width - 5) pos = width - 5;
+                    return { pos };
+                });
+                cs.topBottom.horizontal = (cs.topBottom.horizontal || []).map(hs => {
+                    let pos = hs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > height3D - 5) pos = height3D - 5;
+                    return { pos };
+                });
+
+                config.customSupports = cs;
+
+                const lenFBV = cs.frontBack.vertical.length * (depth - 4.2426) * 2;
+                const lenFBH = cs.frontBack.horizontal.length * (width - 4.2426) * 2;
+                const lenLRV = cs.leftRight.vertical.length * (depth - 4.2426) * 2;
+                const lenLRH = cs.leftRight.horizontal.length * (height3D - 4.2426) * 2;
+                const lenTBV = cs.topBottom.vertical.length * (width - 4.2426) * 2;
+                const lenTBH = cs.topBottom.horizontal.length * (height3D - 4.2426) * 2;
+
+                config.totalSupportLengthM = (lenFBV + lenFBH + lenLRV + lenLRH + lenTBV + lenTBH) / 100;
+                config.supportSegmentsCount = 
+                    (cs.frontBack.vertical.length + cs.frontBack.horizontal.length) * 2 +
+                    (cs.leftRight.vertical.length + cs.leftRight.horizontal.length) * 2 +
+                    (cs.topBottom.vertical.length + cs.topBottom.horizontal.length) * 2;
+            } else {
+                cs.vertical = (cs.vertical || []).map(vs => {
+                    let pos = vs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > width - 5) pos = width - 5;
+                    return { pos: pos };
+                });
+                cs.horizontal = (cs.horizontal || []).map(hs => {
+                    let pos = hs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > depth - 5) pos = depth - 5;
+                    return { pos: pos };
+                });
+                config.customSupports = cs;
+                const vLen = cs.vertical.length;
+                const hLen = cs.horizontal.length;
+                config.totalSupportLengthM = ((vLen * (depth - 5.4) + hLen * (width - 5.4)) / 100);
+                config.supportSegmentsCount = vLen + hLen * (vLen + 1);
+            }
+        } else {
+            config.customSupports = isCTF ? {
+                frontBack: { vertical: [], horizontal: [] },
+                leftRight: { vertical: [], horizontal: [] },
+                topBottom: { vertical: [], horizontal: [] }
+            } : { vertical: [], horizontal: [] };
+            config.totalSupportLengthM = 0;
+            config.supportSegmentsCount = 0;
+        }
+
+        if (window.currentKasetonConfig && window.currentKasetonConfig.customCuts) {
+            let cc = JSON.parse(JSON.stringify(window.currentKasetonConfig.customCuts));
+            if (isCTF) {
+                cc.frontBack = cc.frontBack || { vertical: [], horizontal: [] };
+                cc.leftRight = cc.leftRight || { vertical: [], horizontal: [] };
+                cc.topBottom = cc.topBottom || { vertical: [], horizontal: [] };
+
+                const height3D = parseInt(document.getElementById('kasetonHeight3D')?.value || 120);
+
+                cc.frontBack.vertical = (cc.frontBack.vertical || []).map(vs => {
+                    let pos = vs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > width - 5) pos = width - 5;
+                    return { pos };
+                });
+                cc.frontBack.horizontal = (cc.frontBack.horizontal || []).map(hs => {
+                    let pos = hs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > depth - 5) pos = depth - 5;
+                    return { pos };
+                });
+
+                cc.leftRight.vertical = (cc.leftRight.vertical || []).map(vs => {
+                    let pos = vs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > height3D - 5) pos = height3D - 5;
+                    return { pos };
+                });
+                cc.leftRight.horizontal = (cc.leftRight.horizontal || []).map(hs => {
+                    let pos = hs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > depth - 5) pos = depth - 5;
+                    return { pos };
+                });
+
+                cc.topBottom.vertical = (cc.topBottom.vertical || []).map(vs => {
+                    let pos = vs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > width - 5) pos = width - 5;
+                    return { pos };
+                });
+                cc.topBottom.horizontal = (cc.topBottom.horizontal || []).map(hs => {
+                    let pos = hs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > height3D - 5) pos = height3D - 5;
+                    return { pos };
+                });
+
+                config.customCuts = cc;
+            } else {
+                cc.vertical = (cc.vertical || []).map(vs => {
+                    let pos = vs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > width - 5) pos = width - 5;
+                    return { pos: pos };
+                });
+                cc.horizontal = (cc.horizontal || []).map(hs => {
+                    let pos = hs.pos;
+                    if (pos < 5) pos = 5;
+                    if (pos > depth - 5) pos = depth - 5;
+                    return { pos: pos };
+                });
+                config.customCuts = cc;
+            }
+        } else {
+            config.customCuts = isCTF ? {
+                frontBack: { vertical: [], horizontal: [] },
+                leftRight: { vertical: [], horizontal: [] },
+                topBottom: { vertical: [], horizontal: [] }
+            } : { vertical: [], horizontal: [] };
+        }
+    }
 
     // CTF-specific: 3rd dimension and top panel
     if (isCTF) {
         const heightEl = document.getElementById('kasetonHeight3D');
         const height3D = heightEl ? parseInt(heightEl.value) : 120;
-        if (isNaN(height3D) || height3D < 30 || height3D > 800) {
-            alert('⚠️ Głębokość 3D musi być w zakresie 30–800 cm!');
+        const min3D = (sys === 'CTF') ? 25 : 30;
+        if (isNaN(height3D) || height3D < min3D || height3D > 800) {
+            alert('⚠️ Głębokość 3D musi być w zakresie ' + min3D + '–800 cm!');
             if (heightEl) heightEl.focus();
             return;
         }
         config.height3D = height3D;
         const topEl = document.getElementById('kasetonTop');
         config.topPanel = topEl ? topEl.value : 'none';
-        config.cut = 'none'; // CTF has no cuts
     }
 
     const kasetonPowerEl = document.getElementById('kasetonPower');
@@ -1949,7 +2360,20 @@ function submitKasetonConfig() {
     if (typeof KASETON_LED_SYSTEMS !== 'undefined' && KASETON_LED_SYSTEMS.includes(sys)) {
         config.power = kasetonPowerEl ? kasetonPowerEl.value : '';
         config.light = kasetonLightEl ? kasetonLightEl.value : '';
+        
+        const kasetonCableExitEl = document.getElementById('kasetonCableExit');
+        const kasetonCableDrillValEl = document.getElementById('kasetonCableDrillVal');
+        
+        config.cableExit = kasetonCableExitEl ? kasetonCableExitEl.value : 'back_print';
+        config.cableDrillVal = (kasetonCableDrillValEl && ['drill_top', 'drill_bottom', 'drill_left', 'drill_right'].includes(config.cableExit)) ? (parseInt(kasetonCableDrillValEl.value, 10) || 0) : '';
     }
+
+    const warnings = checkKasetonWarnings(config);
+    if (warnings.length > 0 && !window.ignoreWarningOnce) {
+        showWarningModal(warnings[0]);
+        return;
+    }
+    window.ignoreWarningOnce = false;
 
     console.log('✅ Kaseton configuration:', config);
     window.currentKasetonConfig = config;
@@ -2049,3 +2473,997 @@ setInterval(function() {
             });
     }
 }, 120000); // 120 000 ms = 2 minuty
+
+// ==================== POWDER COATING UI LOGIC ====================
+window.onCoatingChange = function(value, source) {
+    const coatingEl = document.getElementById('kasetonCoating');
+    if (coatingEl) coatingEl.value = value;
+
+    const showRal = value !== 'none';
+    const isCustom = value.includes('custom');
+    const isStandard = value.includes('standard');
+
+    const ralSecModal = document.getElementById('kasetonRalSection');
+    if (ralSecModal) ralSecModal.style.display = showRal ? 'block' : 'none';
+
+    if (showRal) {
+        // Toggle manual input
+        const manualModal = document.getElementById('kasetonRalManualContainer');
+        if (manualModal) manualModal.style.display = isCustom ? 'flex' : 'none';
+
+        // Toggle picker
+        const pickerModal = document.getElementById('kasetonRalPicker');
+        if (pickerModal) pickerModal.style.display = isStandard ? 'grid' : 'none';
+
+        // Update labels
+        const labelModal = document.getElementById('kasetonRalLabel');
+        if (labelModal) {
+            const badge = labelModal.querySelector('.kaseton-badge');
+            labelModal.innerHTML = '';
+            if (badge) labelModal.appendChild(badge);
+            labelModal.appendChild(document.createTextNode(' ' + (isStandard ? 'Wybierz kolor standardowy' : 'Kolor RAL (Wymagany)')));
+        }
+
+        // Initialize pickers if standard
+        if (isStandard) {
+            window.initKasetonRalPickers();
+            const currentRal = (window.currentKasetonConfig && window.currentKasetonConfig.ral) || '';
+            const standardNames = ["RAL 9003", "RAL 9005", "RAL 9016", "RAL 9007", "RAL 7016", "RAL 7024", "RAL 9006", "RAL 3020", "RAL 3000", "RAL 1023", "RAL 7021"];
+            if (!currentRal || !standardNames.includes(currentRal.toUpperCase())) {
+                if (window.currentKasetonConfig) window.currentKasetonConfig.ral = 'RAL 7016';
+                const inputModal = document.getElementById('kasetonRal');
+                if (inputModal) inputModal.value = 'RAL 7016';
+                window.updateKasetonRalPreviews('RAL 7016');
+            } else {
+                window.updateKasetonRalPreviews(currentRal);
+            }
+        } else if (isCustom) {
+            const currentRal = (window.currentKasetonConfig && window.currentKasetonConfig.ral) || '';
+            const inputModal = document.getElementById('kasetonRal');
+            if (inputModal) inputModal.value = currentRal;
+            window.updateKasetonRalPreviews(currentRal);
+        }
+    } else {
+        if (window.currentKasetonConfig) {
+            window.currentKasetonConfig.ral = '';
+        }
+    }
+    
+    // Save to active config
+    if (window.currentKasetonConfig) {
+        window.currentKasetonConfig.coating = value;
+        // Trigger 3D update and BOM update
+        if (typeof update3DScene === 'function') update3DScene();
+    }
+};
+
+window.onKasetonPackingChange = function(value) {
+    const packingEl = document.getElementById('kasetonPacking');
+    if (packingEl) packingEl.value = value;
+
+    if (window.currentKasetonConfig) {
+        window.currentKasetonConfig.packing = value;
+        // Trigger 3D update and BOM update
+        if (typeof update3DScene === 'function') update3DScene();
+    }
+};
+
+window.onRalInput = function(value, source) {
+    const targetEl = document.getElementById('kasetonRal');
+    if (targetEl) targetEl.value = value;
+
+    window.updateKasetonRalPreviews(value);
+
+    // Save to active config
+    if (window.currentKasetonConfig) {
+        window.currentKasetonConfig.ral = value;
+        // Trigger 3D update and BOM update
+        if (typeof update3DScene === 'function') update3DScene();
+    }
+};
+
+window.initKasetonRalPickers = function() {
+    const modalPicker = document.getElementById('kasetonRalPicker');
+    if (modalPicker && modalPicker.children.length === 0) {
+        buildPicker(modalPicker, 'modal');
+    }
+    
+    function buildPicker(container, source) {
+        const standardRals = [
+            { name: "RAL 9003", label: "Signal White", hex: "#F4F4F4" },
+            { name: "RAL 9005", label: "Jet Black", hex: "#0A0A0A" },
+            { name: "RAL 9016", label: "Traffic White", hex: "#F6F6F6" },
+            { name: "RAL 9007", label: "Grey Aluminium", hex: "#8F8F8C" },
+            { name: "RAL 7016", label: "Anthracite Grey", hex: "#3B444B" },
+            { name: "RAL 7024", label: "Graphite Grey", hex: "#454F56" },
+            { name: "RAL 9006", label: "White Aluminium", hex: "#A1A1A1" },
+            { name: "RAL 3020", label: "Traffic Red", hex: "#CC0605" },
+            { name: "RAL 3000", label: "Flame Red", hex: "#A62421" },
+            { name: "RAL 1023", label: "Traffic Yellow", hex: "#F8D501" },
+            { name: "RAL 7021", label: "Black Grey", hex: "#2E3236" }
+        ];
+
+        standardRals.forEach(color => {
+            const btn = document.createElement('div');
+            btn.style.background = color.hex;
+            const isLight = ["#F4F4F4", "#F6F6F6", "#F8D501", "#A1A1A1"].includes(color.hex);
+            btn.style.color = isLight ? "#000" : "#fff";
+            btn.style.padding = "4px";
+            btn.style.borderRadius = "3px";
+            btn.style.cursor = "pointer";
+            btn.style.fontSize = "9px";
+            btn.style.fontWeight = "bold";
+            btn.style.textAlign = "center";
+            btn.style.border = "1px solid #555";
+            btn.style.transition = "transform 0.15s, box-shadow 0.15s";
+            
+            btn.innerHTML = `<div style="font-size: 10px;">${color.name}</div>`;
+            
+            btn.onclick = () => {
+                window.onRalInput(color.name, source);
+            };
+
+            btn.onmouseover = () => {
+                btn.style.transform = "scale(1.05)";
+                btn.style.boxShadow = "0 0 8px " + color.hex;
+            };
+            btn.onmouseout = () => {
+                btn.style.transform = "none";
+                btn.style.boxShadow = "none";
+            };
+
+            container.appendChild(btn);
+        });
+    }
+};
+
+window.updateKasetonRalPreviews = function(ralVal) {
+    const previewModal = document.getElementById('kasetonRalColorPreview');
+    const val = (ralVal || '').trim().toUpperCase();
+    
+    let hex = "#555";
+    const db = window.RAL_DATABASE || {};
+    
+    let cleanKey = val.replace('RAL', '').trim();
+    if (db[val]) {
+        hex = db[val];
+    } else if (db[cleanKey]) {
+        hex = db[cleanKey];
+    } else {
+        const digitsMatch = val.match(/\d{4}/);
+        if (digitsMatch && db[digitsMatch[0]]) {
+            hex = db[digitsMatch[0]];
+        } else if (val.startsWith('#') && (val.length === 4 || val.length === 7)) {
+            hex = val;
+        }
+    }
+
+    if (previewModal) previewModal.style.background = hex;
+
+    const textModal = document.getElementById('kasetonSelectedRalValue');
+    if (textModal) textModal.textContent = val || 'Brak';
+};
+
+window.syncKasetonUiFromConfig = function() {
+    const config = window.currentKasetonConfig;
+    if (!config) return;
+
+    const coating = config.coating || 'none';
+    const ral = config.ral || '';
+
+    const coatingEl = document.getElementById('kasetonCoating');
+    if (coatingEl) coatingEl.value = coating;
+
+    const ralEl = document.getElementById('kasetonRal');
+    if (ralEl) ralEl.value = ral;
+
+    const showRal = coating !== 'none';
+    const isCustom = coating.includes('custom');
+    const isStandard = coating.includes('standard');
+
+    const ralSecModal = document.getElementById('kasetonRalSection');
+    if (ralSecModal) ralSecModal.style.display = showRal ? 'block' : 'none';
+
+    if (showRal) {
+        // Toggle manual input
+        const manualModal = document.getElementById('kasetonRalManualContainer');
+        if (manualModal) manualModal.style.display = isCustom ? 'flex' : 'none';
+
+        // Toggle picker
+        const pickerModal = document.getElementById('kasetonRalPicker');
+        if (pickerModal) pickerModal.style.display = isStandard ? 'grid' : 'none';
+
+        // Update labels
+        const labelModal = document.getElementById('kasetonRalLabel');
+        if (labelModal) {
+            const badge = labelModal.querySelector('.kaseton-badge');
+            labelModal.innerHTML = '';
+            if (badge) labelModal.appendChild(badge);
+            labelModal.appendChild(document.createTextNode(' ' + (isStandard ? 'Wybierz kolor standardowy' : 'Kolor RAL (Wymagany)')));
+        }
+
+        window.initKasetonRalPickers();
+        window.updateKasetonRalPreviews(ral);
+    }
+
+    // Sync cable exit options
+    const cableExitSelect = document.getElementById('kasetonCableExit');
+    const cableDrillValEl = document.getElementById('kasetonCableDrillVal');
+    if (cableExitSelect) {
+        cableExitSelect.value = config.cableExit || 'back_print';
+        if (typeof window.onKasetonCableExitChange === 'function') {
+            window.onKasetonCableExitChange(cableExitSelect);
+        }
+        if (cableDrillValEl && config.cableDrillVal !== undefined) {
+            cableDrillValEl.value = config.cableDrillVal;
+        }
+    }
+
+    // Sync cut options
+    const cutEl = document.getElementById('kasetonCut');
+    if (cutEl) {
+        cutEl.value = config.cut || 'none';
+        const sysEl = document.getElementById('kasetonSystem');
+        const sys = sysEl ? sysEl.value : '';
+        const isCTF = (sys === 'CTF' || sys === 'CTF_LED');
+
+        const btnCustomCut = document.getElementById('btnConfigureCustomCut');
+        const btnCTFFrontBack = document.getElementById('btnConfigureCustomCTFFrontBack');
+        const btnCTFLeftRight = document.getElementById('btnConfigureCustomCTFLeftRight');
+        const btnCTFTopBottom = document.getElementById('btnConfigureCustomCTFTopBottom');
+
+        const showCustom = (cutEl.value === 'custom');
+
+        if (btnCustomCut) {
+            btnCustomCut.style.display = (showCustom && !isCTF) ? 'block' : 'none';
+        }
+        if (btnCTFFrontBack) {
+            btnCTFFrontBack.style.display = (showCustom && isCTF) ? 'block' : 'none';
+        }
+        if (btnCTFLeftRight) {
+            btnCTFLeftRight.style.display = (showCustom && isCTF) ? 'block' : 'none';
+        }
+        if (btnCTFTopBottom) {
+            btnCTFTopBottom.style.display = (showCustom && isCTF) ? 'block' : 'none';
+        }
+    }
+};
+
+window.toggleSubmenuUp = function(btn) {
+    // Close other submenus first
+    document.querySelectorAll('.submenu-up').forEach(menu => {
+        if (menu !== btn.nextElementSibling) {
+            menu.classList.remove('expanded');
+            const trigger = menu.previousElementSibling;
+            if (trigger) trigger.classList.remove('active');
+        }
+    });
+    
+    const menu = btn.nextElementSibling;
+    if (menu) {
+        const isExpanded = menu.classList.toggle('expanded');
+        btn.classList.toggle('active', isExpanded);
+        
+        if (isExpanded) {
+            // Position fixed submenu right above the button
+            const rect = btn.getBoundingClientRect();
+            menu.style.left = (rect.left + rect.width / 2) + 'px';
+            menu.style.bottom = (window.innerHeight - rect.top + 10) + 'px';
+            menu.style.transform = 'translateX(-50%)';
+        }
+    }
+};
+
+window.updateBottomToolbarGroups = function() {
+    const techBtn = document.getElementById('groupBtnTechPreview');
+    const dimBtn = document.getElementById('btnToggleDimensions');
+    const modBtn = document.getElementById('btnModuleList');
+    if (techBtn && dimBtn && modBtn) {
+        const anyVisible = (dimBtn.style.display !== 'none') || (modBtn.style.display !== 'none');
+        techBtn.style.display = anyVisible ? 'inline-block' : 'none';
+    }
+
+    const graphicsBtn = document.getElementById('groupBtnGraphicsPanel');
+    const reportBtn = document.getElementById('btnWydrukiReport');
+    const matchBtn = document.getElementById('btnWydrukiMatch');
+    const clearBtn = document.getElementById('btnWydrukiClearStage');
+    const importBtn = document.getElementById('btnWydrukiImport');
+    const analyzeBtn = document.getElementById('btnWydrukiAnalyze');
+    if (graphicsBtn) {
+        const anyVisible = 
+            (reportBtn && reportBtn.style.display !== 'none') || 
+            (matchBtn && matchBtn.style.display !== 'none') || 
+            (clearBtn && clearBtn.style.display !== 'none') ||
+            (importBtn && importBtn.style.display !== 'none') ||
+            (analyzeBtn && analyzeBtn.style.display !== 'none');
+        graphicsBtn.style.display = anyVisible ? 'inline-block' : 'none';
+    }
+
+    const autorepairBtn = document.getElementById('groupBtnAutorepair');
+    const magnetBtn = document.getElementById('btnMagnetPull');
+    const cornersBtn = document.getElementById('btnAutoResolveCorners');
+    if (autorepairBtn && magnetBtn && cornersBtn) {
+        const anyVisible = (magnetBtn.style.display !== 'none') || (cornersBtn.style.display !== 'none');
+        autorepairBtn.style.display = anyVisible ? 'inline-block' : 'none';
+    }
+};
+
+// Hook click outside to close submenus
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.group-btn-container')) {
+        document.querySelectorAll('.submenu-up').forEach(menu => {
+            menu.classList.remove('expanded');
+            const trigger = menu.previousElementSibling;
+            if (trigger) trigger.classList.remove('active');
+        });
+    }
+});
+
+// Hook scroll and resize to close submenus
+const toolbarEl = document.getElementById('bottomToolbar');
+if (toolbarEl) {
+    toolbarEl.addEventListener('scroll', function() {
+        document.querySelectorAll('.submenu-up').forEach(menu => {
+            menu.classList.remove('expanded');
+            const trigger = menu.previousElementSibling;
+            if (trigger) trigger.classList.remove('active');
+        });
+    });
+}
+window.addEventListener('resize', function() {
+    document.querySelectorAll('.submenu-up').forEach(menu => {
+        menu.classList.remove('expanded');
+        const trigger = menu.previousElementSibling;
+        if (trigger) trigger.classList.remove('active');
+    });
+});
+
+window.onKasetonCutChange = function(sel) {
+    if (!sel) return;
+    const val = sel.value;
+    const sysEl = document.getElementById('kasetonSystem');
+    const sys = sysEl ? sysEl.value : '';
+    const isCTF = (sys === 'CTF' || sys === 'CTF_LED');
+
+    const btnCustomCut = document.getElementById('btnConfigureCustomCut');
+    const btnCTFFrontBack = document.getElementById('btnConfigureCustomCTFFrontBack');
+    const btnCTFLeftRight = document.getElementById('btnConfigureCustomCTFLeftRight');
+    const btnCTFTopBottom = document.getElementById('btnConfigureCustomCTFTopBottom');
+
+    const showCustom = (val === 'custom');
+
+    if (btnCustomCut) {
+        btnCustomCut.style.display = (showCustom && !isCTF) ? 'block' : 'none';
+    }
+    if (btnCTFFrontBack) {
+        btnCTFFrontBack.style.display = (showCustom && isCTF) ? 'block' : 'none';
+    }
+    if (btnCTFLeftRight) {
+        btnCTFLeftRight.style.display = (showCustom && isCTF) ? 'block' : 'none';
+    }
+    if (btnCTFTopBottom) {
+        btnCTFTopBottom.style.display = (showCustom && isCTF) ? 'block' : 'none';
+    }
+
+    if (val === 'custom') {
+        if (isCTF) {
+            window.openCustomCutModal('frontBack');
+        } else {
+            window.openCustomCutModal();
+        }
+    }
+};
+
+window.openCustomCutModal = function(planeKey) {
+    const widthEl = document.getElementById('kasetonWidth');
+    const depthEl = document.getElementById('kasetonDepth');
+    const height3DEl = document.getElementById('kasetonHeight3D');
+    const sysEl = document.getElementById('kasetonSystem');
+    if (!widthEl || !depthEl) return;
+
+    const sys = sysEl ? sysEl.value : '';
+    const isCTF = (sys === 'CTF' || sys === 'CTF_LED');
+
+    if (isCTF && !planeKey) {
+        planeKey = 'frontBack';
+    }
+
+    const W_orig = parseInt(widthEl.value, 10) || 100;
+    const H_orig = parseInt(depthEl.value, 10) || 200;
+    const D_orig = height3DEl ? (parseInt(height3DEl.value, 10) || 120) : 120;
+
+    let W = W_orig;
+    let H = H_orig;
+    let planeTitle = "Konfiguracja własnego podziału (Supporty)";
+    let labelX = "lewej";
+    let labelY = "dołu";
+
+    if (isCTF && planeKey) {
+        if (planeKey === 'frontBack') {
+            W = W_orig;
+            H = H_orig;
+            planeTitle = "Konfiguracja: Przód / Tył";
+            labelX = "lewej";
+            labelY = "dołu";
+        } else if (planeKey === 'leftRight') {
+            W = D_orig;
+            H = H_orig;
+            planeTitle = "Konfiguracja: Boki (Lewy / Prawy)";
+            labelX = "przodu";
+            labelY = "dołu";
+        } else if (planeKey === 'topBottom') {
+            W = W_orig;
+            H = D_orig;
+            planeTitle = "Konfiguracja: Góra / Dół";
+            labelX = "lewej";
+            labelY = "przodu";
+        }
+    }
+
+    const existing = document.getElementById('custom-cut-modal');
+    if (existing) existing.remove();
+
+    if (!window.currentKasetonConfig) {
+        window.currentKasetonConfig = {};
+    }
+    if (!window.currentKasetonConfig.customSupports) {
+        if (isCTF) {
+            window.currentKasetonConfig.customSupports = {
+                frontBack: { vertical: [], horizontal: [] },
+                leftRight: { vertical: [], horizontal: [] },
+                topBottom: { vertical: [], horizontal: [] }
+            };
+        } else {
+            window.currentKasetonConfig.customSupports = { vertical: [], horizontal: [] };
+        }
+    }
+
+    // Ensure nesting is present if switched system
+    if (isCTF && !window.currentKasetonConfig.customSupports.frontBack) {
+        window.currentKasetonConfig.customSupports = {
+            frontBack: { vertical: [], horizontal: [] },
+            leftRight: { vertical: [], horizontal: [] },
+            topBottom: { vertical: [], horizontal: [] }
+        };
+    } else if (!isCTF && window.currentKasetonConfig.customSupports.frontBack) {
+        window.currentKasetonConfig.customSupports = { vertical: [], horizontal: [] };
+    }
+
+    if (!window.currentKasetonConfig.customCuts) {
+        if (isCTF) {
+            window.currentKasetonConfig.customCuts = {
+                frontBack: { vertical: [], horizontal: [] },
+                leftRight: { vertical: [], horizontal: [] },
+                topBottom: { vertical: [], horizontal: [] }
+            };
+        } else {
+            window.currentKasetonConfig.customCuts = { vertical: [], horizontal: [] };
+        }
+    }
+
+    if (isCTF && !window.currentKasetonConfig.customCuts.frontBack) {
+        window.currentKasetonConfig.customCuts = {
+            frontBack: { vertical: [], horizontal: [] },
+            leftRight: { vertical: [], horizontal: [] },
+            topBottom: { vertical: [], horizontal: [] }
+        };
+    } else if (!isCTF && window.currentKasetonConfig.customCuts.frontBack) {
+        window.currentKasetonConfig.customCuts = { vertical: [], horizontal: [] };
+    }
+
+    let supportsCopy;
+    let cutsCopy;
+    if (isCTF && planeKey) {
+        supportsCopy = JSON.parse(JSON.stringify(window.currentKasetonConfig.customSupports[planeKey] || { vertical: [], horizontal: [] }));
+        cutsCopy = JSON.parse(JSON.stringify(window.currentKasetonConfig.customCuts[planeKey] || { vertical: [], horizontal: [] }));
+    } else {
+        supportsCopy = JSON.parse(JSON.stringify(window.currentKasetonConfig.customSupports));
+        cutsCopy = JSON.parse(JSON.stringify(window.currentKasetonConfig.customCuts || { vertical: [], horizontal: [] }));
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'custom-cut-modal';
+    modal.className = 'height-modal-overlay';
+
+    const renderModalContent = () => {
+        const { collisionsV, collisionsH } = checkCustomSupportsCollisions(supportsCopy.vertical, supportsCopy.horizontal);
+
+        const maxW = 230;
+        const maxH = 350;
+        const scale = Math.min(maxW / W, maxH / H);
+        const pw = W * scale;
+        const ph = H * scale;
+
+        let previewHtml = '';
+
+        // Nanieś cięcia (zielone kreski) na podgląd (najpierw, aby były pod supportami)
+        cutsCopy.vertical.forEach((vc, idx) => {
+            const leftPx = vc.pos * scale;
+            previewHtml += `
+                <div class="height-preview-acc" style="
+                    left: ${leftPx}px;
+                    width: 1px;
+                    bottom: -15px;
+                    height: ${ph + 30}px;
+                    border-left: 1px dashed #28a745;
+                    z-index: 1;
+                " title="Cięcie pionowe: ${vc.pos} cm">
+                </div>
+            `;
+        });
+
+        cutsCopy.horizontal.forEach((hc, idx) => {
+            const bottomPx = hc.pos * scale;
+            previewHtml += `
+                <div class="height-preview-acc" style="
+                    left: -15px;
+                    width: ${pw + 30}px;
+                    bottom: ${bottomPx}px;
+                    height: 1px;
+                    border-bottom: 1px dashed #28a745;
+                    z-index: 1;
+                " title="Cięcie poziome: ${hc.pos} cm">
+                </div>
+            `;
+        });
+
+        supportsCopy.vertical.forEach((vs, idx) => {
+            const isColliding = collisionsV.has(idx);
+            const bgColor = isColliding ? '#ff2a2a' : '#00e5ff';
+            const borderColor = isColliding ? '#ff0000' : '#00b2cc';
+            const color = isColliding ? '#fff' : '#000';
+            
+            const leftPx = (vs.pos - 2.5) * scale;
+            const widthPx = 5 * scale;
+            const heightPx = ph;
+
+            previewHtml += `
+                <div class="height-preview-acc" style="
+                    left: ${leftPx}px;
+                    width: ${widthPx}px;
+                    bottom: 0px;
+                    height: ${heightPx}px;
+                    background: ${bgColor};
+                    border: 1px solid ${borderColor};
+                    color: ${color};
+                    writing-mode: vertical-lr;
+                    text-orientation: mixed;
+                    text-align: center;
+                    justify-content: center;
+                    display: flex;
+                    align-items: center;
+                    font-size: 9px;
+                    line-height: 1;
+                    padding: 0;
+                    margin: 0;
+                    box-sizing: border-box;
+                    z-index: 5;
+                " title="Support pionowy: ${vs.pos} cm">
+                    P#${idx + 1}
+                </div>
+            `;
+        });
+
+        supportsCopy.horizontal.forEach((hs, idx) => {
+            const isColliding = collisionsH.has(idx);
+            const bgColor = isColliding ? '#ff2a2a' : '#ff9900';
+            const borderColor = isColliding ? '#ff0000' : '#cc7700';
+            const color = isColliding ? '#fff' : '#000';
+            
+            const bottomPx = (hs.pos - 2.5) * scale;
+            const heightPx = 5 * scale;
+            const widthPx = pw;
+
+            previewHtml += `
+                <div class="height-preview-acc" style="
+                    left: 0px;
+                    width: ${widthPx}px;
+                    bottom: ${bottomPx}px;
+                    height: ${heightPx}px;
+                    background: ${bgColor};
+                    border: 1px solid ${borderColor};
+                    color: ${color};
+                    text-align: center;
+                    justify-content: center;
+                    display: flex;
+                    align-items: center;
+                    font-size: 9px;
+                    line-height: 1;
+                    padding: 0;
+                    margin: 0;
+                    box-sizing: border-box;
+                    z-index: 5;
+                " title="Support poziomy: ${hs.pos} cm">
+                    H#${idx + 1}
+                </div>
+            `;
+        });
+
+        let listHtml = '';
+        let hasWarning = false;
+        
+        supportsCopy.vertical.forEach((vs, idx) => {
+            const isColliding = collisionsV.has(idx);
+            const maxPos = W - 5;
+            listHtml += `
+                <div class="height-control-row ${isColliding ? 'colliding-row' : ''}">
+                    <div style="display:flex; justify-content:space-between; font-weight:bold; margin-bottom:8px; align-items:center;">
+                        <span style="color: ${isColliding ? '#ff5555' : '#00e5ff'}; font-size:12px;">
+                            ${isColliding ? '⚠️ ' : ''}Support pionowy (#${idx+1})
+                        </span>
+                        ${isColliding ? '<span style="color:#ff2a2a; font-size:10px; font-weight:bold; text-transform:uppercase;">Kolizja!</span>' : ''}
+                    </div>
+                    <div style="display:flex; gap:15px; align-items:center;">
+                        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+                            <span style="font-size:10px; color:#888;">Odległość od ${labelX} (cm):</span>
+                            <input type="range" class="modal-slider v-slider" data-idx="${idx}" min="5" max="${maxPos}" value="${vs.pos}" style="width:100%;">
+                        </div>
+                        <div style="width:80px; display:flex; flex-direction:column; gap:4px;">
+                            <span style="font-size:10px; color:#888;">Wpisz (cm):</span>
+                            <input type="number" class="modal-num-input v-input" data-idx="${idx}" min="5" max="${maxPos}" value="${vs.pos}">
+                        </div>
+                        <button class="btn-delete-support neon-pink" data-type="vertical" data-idx="${idx}" style="margin-top: 12px; height: 30px; width: 45px; border-radius: 4px; border: 1px solid #ff3366; background: rgba(255, 51, 102, 0.1); color: #ff3366; cursor: pointer; font-size: 11px;">Usuń</button>
+                    </div>
+                </div>
+            `;
+        });
+
+        supportsCopy.horizontal.forEach((hs, idx) => {
+            const isColliding = collisionsH.has(idx);
+            const maxPos = H - 5;
+            listHtml += `
+                <div class="height-control-row ${isColliding ? 'colliding-row' : ''}">
+                    <div style="display:flex; justify-content:space-between; font-weight:bold; margin-bottom:8px; align-items:center;">
+                        <span style="color: ${isColliding ? '#ff5555' : '#ff9900'}; font-size:12px;">
+                            ${isColliding ? '⚠️ ' : ''}Support poziomy (#${idx+1})
+                        </span>
+                        ${isColliding ? '<span style="color:#ff2a2a; font-size:10px; font-weight:bold; text-transform:uppercase;">Kolizja!</span>' : ''}
+                    </div>
+                    <div style="display:flex; gap:15px; align-items:center;">
+                        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+                            <span style="font-size:10px; color:#888;">Odległość od ${labelY} (cm):</span>
+                            <input type="range" class="modal-slider h-slider" data-idx="${idx}" min="5" max="${maxPos}" value="${hs.pos}" style="width:100%;">
+                        </div>
+                        <div style="width:80px; display:flex; flex-direction:column; gap:4px;">
+                            <span style="font-size:10px; color:#888;">Wpisz (cm):</span>
+                            <input type="number" class="modal-num-input h-input" data-idx="${idx}" min="5" max="${maxPos}" value="${hs.pos}">
+                        </div>
+                        <button class="btn-delete-support neon-pink" data-type="horizontal" data-idx="${idx}" style="margin-top: 12px; height: 30px; width: 45px; border-radius: 4px; border: 1px solid #ff3366; background: rgba(255, 51, 102, 0.1); color: #ff3366; cursor: pointer; font-size: 11px;">Usuń</button>
+                    </div>
+                </div>
+            `;
+        });
+
+        // Wypisz Cięcia w panelu bocznym z ostrzeżeniami o braku supportu
+        cutsCopy.vertical.forEach((vc, idx) => {
+            const hasSupport = supportsCopy.vertical.some(vs => Math.abs(vs.pos - vc.pos) < 0.1);
+            if (!hasSupport) hasWarning = true;
+            const maxPos = W - 5;
+            listHtml += `
+                <div class="height-control-row ${!hasSupport ? 'colliding-row' : ''}" style="${!hasSupport ? 'border-left: 4px solid #ffaa00; background: rgba(255,170,0,0.03);' : ''}">
+                    <div style="display:flex; justify-content:space-between; font-weight:bold; margin-bottom:8px; align-items:center;">
+                        <span style="color: ${!hasSupport ? '#ffaa00' : '#ff2a2a'}; font-size:12px;">
+                            ${!hasSupport ? '⚠️ ' : ''}Cięcie pionowe (#${idx+1}) ${!hasSupport ? '<span style="font-weight:normal;font-size:10px;color:#ffaa00;">(brak supportu!)</span>' : ''}
+                        </span>
+                    </div>
+                    <div style="display:flex; gap:15px; align-items:center;">
+                        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+                            <span style="font-size:10px; color:#888;">Odległość od ${labelX} (cm):</span>
+                            <input type="range" class="modal-slider v-cut-slider" data-idx="${idx}" min="5" max="${maxPos}" value="${vc.pos}" style="width:100%;">
+                        </div>
+                        <div style="width:80px; display:flex; flex-direction:column; gap:4px;">
+                            <span style="font-size:10px; color:#888;">Wpisz (cm):</span>
+                            <input type="number" class="modal-num-input v-cut-input" data-idx="${idx}" min="5" max="${maxPos}" value="${vc.pos}">
+                        </div>
+                        <button class="btn-delete-support neon-pink" data-type="vertical-cut" data-idx="${idx}" style="margin-top: 12px; height: 30px; width: 45px; border-radius: 4px; border: 1px solid #ff3366; background: rgba(255, 51, 102, 0.1); color: #ff3366; cursor: pointer; font-size: 11px;">Usuń</button>
+                    </div>
+                </div>
+            `;
+        });
+
+        cutsCopy.horizontal.forEach((hc, idx) => {
+            const hasSupport = supportsCopy.horizontal.some(hs => Math.abs(hs.pos - hc.pos) < 0.1);
+            if (!hasSupport) hasWarning = true;
+            const maxPos = H - 5;
+            listHtml += `
+                <div class="height-control-row ${!hasSupport ? 'colliding-row' : ''}" style="${!hasSupport ? 'border-left: 4px solid #ffaa00; background: rgba(255,170,0,0.03);' : ''}">
+                    <div style="display:flex; justify-content:space-between; font-weight:bold; margin-bottom:8px; align-items:center;">
+                        <span style="color: ${!hasSupport ? '#ffaa00' : '#ff2a2a'}; font-size:12px;">
+                            ${!hasSupport ? '⚠️ ' : ''}Cięcie poziome (#${idx+1}) ${!hasSupport ? '<span style="font-weight:normal;font-size:10px;color:#ffaa00;">(brak supportu!)</span>' : ''}
+                        </span>
+                    </div>
+                    <div style="display:flex; gap:15px; align-items:center;">
+                        <div style="flex:1; display:flex; flex-direction:column; gap:4px;">
+                            <span style="font-size:10px; color:#888;">Odległość od ${labelY} (cm):</span>
+                            <input type="range" class="modal-slider h-cut-slider" data-idx="${idx}" min="5" max="${maxPos}" value="${hc.pos}" style="width:100%;">
+                        </div>
+                        <div style="width:80px; display:flex; flex-direction:column; gap:4px;">
+                            <span style="font-size:10px; color:#888;">Wpisz (cm):</span>
+                            <input type="number" class="modal-num-input h-cut-input" data-idx="${idx}" min="5" max="${maxPos}" value="${hc.pos}">
+                        </div>
+                        <button class="btn-delete-support neon-pink" data-type="horizontal-cut" data-idx="${idx}" style="margin-top: 12px; height: 30px; width: 45px; border-radius: 4px; border: 1px solid #ff3366; background: rgba(255, 51, 102, 0.1); color: #ff3366; cursor: pointer; font-size: 11px;">Usuń</button>
+                    </div>
+                </div>
+            `;
+        });
+
+        if (supportsCopy.vertical.length === 0 && supportsCopy.horizontal.length === 0 && cutsCopy.vertical.length === 0 && cutsCopy.horizontal.length === 0) {
+            listHtml = `<div style="text-align: center; color: #888; margin-top: 50px;">Brak dodanych elementów. Użyj przycisków powyżej aby dodać supporty lub cięcia.</div>`;
+        }
+
+        const warningBanner = hasWarning ? `
+            <div style="background: rgba(255, 170, 0, 0.15); border: 1px solid #ffaa00; border-radius: 4px; color: #ffaa00; padding: 10px; margin-bottom: 15px; font-size: 11px; font-weight: bold; text-align: center;">
+                ⚠️ Każde cięcie profilu obwodowego wymaga dodania supportu na tej samej pozycji w celu wzmocnienia ramy!
+            </div>
+        ` : '';
+
+        modal.innerHTML = `
+            <div class="height-modal-container" onclick="event.stopPropagation();" style="width: 900px; height: 660px;">
+                <div class="height-modal-header">
+                    <h2>${planeTitle}</h2>
+                    <span class="height-modal-close" id="modalCloseBtn">✕</span>
+                </div>
+                <div class="height-modal-body" style="height: 580px;">
+                    <div class="height-modal-preview-col" style="justify-content: center;">
+                        <h4 style="margin: 0 0 15px 0; color: #888; text-align: center;">Podgląd Modułu (2D)</h4>
+                        <div style="display:flex; flex-direction:column; align-items:center; justify-content: center; height: 370px;">
+                            <div class="height-preview-module-wrapper" style="overflow: visible;">
+                                <div class="height-preview-module" style="width: ${pw}px; height: ${ph}px; border: 2px solid #00e5ff; background: rgba(0, 229, 255, 0.02); display: block; position: relative; overflow: visible;">
+                                    ${previewHtml}
+                                </div>
+                            </div>
+                            <span style="font-size:11px; color:#aaa; font-weight:bold; margin-top:10px;">${W} x ${H} cm</span>
+                        </div>
+                    </div>
+                    <div class="height-modal-controls-col" style="display: flex; flex-direction: column;">
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px; justify-content: space-between;">
+                            <button id="btnAddVerticalSupport" class="btn-bottom neon-cyan" style="flex: 1; padding: 8px; font-size: 10px; height: auto; white-space: nowrap;">➕ Dodaj support pionowy</button>
+                            <button id="btnAddHorizontalSupport" class="btn-bottom neon-orange" style="flex: 1; padding: 8px; font-size: 10px; height: auto; white-space: nowrap;">➕ Dodaj support poziomy</button>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px; justify-content: space-between;">
+                            <button id="btnAddVerticalCut" class="btn-bottom" style="flex: 1; padding: 8px; font-size: 10px; height: auto; white-space: nowrap; border: 1px solid #ff3366; background: rgba(255, 51, 102, 0.1); color: #ff3366;">➕ Dodaj cięcie pionowe</button>
+                            <button id="btnAddHorizontalCut" class="btn-bottom" style="flex: 1; padding: 8px; font-size: 10px; height: auto; white-space: nowrap; border: 1px solid #ff3366; background: rgba(255, 51, 102, 0.1); color: #ff3366;">➕ Dodaj cięcie poziome</button>
+                        </div>
+                        <button id="btnAutoMatchSupports" class="btn-bottom neon-green" style="width: 100%; margin-bottom: 10px; padding: 8px; font-size: 10px; height: auto; font-weight: bold; background: rgba(0, 230, 115, 0.1); border: 1px solid #00e673; color: #00e673;">⚡ Wstaw supporty automatycznie</button>
+                        ${warningBanner}
+                        <div class="height-modal-scrollable-controls" style="flex: 1; min-height: 200px;">
+                            ${listHtml}
+                        </div>
+                        <div class="height-modal-footer" style="margin-top: 10px;">
+                            <button id="modalCancelBtn" class="btn-bottom neon-pink">Anuluj</button>
+                            <button id="modalSaveBtn" class="btn-bottom neon-green">Zapisz</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        modal.querySelector('#modalCloseBtn').onclick = () => modal.remove();
+        modal.querySelector('#modalCancelBtn').onclick = () => modal.remove();
+        
+        modal.querySelector('#modalSaveBtn').onclick = () => {
+            if (isCTF && planeKey) {
+                window.currentKasetonConfig.customSupports[planeKey] = supportsCopy;
+                window.currentKasetonConfig.customCuts[planeKey] = cutsCopy;
+                const cs = window.currentKasetonConfig.customSupports;
+                const lenFBV = (cs.frontBack?.vertical?.length || 0) * (H_orig - 4.2426) * 2;
+                const lenFBH = (cs.frontBack?.horizontal?.length || 0) * (W_orig - 4.2426) * 2;
+                const lenLRV = (cs.leftRight?.vertical?.length || 0) * (H_orig - 4.2426) * 2;
+                const lenLRH = (cs.leftRight?.horizontal?.length || 0) * (D_orig - 4.2426) * 2;
+                const lenTBV = (cs.topBottom?.vertical?.length || 0) * (W_orig - 4.2426) * 2;
+                const lenTBH = (cs.topBottom?.horizontal?.length || 0) * (D_orig - 4.2426) * 2;
+
+                window.currentKasetonConfig.totalSupportLengthM = (lenFBV + lenFBH + lenLRV + lenLRH + lenTBV + lenTBH) / 100;
+                window.currentKasetonConfig.supportSegmentsCount = 
+                    ((cs.frontBack?.vertical?.length || 0) + (cs.frontBack?.horizontal?.length || 0)) * 2 +
+                    ((cs.leftRight?.vertical?.length || 0) + (cs.leftRight?.horizontal?.length || 0)) * 2 +
+                    ((cs.topBottom?.vertical?.length || 0) + (cs.topBottom?.horizontal?.length || 0)) * 2;
+            } else {
+                window.currentKasetonConfig.customSupports = supportsCopy;
+                window.currentKasetonConfig.customCuts = cutsCopy;
+                const vLen = supportsCopy.vertical.length;
+                const hLen = supportsCopy.horizontal.length;
+                window.currentKasetonConfig.totalSupportLengthM = ((vLen * (H - 5.4) + hLen * (W - 5.4)) / 100);
+                window.currentKasetonConfig.supportSegmentsCount = vLen + hLen * (vLen + 1);
+            }
+
+            modal.remove();
+
+            if (typeof is3DMode !== 'undefined' && is3DMode) {
+                if (typeof update3DScene === 'function') update3DScene();
+            } else {
+                if (typeof render === 'function') render();
+            }
+        };
+
+        modal.querySelector('#btnAddVerticalSupport').onclick = () => {
+            const defaultPos = Math.round(W / 2);
+            const clamped = Math.max(5, Math.min(W - 5, defaultPos));
+            supportsCopy.vertical.push({ pos: clamped });
+            renderModalContent();
+        };
+
+        modal.querySelector('#btnAddHorizontalSupport').onclick = () => {
+            const defaultPos = Math.round(H / 2);
+            const clamped = Math.max(5, Math.min(H - 5, defaultPos));
+            supportsCopy.horizontal.push({ pos: clamped });
+            renderModalContent();
+        };
+
+        modal.querySelector('#btnAddVerticalCut').onclick = () => {
+            const defaultPos = Math.round(W / 2);
+            const clamped = Math.max(5, Math.min(W - 5, defaultPos));
+            cutsCopy.vertical.push({ pos: clamped });
+            renderModalContent();
+        };
+
+        modal.querySelector('#btnAddHorizontalCut').onclick = () => {
+            const defaultPos = Math.round(H / 2);
+            const clamped = Math.max(5, Math.min(H - 5, defaultPos));
+            cutsCopy.horizontal.push({ pos: clamped });
+            renderModalContent();
+        };
+
+        modal.querySelector('#btnAutoMatchSupports').onclick = () => {
+            supportsCopy.vertical = [];
+            supportsCopy.horizontal = [];
+            cutsCopy.vertical.forEach(vc => {
+                supportsCopy.vertical.push({ pos: vc.pos });
+            });
+            cutsCopy.horizontal.forEach(hc => {
+                supportsCopy.horizontal.push({ pos: hc.pos });
+            });
+            renderModalContent();
+        };
+
+        modal.querySelectorAll('.btn-delete-support').forEach(btn => {
+            btn.onclick = (e) => {
+                const type = e.target.dataset.type;
+                const idx = parseInt(e.target.dataset.idx, 10);
+                if (type === 'vertical') {
+                    supportsCopy.vertical.splice(idx, 1);
+                } else if (type === 'horizontal') {
+                    supportsCopy.horizontal.splice(idx, 1);
+                } else if (type === 'vertical-cut') {
+                    cutsCopy.vertical.splice(idx, 1);
+                } else if (type === 'horizontal-cut') {
+                    cutsCopy.horizontal.splice(idx, 1);
+                }
+                renderModalContent();
+            };
+        });
+
+        modal.querySelectorAll('.v-slider').forEach(slider => {
+            slider.oninput = (e) => {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                const val = parseInt(e.target.value, 10);
+                supportsCopy.vertical[idx].pos = val;
+                const row = e.target.closest('.height-control-row');
+                if (row) {
+                    const numInput = row.querySelector('.v-input');
+                    if (numInput) numInput.value = val;
+                }
+                renderModalContent();
+            };
+        });
+
+        modal.querySelectorAll('.h-slider').forEach(slider => {
+            slider.oninput = (e) => {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                const val = parseInt(e.target.value, 10);
+                supportsCopy.horizontal[idx].pos = val;
+                const row = e.target.closest('.height-control-row');
+                if (row) {
+                    const numInput = row.querySelector('.h-input');
+                    if (numInput) numInput.value = val;
+                }
+                renderModalContent();
+            };
+        });
+
+        modal.querySelectorAll('.v-cut-slider').forEach(slider => {
+            slider.oninput = (e) => {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                const val = parseInt(e.target.value, 10);
+                cutsCopy.vertical[idx].pos = val;
+                const row = e.target.closest('.height-control-row');
+                if (row) {
+                    const numInput = row.querySelector('.v-cut-input');
+                    if (numInput) numInput.value = val;
+                }
+                renderModalContent();
+            };
+        });
+
+        modal.querySelectorAll('.h-cut-slider').forEach(slider => {
+            slider.oninput = (e) => {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                const val = parseInt(e.target.value, 10);
+                cutsCopy.horizontal[idx].pos = val;
+                const row = e.target.closest('.height-control-row');
+                if (row) {
+                    const numInput = row.querySelector('.h-cut-input');
+                    if (numInput) numInput.value = val;
+                }
+                renderModalContent();
+            };
+        });
+
+        modal.querySelectorAll('.v-input').forEach(input => {
+            input.onchange = (e) => {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                let val = parseInt(e.target.value, 10);
+                const maxPos = W - 5;
+                if (isNaN(val) || val < 5) val = 5;
+                if (val > maxPos) val = maxPos;
+                supportsCopy.vertical[idx].pos = val;
+                renderModalContent();
+            };
+        });
+
+        modal.querySelectorAll('.h-input').forEach(input => {
+            input.onchange = (e) => {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                let val = parseInt(e.target.value, 10);
+                const maxPos = H - 5;
+                if (isNaN(val) || val < 5) val = 5;
+                if (val > maxPos) val = maxPos;
+                supportsCopy.horizontal[idx].pos = val;
+                renderModalContent();
+            };
+        });
+
+        modal.querySelectorAll('.v-cut-input').forEach(input => {
+            input.onchange = (e) => {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                let val = parseInt(e.target.value, 10);
+                const maxPos = W - 5;
+                if (isNaN(val) || val < 5) val = 5;
+                if (val > maxPos) val = maxPos;
+                cutsCopy.vertical[idx].pos = val;
+                renderModalContent();
+            };
+        });
+
+        modal.querySelectorAll('.h-cut-input').forEach(input => {
+            input.onchange = (e) => {
+                const idx = parseInt(e.target.dataset.idx, 10);
+                let val = parseInt(e.target.value, 10);
+                const maxPos = H - 5;
+                if (isNaN(val) || val < 5) val = 5;
+                if (val > maxPos) val = maxPos;
+                cutsCopy.horizontal[idx].pos = val;
+                renderModalContent();
+            };
+        });
+    };
+
+    document.body.appendChild(modal);
+    renderModalContent();
+};
+
+function checkCustomSupportsCollisions(verticalList, horizontalList) {
+    const collisionsV = new Set();
+    const collisionsH = new Set();
+    
+    for (let i = 0; i < verticalList.length; i++) {
+        for (let j = i + 1; j < verticalList.length; j++) {
+            if (Math.abs(verticalList[i].pos - verticalList[j].pos) < 5) {
+                collisionsV.add(i);
+                collisionsV.add(j);
+            }
+        }
+    }
+    
+    for (let i = 0; i < horizontalList.length; i++) {
+        for (let j = i + 1; j < horizontalList.length; j++) {
+            if (Math.abs(horizontalList[i].pos - horizontalList[j].pos) < 5) {
+                collisionsH.add(i);
+                collisionsH.add(j);
+            }
+        }
+    }
+    
+    return { collisionsV, collisionsH };
+}
+

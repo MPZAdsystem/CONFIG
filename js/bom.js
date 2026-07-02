@@ -9,6 +9,197 @@ function removePolishAccents(str) {
   return str.replace(/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/g, match => map[match]);
 }
 
+function addCustomSupportsToBOM(bomItems, W, H, config) {
+  if (!config.customSupports) return;
+  const sys = config.system || 'LMD';
+  const isCTF = (sys === 'CTF' || sys === 'CTF_LED');
+  const D = config.height3D || 120;
+
+  if (isCTF) {
+    const cs = config.customSupports;
+    cs.frontBack = cs.frontBack || { vertical: [], horizontal: [] };
+    cs.leftRight = cs.leftRight || { vertical: [], horizontal: [] };
+    cs.topBottom = cs.topBottom || { vertical: [], horizontal: [] };
+
+    let ctfBarConns = 0;
+    let locks = 0;
+    let conns180 = 0;
+
+    // Category 1: profil support light (pionowy przód/tył)
+    const fbV = cs.frontBack.vertical || [];
+    if (fbV.length > 0) {
+      const len = 2 * fbV.length * (H - 4.2426) / 100;
+      bomItems.push({
+        name: "profil support light",
+        qty: parseFloat(len.toFixed(2)),
+        unit: "mb",
+        intranetId: 11951,
+        description: `Support pionowy przód/tył. Ilość sztuk: ${fbV.length * 2}. Odległość od lewej: ` + fbV.map((s, idx) => `#${idx + 1} = ${s.pos}cm`).join(' / ')
+      });
+      ctfBarConns += fbV.length * 2 * 2;
+    }
+
+    // Category 2: profil support light (poziomy przód/tył)
+    const fbH = cs.frontBack.horizontal || [];
+    if (fbH.length > 0) {
+      const len = 2 * fbH.length * (W - 4.2426) / 100;
+      bomItems.push({
+        name: "profil support light",
+        qty: parseFloat(len.toFixed(2)),
+        unit: "mb",
+        intranetId: 11951,
+        description: `Support poziomy przód/tył. Ilość sztuk: ${fbH.length * 2}. Odległość od dołu: ` + fbH.map((s, idx) => `#${idx + 1} = ${s.pos}cm`).join(' / ')
+      });
+      ctfBarConns += fbH.length * 2 * 2;
+    }
+
+    const fbCross = fbV.length * fbH.length;
+    locks += fbCross * 2 * 2;
+    conns180 += fbCross * 2 * 2;
+
+    // Category 3: profil support light (pionowy boki)
+    const lrV = cs.leftRight.vertical || [];
+    if (lrV.length > 0) {
+      const len = 2 * lrV.length * (H - 4.2426) / 100;
+      bomItems.push({
+        name: "profil support light",
+        qty: parseFloat(len.toFixed(2)),
+        unit: "mb",
+        intranetId: 11951,
+        description: `Support pionowy boki. Ilość sztuk: ${lrV.length * 2}. Odległość od lewej: ` + lrV.map((s, idx) => `#${idx + 1} = ${s.pos}cm`).join(' / ')
+      });
+      ctfBarConns += lrV.length * 2 * 2;
+    }
+
+    // Category 4: profil support light (poziomy boki)
+    const lrH = cs.leftRight.horizontal || [];
+    if (lrH.length > 0) {
+      const len = 2 * lrH.length * (D - 4.2426) / 100;
+      bomItems.push({
+        name: "profil support light",
+        qty: parseFloat(len.toFixed(2)),
+        unit: "mb",
+        intranetId: 11951,
+        description: `Support poziomy boki. Ilość sztuk: ${lrH.length * 2}. Odległość od dołu: ` + lrH.map((s, idx) => `#${idx + 1} = ${s.pos}cm`).join(' / ')
+      });
+      ctfBarConns += lrH.length * 2 * 2;
+    }
+
+    const lrCross = lrV.length * lrH.length;
+    locks += lrCross * 2 * 2;
+    conns180 += lrCross * 2 * 2;
+
+    // Category 5: profil support light (szerokość góra/dół)
+    const tbV = cs.topBottom.vertical || [];
+    if (tbV.length > 0) {
+      const len = 2 * tbV.length * (W - 4.2426) / 100;
+      bomItems.push({
+        name: "profil support light",
+        qty: parseFloat(len.toFixed(2)),
+        unit: "mb",
+        intranetId: 11951,
+        description: `Support szerokość góra/dół. Ilość sztuk: ${tbV.length * 2}. Odległość od lewej: ` + tbV.map((s, idx) => `#${idx + 1} = ${s.pos}cm`).join(' / ')
+      });
+      ctfBarConns += tbV.length * 2 * 2;
+    }
+
+    // Category 6: profil support light (głębokość góra/dół)
+    const tbH = cs.topBottom.horizontal || [];
+    if (tbH.length > 0) {
+      const len = 2 * tbH.length * (D - 4.2426) / 100;
+      bomItems.push({
+        name: "profil support light",
+        qty: parseFloat(len.toFixed(2)),
+        unit: "mb",
+        intranetId: 11951,
+        description: `Support głębokość góra/dół. Ilość sztuk: ${tbH.length * 2}. Odległość od dołu: ` + tbH.map((s, idx) => `#${idx + 1} = ${s.pos}cm`).join(' / ')
+      });
+      ctfBarConns += tbH.length * 2 * 2;
+    }
+
+    const tbCross = tbV.length * tbH.length;
+    locks += tbCross * 2 * 2;
+    conns180 += tbCross * 2 * 2;
+
+    if (ctfBarConns > 0) {
+      bomItems.push({
+        name: 'adFrame CTF support bar connector',
+        qty: ctfBarConns,
+        unit: 'szt',
+        intranetId: 12077
+      });
+    }
+
+    if (locks > 0) {
+      bomItems.push({
+        name: 'adFrame support zamek',
+        qty: locks,
+        unit: 'szt',
+        intranetId: 10949
+      });
+    }
+
+    if (conns180 > 0) {
+      bomItems.push({
+        name: 'adFrame support 180° łącznik',
+        qty: conns180,
+        unit: 'szt',
+        intranetId: 11131
+      });
+    }
+  } else {
+    const multiplier = 1;
+    const vSupports = config.customSupports.vertical || [];
+    const hSupports = config.customSupports.horizontal || [];
+
+    if (vSupports.length > 0) {
+      const vSuppMeters = multiplier * vSupports.length * (H - 5.4) / 100;
+      const descCount = multiplier * vSupports.length;
+      bomItems.push({
+        name: "profil support light",
+        qty: parseFloat(vSuppMeters.toFixed(2)),
+        unit: "mb",
+        intranetId: 11951,
+        description: `Support pionowy. Ilość sztuk: ${descCount}. Odległość od lewej: ` + vSupports.map((s, idx) => `#${idx + 1} = ${s.pos}cm`).join(' / ')
+      });
+    }
+
+    if (hSupports.length > 0) {
+      const hSuppMeters = multiplier * hSupports.length * (W - 5.4) / 100;
+      const descCount = multiplier * hSupports.length;
+      bomItems.push({
+        name: "profil support light",
+        qty: parseFloat(hSuppMeters.toFixed(2)),
+        unit: "mb",
+        intranetId: 11951,
+        description: `Support poziomy. Ilość sztuk: ${descCount}. Odległość od dołu: ` + hSupports.map((s, idx) => `#${idx + 1} = ${s.pos}cm`).join(' / ')
+      });
+    }
+
+    const numCross = vSupports.length * hSupports.length;
+    const numZamki = multiplier * ((vSupports.length * 2) + (hSupports.length * 2) + (numCross * 2));
+    const num180 = multiplier * (numCross * 2);
+
+    if (numZamki > 0) {
+      bomItems.push({
+        name: 'adFrame support zamek',
+        qty: numZamki,
+        unit: 'szt',
+        intranetId: 10949
+      });
+    }
+
+    if (num180 > 0) {
+      bomItems.push({
+        name: 'adFrame support 180° łącznik',
+        qty: num180,
+        unit: 'szt',
+        intranetId: 11131
+      });
+    }
+  }
+}
+
 function generateKasetonBOM() {
   const config = window.currentKasetonConfig;
   if (!config) return;
@@ -37,45 +228,55 @@ function generateKasetonBOM() {
     bomItems.push({ name: "adFrame CTF Plastic connector", qty: 8, unit: "szt", intranetId: 12090 });
 
     // 4. Układ wzmocnień (Supporty) oraz łączniki wewnętrzne rurek
-    const ctfSuppLen = config.totalSupportLengthM || 0;
-    if (ctfSuppLen > 0) {
-      bomItems.push({ name: 'profil support light', qty: parseFloat(ctfSuppLen.toFixed(2)), unit: 'mb', intranetId: 11951 });
+    if (config.cut === 'custom') {
+      addCustomSupportsToBOM(bomItems, W, H, config);
+    } else {
+      const ctfSuppLen = config.totalSupportLengthM || 0;
+      if (ctfSuppLen > 0) {
+        bomItems.push({ name: 'profil support light', qty: parseFloat(ctfSuppLen.toFixed(2)), unit: 'mb', intranetId: 11951 });
 
-      // Odtworzenie siatki podziałów ramy celem precyzyjnego wyliczenia spinek supportu
-      let numSegmentsW = 1, numSegmentsH = 1;
-      if (config.cut && config.cut.includes('half_w')) numSegmentsW = 2;
-      else if (config.cut && config.cut.includes('3w')) numSegmentsW = 3;
-      else if (config.cut && config.cut.includes('4w')) numSegmentsW = 4;
-      else if (config.cut && config.cut.includes('5w')) numSegmentsW = 5;
+        // Odtworzenie siatki podziałów ramy celem precyzyjnego wyliczenia spinek supportu
+        let numSegmentsW = 1, numSegmentsH = 1;
+        if (config.cut && config.cut.includes('half_w')) numSegmentsW = 2;
+        else if (config.cut && config.cut.includes('3w')) numSegmentsW = 3;
+        else if (config.cut && config.cut.includes('4w')) numSegmentsW = 4;
+        else if (config.cut && config.cut.includes('5w')) numSegmentsW = 5;
 
-      if (config.cut && config.cut.includes('half_h')) numSegmentsH = 2;
-      else if (config.cut && config.cut.includes('3h')) numSegmentsH = 3;
-      else if (config.cut && config.cut.includes('4h')) numSegmentsH = 4;
-      else if (config.cut && config.cut.includes('5h')) numSegmentsH = 5;
+        if (config.cut && config.cut.includes('half_h')) numSegmentsH = 2;
+        else if (config.cut && config.cut.includes('3h')) numSegmentsH = 3;
+        else if (config.cut && config.cut.includes('4h')) numSegmentsH = 4;
+        else if (config.cut && config.cut.includes('5h')) numSegmentsH = 5;
 
-      if (config.cut && config.cut.startsWith('auto')) {
-        const maxLen = config.cut === 'auto_dedicated' ? 300 : (config.cut === 'auto_courier_150' ? 150 : 200);
-        if (W > maxLen) numSegmentsW = Math.ceil(W / maxLen);
-        if (H > maxLen) numSegmentsH = Math.ceil(H / maxLen);
-      }
+        if (config.cut && config.cut.startsWith('auto')) {
+          const maxLen = config.cut === 'auto_dedicated' ? 300 : (config.cut === 'auto_courier_150' ? 150 : 200);
+          if (W > maxLen) numSegmentsW = Math.ceil(W / maxLen);
+          if (H > maxLen) numSegmentsH = Math.ceil(H / maxLen);
+        }
 
-      const numCutsW = numSegmentsW - 1;
-      const numCutsH = numSegmentsH - 1;
-      const numCutsZ = D > 200 ? 1 : 0;
+        const numCutsW = numSegmentsW - 1;
+        const numCutsH = numSegmentsH - 1;
+        const numCutsZ = D > 200 ? 1 : 0;
 
-      // Solver zliczający spinki rurek (adFrame CTF support bar connector)
-      let supportConnectorsQty = (numCutsW * 4) + (numCutsH * 4) + (numCutsZ * 4);
-      if (numCutsW > 0 && numCutsH > 0) {
-        supportConnectorsQty += (numCutsW * numCutsH * 2); // Punkty krzyżowe wewnętrzne
-      }
+        // Solver zliczający spinki rurek (adFrame CTF support bar connector)
+        let supportConnectorsQty = (numCutsW * 4) + (numCutsH * 4) + (numCutsZ * 4);
+        if (numCutsW > 0 && numCutsH > 0) {
+          supportConnectorsQty += (numCutsW * numCutsH * 2); // Punkty krzyżowe wewnętrzne
+        }
 
-      // Bezpiecznik dla dużych gabarytów bez wymuszonych cięć kurierskich (stabilizacja ramy)
-      if (supportConnectorsQty === 0 && (W > 200 || H > 200 || D > 200)) {
-        supportConnectorsQty = 8;
-      }
+        // Dodatkowe spinki/łączniki dla belek wiszących żarówek
+        if (sys === 'CTF_LED' && config.light === 'zarowka') {
+          const numZ_zar = 1 + Math.ceil(Math.max(0, D - 100) / 100);
+          supportConnectorsQty += numZ_zar * 2;
+        }
 
-      if (supportConnectorsQty > 0) {
-        bomItems.push({ name: "adFrame CTF support bar connector", qty: supportConnectorsQty, unit: "szt", intranetId: 12077 });
+        // Bezpiecznik dla dużych gabarytów bez wymuszonych cięć kurierskich (stabilizacja ramy)
+        if (supportConnectorsQty === 0 && (W > 200 || H > 200 || D > 200)) {
+          supportConnectorsQty = 8;
+        }
+
+        if (supportConnectorsQty > 0) {
+          bomItems.push({ name: "adFrame CTF support bar connector", qty: supportConnectorsQty, unit: "szt", intranetId: 12077 });
+        }
       }
     }
 
@@ -106,19 +307,82 @@ function generateKasetonBOM() {
     }
 
     // 6a. Plafony LED dla systemu CTF LED
-    if (sys === 'CTF_LED' && (config.light === 'plafon_dol' || config.light === 'plafon_gora')) {
+    if (sys === 'CTF_LED' && (config.light === 'plafon_dol' || config.light === 'plafon_gora' || config.light === 'plafon_gora_dol')) {
       let numX = Math.floor((W - 5) / 35);
       if (numX < 1 && W >= 40) numX = 1;
       let numZ = Math.floor((D - 5) / 35);
       if (numZ < 1 && D >= 40) numZ = 1;
 
-      const totalPlafonds = (numX >= 1 && numZ >= 1) ? (numX * numZ) : 0;
+      let totalPlafonds = (numX >= 1 && numZ >= 1) ? (numX * numZ) : 0;
+      if (config.light === 'plafon_gora_dol') {
+        totalPlafonds *= 2;
+      }
       if (totalPlafonds > 0) {
         bomItems.push({
           name: "Plafon LED 30x30",
           qty: totalPlafonds,
           unit: "szt",
           intranetId: 18957
+        });
+
+        // Puszka instalacyjna i kable zasilające dla Plafonów (1 dla góra lub dół, 2 dla góra+dół)
+        const extraQty = (config.light === 'plafon_gora_dol') ? 2 : 1;
+
+        bomItems.push({
+          name: "puszka instalacyjna",
+          qty: extraQty,
+          unit: "szt",
+          intranetId: 15284
+        });
+
+        bomItems.push({
+          name: "Kabel zasilający do zasilacza wew / adFrame Quick",
+          qty: extraQty,
+          unit: "szt",
+          intranetId: 17392
+        });
+      }
+    }
+
+    // 6b. Żarówki LED dla systemu CTF LED (zarowka)
+    if (sys === 'CTF_LED' && config.light === 'zarowka') {
+      const numX = 1 + Math.ceil(Math.max(0, W - 100) / 100);
+      const numZ = 1 + Math.ceil(Math.max(0, D - 100) / 100);
+      const totalBulbs = numX * numZ;
+      if (totalBulbs > 0) {
+        // Żarówki 100W
+        bomItems.push({
+          name: "żarówka 100W do adFrame CTF Hanging (duża)",
+          qty: totalBulbs,
+          unit: "szt",
+          intranetId: 17711
+        });
+
+        // Kabel zasilający
+        bomItems.push({
+          name: "Kabel zasilający do zasilacza wew / adFrame Quick",
+          qty: 1,
+          unit: "szt",
+          intranetId: 17392
+        });
+
+        // Puszka instalacyjna z dynamiczną logiką ilości
+        let puszkaQty = 1;
+        if (totalBulbs === 2) {
+          puszkaQty = 2;
+        } else if (totalBulbs === 3) {
+          puszkaQty = 4;
+        } else if (totalBulbs === 4) {
+          puszkaQty = 6;
+        } else if (totalBulbs > 4) {
+          puszkaQty = 6 + Math.ceil((totalBulbs - 4) * 1.5);
+        }
+
+        bomItems.push({
+          name: "puszka instalacyjna",
+          qty: puszkaQty,
+          unit: "szt",
+          intranetId: 15284
         });
       }
     }
@@ -161,7 +425,8 @@ function generateKasetonBOM() {
       baseCartons = Math.ceil(totalPieces / 8);
     }
 
-    const finalCartonQty = isSplit ? baseCartons * 2 : baseCartons;
+    let finalCartonQty = isSplit ? baseCartons * 2 : baseCartons;
+    finalCartonQty = adjustCartonsByWeight(config, finalCartonQty, cartonName);
     const foamQty = finalCartonQty * 4;
 
     bomItems.push({ name: cartonName, qty: finalCartonQty, unit: 'szt' });
@@ -324,27 +589,38 @@ function generateKasetonBOM() {
     const cornerId = sys === 'STFL' ? 10953 : 10940;
     bomItems.push({ name: cornerName, qty: 4, unit: "szt", intranetId: cornerId });
 
-    // 4. Układ wzmocnień (Supporty light) skopiowany z LMD/LMSM wraz z zapięciami i krzyżakami
-    const suppLen = config.totalSupportLengthM || ((numCutsW * H + numCutsH * W) / 100);
-    if (suppLen > 0) {
-      bomItems.push({ name: 'profil support light', qty: parseFloat(suppLen.toFixed(2)), unit: 'mb', intranetId: 11951 });
-    }
+    // 4. Układ wzmocnień (Supporty light) i zamki / łączniki
+    let finalTotalCuts = totalCuts;
+    if (config.cut === 'custom') {
+      addCustomSupportsToBOM(bomItems, W, H, config);
+      if (config.customCuts) {
+        numCutsW = config.customCuts.vertical ? config.customCuts.vertical.length : 0;
+        numCutsH = config.customCuts.horizontal ? config.customCuts.horizontal.length : 0;
+      }
+      finalTotalCuts = numCutsW + numCutsH;
+    } else {
+      const isWallSTF_STFL = (sys === 'STF' || sys === 'STFL') && config.usage === 'wall';
+      const suppLen = isWallSTF_STFL ? 0 : (config.totalSupportLengthM || ((numCutsW * H + numCutsH * W) / 100));
+      if (suppLen > 0) {
+        bomItems.push({ name: 'profil support light', qty: parseFloat(suppLen.toFixed(2)), unit: 'mb', intranetId: 11951 });
+      }
 
-    // Zamki rurek (ID 10949) oraz wewnętrzne łączniki 180° krzyżaków (ID 11131)
-    const zamki = (numCutsW * 2) + (numCutsH * 2);
-    if (zamki > 0) {
-      bomItems.push({ name: 'adFrame support zamek', qty: zamki, unit: 'szt', intranetId: 10949 });
-    }
-    const crossConns = numCutsW * numCutsH;
-    if (crossConns > 0) {
-      bomItems.push({ name: 'adFrame support 180° łącznik', qty: crossConns * 2, unit: 'szt', intranetId: 11131 });
+      // Zamki rurek (ID 10949) oraz wewnętrzne łączniki 180° krzyżaków (ID 11131)
+      const zamki = isWallSTF_STFL ? 0 : ((numCutsW * 2) + (numCutsH * 2));
+      if (zamki > 0) {
+        bomItems.push({ name: 'adFrame support zamek', qty: zamki, unit: 'szt', intranetId: 10949 });
+      }
+      const crossConns = isWallSTF_STFL ? 0 : (numCutsW * numCutsH);
+      if (crossConns > 0) {
+        bomItems.push({ name: 'adFrame support 180° łącznik', qty: crossConns * 2, unit: 'szt', intranetId: 11131 });
+      }
     }
 
     // Łączniki 180° pociętych krawędzi profili obwodowych ramy — po 2 szt. na każde fizyczne cięcie ramy
-    if (totalCuts > 0) {
+    if (finalTotalCuts > 0) {
       const connName = sys === 'STFL' ? "adFrame STFL łącznik 180°" : "adFrame DTF/STF/LMSM łącznik 180°";
       const connId = sys === 'STFL' ? 11908 : 10941;
-      bomItems.push({ name: connName, qty: totalCuts * 2, unit: 'szt', intranetId: connId });
+      bomItems.push({ name: connName, qty: finalTotalCuts * 2, unit: 'szt', intranetId: connId });
     }
 
     // 5. Wieszaki naścienne dla opcji ściennej (Skopiowane 1:1 z retencji LMSM, ID 10944) - dotyczy tylko STF/STFL
@@ -412,7 +688,8 @@ function generateKasetonBOM() {
 
     const totalPieces = 2 * (numCutsW + 1) + 2 * (numCutsH + 1);
     let baseCartons = totalCuts > 4 ? Math.ceil(totalPieces / 8) : 1;
-    const finalCartonQty = isSplit ? baseCartons * 2 : baseCartons;
+    let finalCartonQty = isSplit ? baseCartons * 2 : baseCartons;
+    finalCartonQty = adjustCartonsByWeight(config, finalCartonQty, cartonName);
 
     bomItems.push({ name: cartonName, qty: finalCartonQty, unit: 'szt', intranetId: currentCartonId });
     bomItems.push({ name: 'adFrame DTF/STF pianka ochronna', qty: finalCartonQty * 4, unit: 'szt', intranetId: 14813 });
@@ -572,6 +849,26 @@ function generateKasetonBOM() {
     const drawRight = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
 
     function bomSegments(profileLength, isHoriz) {
+      if (config.cut === 'custom') {
+        const supports = isHoriz ? (config.customSupports?.vertical || []) : (config.customSupports?.horizontal || []);
+        const positions = supports.map(s => s.pos).sort((a, b) => a - b);
+        const segmentLengths = [];
+        let currentStart = 5;
+        for (let i = 0; i < positions.length; i++) {
+          const pos = positions[i];
+          const end = pos - 2.5;
+          if (end > currentStart + 1) {
+            segmentLengths.push(end - currentStart);
+          }
+          currentStart = pos + 2.5;
+        }
+        const finalEnd = profileLength - 5;
+        if (finalEnd > currentStart + 1) {
+          segmentLengths.push(finalEnd - currentStart);
+        }
+        return segmentLengths;
+      }
+
       let n = 1;
       if (isHoriz) {
         n = numCutsW + 1;
@@ -716,25 +1013,35 @@ function generateKasetonBOM() {
     }
 
     // 5. UKŁAD WZMOCNIEŃ (SUPPORTY) I ŁĄCZNIKI GŁÓWNE
-    const suppLen = config.totalSupportLengthM || ((numCutsW * H + numCutsH * W) / 100);
-    if (suppLen > 0) {
-      bomItems.push({ name: 'profil support light', qty: parseFloat(suppLen.toFixed(2)), unit: 'mb' });
-    }
+    let finalTotalCuts = 0;
+    if (config.cut === 'custom') {
+      addCustomSupportsToBOM(bomItems, W, H, config);
+      if (config.customCuts) {
+        numCutsW = config.customCuts.vertical ? config.customCuts.vertical.length : 0;
+        numCutsH = config.customCuts.horizontal ? config.customCuts.horizontal.length : 0;
+      }
+      finalTotalCuts = numCutsW + numCutsH;
+    } else {
+      const suppLen = config.totalSupportLengthM || ((numCutsW * H + numCutsH * W) / 100);
+      if (suppLen > 0) {
+        bomItems.push({ name: 'profil support light', qty: parseFloat(suppLen.toFixed(2)), unit: 'mb' });
+      }
 
-    const zamki = (numCutsW * 2) + (numCutsH * 2);
-    if (zamki > 0) {
-      bomItems.push({ name: 'adFrame support zamek', qty: zamki, unit: 'szt' });
-    }
+      const zamki = (numCutsW * 2) + (numCutsH * 2);
+      if (zamki > 0) {
+        bomItems.push({ name: 'adFrame support zamek', qty: zamki, unit: 'szt' });
+      }
 
-    const crossConns = numCutsW * numCutsH;
-    if (crossConns > 0) {
-      bomItems.push({ name: 'adFrame support 180° łącznik', qty: crossConns * 2, unit: 'szt' });
+      const crossConns = numCutsW * numCutsH;
+      if (crossConns > 0) {
+        bomItems.push({ name: 'adFrame support 180° łącznik', qty: crossConns * 2, unit: 'szt' });
+      }
+      finalTotalCuts = numCutsW + numCutsH;
     }
 
     // ŁĄCZNIKI 180° GŁÓWNEGO PROFILU OBWODOWEGO
-    const totalCuts = numCutsW + numCutsH;
-    if (totalCuts > 0) {
-      bomItems.push({ name: 'adFrame DTF/STF/LMSM łącznik 180°', qty: totalCuts * 2, unit: 'szt' });
+    if (finalTotalCuts > 0) {
+      bomItems.push({ name: 'adFrame DTF/STF/LMSM łącznik 180°', qty: finalTotalCuts * 2, unit: 'szt' });
     }
 
     // 🛠️ NOWA LOGIKA MONTAŻOWA DLA SYSTEMU LMSM (BEZ STÓP)
@@ -792,7 +1099,8 @@ function generateKasetonBOM() {
 
     const totalPieces = 2 * (numCutsW + 1) + 2 * (numCutsH + 1);
     let baseCartons = totalCuts > 4 ? Math.ceil(totalPieces / 8) : 1;
-    const finalCartonQty = isSplit ? baseCartons * 2 : baseCartons;
+    let finalCartonQty = isSplit ? baseCartons * 2 : baseCartons;
+    finalCartonQty = adjustCartonsByWeight(config, finalCartonQty, cartonName);
 
     bomItems.push({ name: cartonName, qty: finalCartonQty, unit: 'szt' });
     bomItems.push({ name: 'adFrame LMD pianka ochronna', qty: finalCartonQty * 4, unit: 'szt' });
@@ -916,6 +1224,26 @@ function generateKasetonBOM() {
     const drawRight = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
 
     function bomSegments(profileLength, isHoriz) {
+      if (config.cut === 'custom') {
+        const supports = isHoriz ? (config.customSupports?.vertical || []) : (config.customSupports?.horizontal || []);
+        const positions = supports.map(s => s.pos).sort((a, b) => a - b);
+        const segmentLengths = [];
+        let currentStart = 5;
+        for (let i = 0; i < positions.length; i++) {
+          const pos = positions[i];
+          const end = pos - 2.5;
+          if (end > currentStart + 1) {
+            segmentLengths.push(end - currentStart);
+          }
+          currentStart = pos + 2.5;
+        }
+        const finalEnd = profileLength - 5;
+        if (finalEnd > currentStart + 1) {
+          segmentLengths.push(finalEnd - currentStart);
+        }
+        return segmentLengths;
+      }
+
       let n = 1;
       if (isHoriz) {
         if (config.cut && config.cut.includes('half_w')) n = 2;
@@ -975,8 +1303,12 @@ function generateKasetonBOM() {
     const isTargetLedSys = ['LMD', 'LMS', 'LMSM', 'LCD_LMD'].includes(sys);
     if (isTargetLedSys) {
       // 1. Connection with armed profiles (each vertical support has 2 ends; each horizontal has 2 ends)
-      const cutsW = config.numCutsW || 0;
-      const cutsH = config.numCutsH || 0;
+      let cutsW = config.numCutsW || 0;
+      let cutsH = config.numCutsH || 0;
+      if (config.cut === 'custom' && config.customSupports) {
+        cutsW = config.customSupports.vertical ? config.customSupports.vertical.length : 0;
+        cutsH = config.customSupports.horizontal ? config.customSupports.horizontal.length : 0;
+      }
       let totalConn = 0;
       if (drawTop) totalConn += cutsW;
       if (drawBottom) totalConn += cutsW;
@@ -1086,32 +1418,44 @@ function generateKasetonBOM() {
     }
   }
   // 5. SUPPORTY I ŁĄCZNIKI
-  const numCutsW = config.numCutsW || 0;
-  const numCutsH = config.numCutsH || 0;
-  const suppLen = config.totalSupportLengthM || 0;
+  let numCutsW = 0;
+  let numCutsH = 0;
+  let totalCuts = 0;
+  if (config.cut === 'custom') {
+    addCustomSupportsToBOM(bomItems, W, H, config);
+    if (config.customCuts) {
+      numCutsW = config.customCuts.vertical ? config.customCuts.vertical.length : 0;
+      numCutsH = config.customCuts.horizontal ? config.customCuts.horizontal.length : 0;
+    }
+    totalCuts = numCutsW + numCutsH;
+  } else {
+    numCutsW = config.numCutsW || 0;
+    numCutsH = config.numCutsH || 0;
+    const suppLen = config.totalSupportLengthM || 0;
 
-  if (suppLen > 0) {
-    bomItems.push({ name: 'profil support light', qty: suppLen.toFixed(2), unit: 'mb' });
+    if (suppLen > 0) {
+      bomItems.push({ name: 'profil support light', qty: parseFloat(suppLen.toFixed(2)), unit: 'mb' });
+    }
+
+    const zamki = (numCutsW * 2) + (numCutsH * 2);
+    if (zamki > 0) {
+      bomItems.push({ name: 'adFrame support zamek', qty: zamki, unit: 'szt' });
+    }
+
+    const crossConns = numCutsW * numCutsH;
+    if (crossConns > 0) {
+      bomItems.push({ name: 'adFrame support 180° łącznik', qty: crossConns * 2, unit: 'szt' });
+    }
+    totalCuts = numCutsW + numCutsH;
   }
 
-  const zamki = (numCutsW * 2) + (numCutsH * 2);
-  if (zamki > 0) {
-    bomItems.push({ name: 'adFrame support zamek', qty: zamki, unit: 'szt' });
-  }
-
-  const crossConns = numCutsW * numCutsH;
-  if (crossConns > 0) {
-    bomItems.push({ name: 'adFrame support 180° łącznik', qty: crossConns * 2, unit: 'szt' });
-  }
-
-  const totalCuts = numCutsW + numCutsH;
   if (totalCuts > 0) {
     bomItems.push({ name: 'adFrame LMD łącznik 180° długi', qty: totalCuts * 2, unit: 'szt' });
   }
 
   if (config.usage === 'freestanding') {
     let numFeet = 2;
-    if (numCutsW > 0) {
+    if (numCutsW > 0 && config.cut !== 'custom') {
       numFeet += numCutsW;
     } else if (W >= 200) {
       numFeet += 1;
@@ -1184,7 +1528,8 @@ function generateKasetonBOM() {
     baseCartons = Math.ceil(totalPieces / 8);
   }
 
-  const finalCartonQty = isSplit ? baseCartons * 2 : baseCartons;
+  let finalCartonQty = isSplit ? baseCartons * 2 : baseCartons;
+  finalCartonQty = adjustCartonsByWeight(config, finalCartonQty, cartonName);
   const foamQty = finalCartonQty * 4;
 
   bomItems.push({ name: cartonName, qty: finalCartonQty, unit: 'szt' });
@@ -1247,6 +1592,7 @@ function generateKasetonBOM() {
 
 // 9. DATABASE & CURRENCY LOGIC
 const KASETON_PRICES = {
+  "malowanie proszkowe": { plnPrice: 40.0, plnMargin: 14.28, intranetId: 11906, category: "usługi", origin: "Polska" },
   "Plafon LED 30x30": { plnPrice: 150, plnMargin: 50, intranetId: 18957, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "profil LMSM poziomy (ALU-060-SLIM)": { plnPrice: 120, plnMargin: 40, intranetId: 10936, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "profil LMSM pionowy (ALU-060-SLIM)": { plnPrice: 120, plnMargin: 40, intranetId: 10936, category: "ramy tekstylne akcesoria", origin: "Polska" },
@@ -1576,7 +1922,7 @@ const KASETON_PRICES = {
   "adFrame Smart Łącznik plastikowy 45°": { plnPrice: 26.964, plnMargin: 9.63, intranetId: 18269, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "adFrame Smart Łącznik plastikowy 90°": { plnPrice: 46.424, plnMargin: 16.58, intranetId: 12406, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "adFrame Smart Łącznik T": { plnPrice: 26.964, plnMargin: 9.63, intranetId: 14037, category: "ramy tekstylne akcesoria", origin: "Chiny" },
-  "adFrame STF/STFL wieszak": { plnPrice: 81.62, plnMargin: 29.15, intranetId: 10944, category: "ramy tekstylne akcesoria", origin: "Chiny" },
+  "adFrame STF/STFL wieszak": { plnPrice: 6.16, plnMargin: 2.20, intranetId: 10944, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "adFrame STFL łącznik 180°": { plnPrice: 22.456, plnMargin: 8.02, intranetId: 11908, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "adFrame stopa LMD/LMS": { plnPrice: 153.3, plnMargin: 54.75, intranetId: 10950, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "adFrame stopa LMD/LMS LIGHT": { plnPrice: 25.788, plnMargin: 9.21, intranetId: 19091, category: "ramy tekstylne akcesoria", origin: "Polska" },
@@ -6137,6 +6483,376 @@ window.overrideBomPrice = function (itemName, newPriceEUR) {
 };
 
 function finishKasetonBOM(bomItems, W, H, sys, config) {
+  // --- PACKING SYSTEM CONVERSION LOGIC ---
+  const packing = (config && config.packing) || 'kartony';
+
+  // 1. Calculate numCutsW and numCutsH
+  let numCutsW = 0, numCutsH = 0;
+  if (config.cut && config.cut.includes('half_w')) numCutsW = 1;
+  else if (config.cut && config.cut.includes('3w')) numCutsW = 2;
+  else if (config.cut && config.cut.includes('4w')) numCutsW = 3;
+  else if (config.cut && config.cut.includes('5w')) numCutsW = 4;
+
+  if (config.cut && config.cut.includes('half_h')) numCutsH = 1;
+  else if (config.cut && config.cut.includes('3h')) numCutsH = 2;
+  else if (config.cut && config.cut.includes('4h')) numCutsH = 3;
+  else if (config.cut && config.cut.includes('5h')) numCutsH = 4;
+
+  if (config.cut && config.cut.startsWith('auto')) {
+    const maxLen = config.cut === 'auto_dedicated' ? 300 : (config.cut === 'auto_courier_150' ? 150 : 200);
+    if (W > maxLen) numCutsW = Math.ceil(W / maxLen) - 1;
+    if (H > maxLen) numCutsH = Math.ceil(H / maxLen) - 1;
+  } else if (config.cut === 'custom' && config.customCuts) {
+    if (sys === 'CTF' || sys === 'CTF_LED') {
+      const cc = config.customCuts;
+      const fbV = cc.frontBack?.vertical || [];
+      const fbH = cc.frontBack?.horizontal || [];
+      numCutsW = fbV.length;
+      numCutsH = fbH.length;
+    } else {
+      const cc = config.customCuts;
+      numCutsW = (cc.vertical || []).length;
+      numCutsH = (cc.horizontal || []).length;
+    }
+  }
+
+  // 2. Calculate outer segments (main frame)
+  let outerSegmentsCount = 0;
+  if (sys === 'CTF' || sys === 'CTF_LED') {
+    const D = parseFloat(config.height3D) || 120;
+    let numSegW = numCutsW + 1;
+    let numSegH = numCutsH + 1;
+    let numSegZ = D > 200 ? 2 : 1;
+    outerSegmentsCount = 4 * numSegW + 4 * numSegH + 4 * numSegZ;
+  } else {
+    outerSegmentsCount = 2 * (numCutsW + 1) + 2 * (numCutsH + 1);
+  }
+
+  // 3. Calculate support segments (stabilizers)
+  let supportSegmentsCount = 0;
+  if (config.cut === 'custom' && config.customSupports) {
+    if (sys === 'CTF' || sys === 'CTF_LED') {
+      const cs = config.customSupports;
+      supportSegmentsCount = 
+        (cs.frontBack?.vertical || []).length + (cs.frontBack?.horizontal || []).length +
+        (cs.leftRight?.vertical || []).length + (cs.leftRight?.horizontal || []).length +
+        (cs.topBottom?.vertical || []).length + (cs.topBottom?.horizontal || []).length;
+    } else {
+      const cs = config.customSupports;
+      supportSegmentsCount = (cs.vertical || []).length + (cs.horizontal || []).length;
+    }
+  } else {
+    if (sys === 'CTF' || sys === 'CTF_LED') {
+      const D = parseFloat(config.height3D) || 120;
+      supportSegmentsCount = (numCutsW * 2) + (numCutsH * 2);
+      if (D > 200) {
+        supportSegmentsCount += 2;
+      }
+    } else {
+      const isWallSTF_STFL = (sys === 'STF' || sys === 'STFL') && config.usage === 'wall';
+      supportSegmentsCount = isWallSTF_STFL ? 0 : (numCutsW + numCutsH);
+    }
+  }
+
+  // Sync back to config for foam calculations to use the same correct count
+  config.supportSegmentsCount = supportSegmentsCount;
+
+  // 4. Calculate total segments
+  const totalSegments = outerSegmentsCount + supportSegmentsCount;
+
+  // 5. Select correct packaging size based on max segment length
+  let maxSegmentLen = Math.max(W / (numCutsW + 1), H / (numCutsH + 1));
+  if (sys === 'CTF' || sys === 'CTF_LED') {
+    const D = parseFloat(config.height3D) || 120;
+    let numSegZ = D > 200 ? 2 : 1;
+    maxSegmentLen = Math.max(maxSegmentLen, D / numSegZ);
+  }
+  if (maxSegmentLen > 200) {
+    maxSegmentLen = maxSegmentLen / 2;
+  }
+
+  const requiredCartonLength = maxSegmentLen + 10;
+
+  // 6. Loop and remove any old cardboard box or bag items
+  for (let i = bomItems.length - 1; i >= 0; i--) {
+    if (bomItems[i].name.startsWith('Karton') || bomItems[i].name.includes('Torba')) {
+      bomItems.splice(i, 1);
+    }
+  }
+
+  // 7. Resolve package name, ID and quantity
+  if (packing !== 'luzem') {
+    let packName = '';
+    let packId = 0;
+
+    if (packing === 'torby') {
+      packName = "adFrame LMD/LMS - Torba 205cm z kółkami";
+      packId = 11574;
+      if (maxSegmentLen <= 100) {
+        packName = "adFrame LMD/LMS - Torba 105cm z kółkami";
+        packId = 11573;
+      } else if (maxSegmentLen <= 130) {
+        packName = "adFrame LMD/LMS - Torba 130cm z kółkami";
+        packId = 15217;
+      } else if (maxSegmentLen <= 150) {
+        packName = "adFrame LMD/LMS - Torba 155cm z kółkami";
+        packId = 15218;
+      }
+    } else {
+      // kartony
+      packName = 'Karton LMD/LMS/DTF - 210x16x33cm';
+      packId = 14844;
+
+      if (sys === 'DTF' || sys === 'STF' || sys === 'STFL' || sys === 'LMSM') {
+        const totalCuts = numCutsW + numCutsH;
+        packName = 'Karton DTF/STF/LMSM - 110x16x16cm';
+        packId = 14835;
+        if (requiredCartonLength <= 110) {
+          packName = totalCuts > 4 ? 'Karton DTF/STF/LMSM - 110x16x26cm' : 'Karton DTF/STF/LMSM - 110x16x16cm';
+          packId = totalCuts > 4 ? 14836 : 14835;
+        } else if (requiredCartonLength <= 135) {
+          packName = 'Karton DTF/STF/LMSM - 135x16x26cm';
+          packId = 14838;
+        } else if (requiredCartonLength <= 160) {
+          packName = 'Karton DTF/STF/LMSM - 160x16x26cm';
+          packId = 14840;
+        }
+      } else {
+        if (requiredCartonLength <= 110) {
+          packName = 'Karton LMD/LMS - 110x16x33cm';
+          packId = 14841;
+        } else if (requiredCartonLength <= 135) {
+          packName = 'Karton LMD/LMS - 135x16x33cm';
+          packId = 14842;
+        } else if (requiredCartonLength <= 160) {
+          packName = 'Karton LMD/LMS - 160x16x33cm';
+          packId = 14843;
+        }
+      }
+    }
+
+    // Maximum 8 segments per package
+    let finalPackQty = Math.ceil(totalSegments / 8);
+    if (finalPackQty < 1) finalPackQty = 1;
+
+    // Weight payload check adjustments
+    finalPackQty = adjustCartonsByWeight(config, finalPackQty, packName);
+
+    // Push new item to BOM
+    bomItems.push({
+      name: packName,
+      qty: finalPackQty,
+      unit: 'szt',
+      intranetId: packId
+    });
+
+    config.cartonName = packName;
+    config.cartonQty = finalPackQty;
+  } else {
+    config.cartonName = '';
+    config.cartonQty = 0;
+  }
+
+  // --- GLOBAL PROTECTIVE FOAM REPLACEMENT LOGIC ---
+  const totalFoamQty = outerSegmentsCount + supportSegmentsCount;
+
+  let foamName = 'adFrame LMD pianka ochronna';
+  let foamId = 11736;
+  
+  if (sys === 'LMS') {
+    foamName = 'adFrame LMS pianka ochronna';
+    foamId = 11738;
+  } else if (sys === 'LMSM' || sys === 'LCD_LMD') {
+    foamName = 'adFrame LMSM/LMSM mFrame pianka ochronna';
+    foamId = 14812;
+  } else if (sys === 'DTF' || sys === 'STF' || sys === 'STFL') {
+    foamName = 'adFrame DTF/STF pianka ochronna';
+    foamId = 14813;
+  } else if (sys === 'CTF' || sys === 'CTF_LED') {
+    foamName = 'adFrame CTF/SUPPORT pianka ochronna';
+    foamId = 14814;
+  }
+  
+  // Filter out any existing foam entries to prevent duplication
+  for (let i = bomItems.length - 1; i >= 0; i--) {
+    const item = bomItems[i];
+    if (item.name.includes('pianka ochronna') || item.name.includes('sklep - pianka')) {
+      bomItems.splice(i, 1);
+    }
+  }
+
+  if (totalFoamQty > 0) {
+    bomItems.push({ name: foamName, qty: totalFoamQty, unit: 'szt', intranetId: foamId });
+  }
+
+  // --- CUSTOM CUTS DESCRIPTION INJECTOR ---
+  if (config && config.cut === 'custom' && config.customCuts) {
+    let parentCutsDesc = "";
+    const isCTF = (sys === 'CTF' || sys === 'CTF_LED');
+    const cc = config.customCuts;
+
+    const fbV = (cc.frontBack?.vertical || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+    const fbH = (cc.frontBack?.horizontal || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+    const lrV = (cc.leftRight?.vertical || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+    const lrH = (cc.leftRight?.horizontal || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+    const tbV = (cc.topBottom?.vertical || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+    const tbH = (cc.topBottom?.horizontal || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+
+    const vCuts = (cc.vertical || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+    const hCuts = (cc.horizontal || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+
+    if (isCTF) {
+      parentCutsDesc = `Cięcia niestandardowe: pionowe przód/tył (odległość od lewej): [${fbV}] / poziome przód/tył (odległość od dołu): [${fbH}] / pionowe boki (odległość od lewej): [${lrV}] / poziome boki (odległość od dołu): [${lrH}] / szerokość góra/dół (odległość od lewej): [${tbV}] / głębokość góra/dół (odległość od dołu): [${tbH}]`;
+    } else {
+      parentCutsDesc = `Cięcie niestandardowe - pionowe (odległość od lewej): ${vCuts} / poziome (odległość od dołu): ${hCuts}`;
+    }
+
+    // LED combo text calculations for flat systems
+    const ledOption = config.light || 'power_long';
+    const isPower = ledOption.startsWith('power');
+    const type = isPower ? 'POWER' : 'NORMAL';
+    const drawBottom = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
+    const drawTop = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
+    const drawLeft = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
+    const drawRight = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
+
+    const numHorizFaces = (drawTop ? 1 : 0) + (drawBottom ? 1 : 0);
+    const numVertFaces = (drawLeft ? 1 : 0) + (drawRight ? 1 : 0);
+
+    function getLedComboText(length, count) {
+      if (count <= 0 || ledOption === 'no_light') return '';
+      const sizes = [50, 30, 24, 20];
+      let best = [], bestSum = 0;
+      function go(idx, combo, sum) {
+        if (sum > length) return;
+        if (sum > bestSum || (sum === bestSum && combo.length < best.length)) {
+          bestSum = sum; best = [...combo];
+        }
+        for (let i = idx; i < sizes.length; i++) {
+          go(i, [...combo, sizes[i]], sum + sizes[i]);
+        }
+      }
+      go(0, [], 0);
+      if (best.length === 0) return '';
+      
+      const counts = {};
+      best.forEach(s => counts[s] = (counts[s] || 0) + count);
+      return Object.keys(counts).map(s => `${counts[s]}x LED ${type} ${s}cm`).join(", ");
+    }
+
+    const horizLedsText = getLedComboText(W - 10, numHorizFaces);
+    const vertLedsText = getLedComboText(H - 10, numVertFaces);
+
+    const parentNames = ['adFrame STF', 'adFrame LMD', 'adFrame LMS', 'adFrame LMSM', 'adFrame DTF', 'adFrame STFL', 'adFrame CTF', 'adFrame CTF_LED'];
+    bomItems.forEach(item => {
+      const isParent = parentNames.includes(item.name) || item.name.startsWith("adFrame CTF");
+      const isProfile = (item.name.startsWith("profil ") && !item.name.includes("support") && !item.name.includes("zamek") && !item.name.includes("łącznik"));
+      
+      if (isParent) {
+        item.description = (item.description ? item.description + " | " : "") + parentCutsDesc;
+      } else if (isProfile) {
+        if (isCTF) {
+          let ctfProfileDesc = `Cięcia - Szerokość (odległość od lewej): Przód/Tył = [${fbV}], Góra/Dół = [${tbV}] | Wysokość (odległość od dołu): Przód/Tył = [${fbH}], Boki = [${lrH}] | Głębokość (odległość od dołu): Boki = [${lrV}], Góra/Dół = [${tbH}]`;
+          
+          let ctfLedText = '';
+          if (config.system === 'CTF_LED' && config.light) {
+            if (config.light === 'paski_led') ctfLedText = 'paski LED obwodowo pod blatem';
+            else if (config.light === 'plafon_dol') ctfLedText = 'Plafon LED (dół)';
+            else if (config.light === 'plafon_gora') ctfLedText = 'Plafon LED (góra)';
+            else if (config.light === 'plafon_gora_dol') ctfLedText = 'Plafon LED (góra + dół)';
+            else if (config.light === 'zarowka') ctfLedText = 'żarówka';
+          }
+          if (ctfLedText) ctfProfileDesc += ` | LED: ${ctfLedText}`;
+
+          let ctfCableText = '';
+          if (config.cableExit && config.cableExit.startsWith('drill') && config.cableDrillVal) {
+            const exitLabels = { drill_top: 'góra', drill_bottom: 'dół', drill_left: 'lewy', drill_right: 'prawy' };
+            ctfCableText = `nawiert ${exitLabels[config.cableExit] || ''}: ${config.cableDrillVal} mm`;
+          }
+          if (ctfCableText) ctfProfileDesc += ` | ${ctfCableText}`;
+          
+          item.description = ctfProfileDesc;
+        } else {
+          // Flat profiles
+          if (item.description && item.description.includes("Szerokość")) {
+            // Split width profile
+            let desc = `Szerokość: cięcie pionowe (odległość od lewej): ${vCuts}`;
+            if (config.cableExit && (config.cableExit === 'drill_top' || config.cableExit === 'drill_bottom') && config.cableDrillVal) {
+              const dir = config.cableExit === 'drill_top' ? 'góra' : 'dół';
+              desc += ` / nawiert ${dir}: ${config.cableDrillVal} mm`;
+            }
+            item.description = desc;
+          } else if (item.description && item.description.includes("Wysokość")) {
+            // Split height profile
+            let desc = `Wysokość: cięcie poziome (odległość od dołu): ${hCuts}`;
+            if (config.cableExit && (config.cableExit === 'drill_left' || config.cableExit === 'drill_right') && config.cableDrillVal) {
+              const dir = config.cableExit === 'drill_left' ? 'lewy' : 'prawy';
+              desc += ` / nawiert ${dir}: ${config.cableDrillVal} mm`;
+            }
+            item.description = desc;
+          } else {
+            // Combined profile row (LMD/LMS/LMSM)
+            let wPart = `Szerokość: cięcie pionowe (odległość od lewej): ${vCuts}`;
+            if (config.cableExit && (config.cableExit === 'drill_top' || config.cableExit === 'drill_bottom') && config.cableDrillVal) {
+              const dir = config.cableExit === 'drill_top' ? 'góra' : 'dół';
+              wPart += `, nawiert ${dir}: ${config.cableDrillVal} mm`;
+            }
+            if (horizLedsText) wPart += `, LED: ${horizLedsText}`;
+
+            let hPart = `Wysokość: cięcie poziome (odległość od dołu): ${hCuts}`;
+            if (config.cableExit && (config.cableExit === 'drill_left' || config.cableExit === 'drill_right') && config.cableDrillVal) {
+              const dir = config.cableExit === 'drill_left' ? 'lewy' : 'prawy';
+              hPart += `, nawiert ${dir}: ${config.cableDrillVal} mm`;
+            }
+            if (vertLedsText) hPart += `, LED: ${vertLedsText}`;
+
+            item.description = `${wPart} | ${hPart}`;
+          }
+        }
+      }
+    });
+  }
+
+  // Clear descriptions of connectors and foams
+  bomItems.forEach(item => {
+    const isConnOrFoamOrImbus = item.name.includes('łącznik') || item.name.includes('zamek') || item.name.includes('connector') || item.name.includes('pianka') || item.name.includes('imbus');
+    if (isConnOrFoamOrImbus) {
+      item.description = '';
+    }
+  });
+
+  // Add powder coating if active
+  if (config && config.coating && config.coating !== 'none') {
+    let totalCoatingMeters = (2 * W + 2 * H) / 100;
+    if (sys === 'CTF' || sys === 'CTF_LED') {
+      const D = parseFloat(config.height3D) || 120;
+      totalCoatingMeters = (4 * W + 4 * H + 4 * D) / 100;
+    }
+    
+    let profileNameType = "profil LMD";
+    if (sys === 'LMS') profileNameType = "profil LMS";
+    else if (sys === 'LMSM') profileNameType = "profil LMSM";
+    else if (sys === 'STF') profileNameType = "profil STF";
+    else if (sys === 'STFL') profileNameType = "profil STFL";
+    else if (sys === 'DTF') profileNameType = "profil DTF";
+    else if (sys === 'CTF' || sys === 'CTF_LED') profileNameType = "profil CTF";
+
+    const isStd = config.coating.includes('standard');
+    const ralText = config.ral || (isStd ? 'RAL 7016' : '');
+    const glossText = config.coating.includes('mat') ? 'mat' : (config.coating.includes('semi') ? 'półmat' : 'połysk');
+    const stdText = isStd ? 'standardowy' : 'niestandardowy';
+    
+    const coatingDesc = `${profileNameType} / ${totalCoatingMeters.toFixed(2)} mb / ${ralText} / ${glossText} / ${stdText}`;
+    
+    bomItems.push({
+      name: 'malowanie proszkowe',
+      qty: parseFloat(totalCoatingMeters.toFixed(2)),
+      unit: 'mb',
+      intranetId: 11906,
+      description: coatingDesc
+    });
+  }
+
   const ratePLN = window.KURS_PLN_DYNAMIC || 4.20;
   const rateUSD = window.KURS_USD_DYNAMIC || 1.15;
   let totalEUR = 0;
@@ -6185,6 +6901,11 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
         plnPrice = item.plnPrice;
         plnMargin = item.plnMargin;
         priceEUR = plnPrice / ratePLN;
+      } else if (item.name.startsWith("profil support light") && KASETON_PRICES["profil support light"]) {
+        plnPrice = KASETON_PRICES["profil support light"].plnPrice;
+        plnMargin = KASETON_PRICES["profil support light"].plnMargin;
+        priceEUR = plnPrice / ratePLN;
+        item.intranetId = KASETON_PRICES["profil support light"].intranetId;
       } else if (KASETON_PRICES[item.name]) {
         plnPrice = KASETON_PRICES[item.name].plnPrice;
         plnMargin = KASETON_PRICES[item.name].plnMargin;
@@ -6323,12 +7044,26 @@ function calculateKasetonWeight(config) {
     total += config.psuCombo.length * 0.1; // cables
   }
 
-  // Cartons
+  // Cartons / Bags / Loose
   const cName = config.cartonName || 'Karton LMD/LMS/DTF - 210x16x33cm';
-  const cQty = config.cartonQty || 1;
-  total += (KASETON_CARTON_WEIGHTS[cName] || 2.0) * cQty;
+  const cQty = config.cartonQty || 0;
+  const packing = config.packing || 'kartony';
 
-  // Foam
+  if (packing === 'torby') {
+    const KASETON_BAG_WEIGHTS = {
+      'adFrame LMD/LMS - Torba 105cm z kółkami': 4.5,
+      'adFrame LMD/LMS - Torba 130cm z kółkami': 5.0,
+      'adFrame LMD/LMS - Torba 155cm z kółkami': 5.5,
+      'adFrame LMD/LMS - Torba 205cm z kółkami': 6.5
+    };
+    total += (KASETON_BAG_WEIGHTS[cName] || 5.0) * cQty;
+  } else if (packing === 'luzem') {
+    // No carton/bag weight
+  } else {
+    total += (KASETON_CARTON_WEIGHTS[cName] || 2.0) * cQty;
+  }
+
+  // Foam (0 if loose packaging has 0 cartons)
   total += cQty * 4 * 0.05; // ~50g per foam piece
 
   // Prints
@@ -6351,3 +7086,21 @@ function calculateKasetonWeight(config) {
 
   return total;
 }
+
+function adjustCartonsByWeight(config, initialQty, cartonName) {
+  config.cartonName = cartonName;
+  config.cartonQty = initialQty;
+
+  let currentWeight = calculateKasetonWeight(config);
+  let attempts = 0;
+
+  // Iteratively split into more packages until weight per package is <= 28 kg
+  while (currentWeight / config.cartonQty > 28 && attempts < 20) {
+    config.cartonQty++;
+    currentWeight = calculateKasetonWeight(config);
+    attempts++;
+  }
+
+  return config.cartonQty;
+}
+

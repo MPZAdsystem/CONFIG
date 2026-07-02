@@ -253,28 +253,7 @@
         </div>
     </div>
 
-    <div class="fab-container">
 
-        <div class="fab-buttons-row">
-            <button id="btnSpakuj" class="fab-main fab-spakuj" onclick="toggleSpakuj()" style="display:none;">
-                📦 Spakuj
-            </button>
-            <button class="fab-main" onclick="toggleFab()">
-                <span>ⓘ</span> Zmiany / Poprawki
-            </button>
-        </div>
-
-        <div id="fabSubs" class="fab-subs">
-
-            <button class="btn-sub btn-report" onclick="openBugModal()">❗ Zgłoś błąd</button>
-
-            <button class="btn-sub btn-check" onclick="fetchData('reports')">🔍 Sprawdź zgłoszenia</button>
-
-            <button class="btn-sub btn-changelog" onclick="fetchData('changelog')">📜 Zobacz changelog</button>
-
-        </div>
-
-    </div>
 
 
     <div id="dataViewModal" class="ticketModal"
@@ -496,6 +475,16 @@
                     </div>
                 </div>
 
+                <h3 class="category-header" onclick="toggleCategory('cat-wys200', this)">
+                    Wysokość 200 cm <span class="cat-arrow collapsed">▼</span>
+                </h3>
+                <div id="cat-wys200" class="category-content collapsed">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                        <button class="btn" style="grid-column: span 2; justify-content: center;"
+                            onclick="addModule('sego100x200')">100x200 cm (Ctrl+1)</button>
+                    </div>
+                </div>
+
                 <h3 class="category-header" onclick="toggleCategory('cat-wys300', this)">
                     Wysokość 300 cm <span class="cat-arrow collapsed">▼</span>
                 </h3>
@@ -509,6 +498,9 @@
                             onclick="addModule('sego100x300')">100 cm</button>
                         <button class="btn" style="justify-content: center; border-color: var(--tall-color);"
                             onclick="addModule('sego85x300')">85 cm</button>
+                        <button class="btn"
+                            style="grid-column: span 2; justify-content: center; border-left: 3px solid var(--highlight); border-color: var(--tall-color);"
+                            onclick="addModule('door100x300')">Drzwi 100 cm (H:300)</button>
                     </div>
                 </div>
 
@@ -520,9 +512,6 @@
                         <button class="btn btn-rotate" onclick="addTurn('left')">↰ 90° L</button>
                         <button class="btn btn-rotate" onclick="addTurn('right')">↱ 90° P</button>
                     </div>
-                    <button class="btn btn-action" onclick="autoResolveCorners()"
-                        style="color:#00ff00; margin-top: 5px;">✨
-                        Auto-Naprawa Narożników</button>
                     <button class="btn btn-action" onclick="undo()" style="margin-top: 5px;">⎌ Cofnij Krok</button>
                 </div>
 
@@ -536,6 +525,8 @@
                         style="border-left-color: #ff9900;"><span>📚 Shelf Kit</span> <span>157 €</span></button>
                     <button class="btn btn-acc" onclick="addAccessory('daszek')"
                         style="border-left-color: #cc00ff;"><span>☂️ Daszek 100x250</span> <span>Zestaw</span></button>
+                    <button class="btn btn-acc" onclick="addAccessory('daszek100x200')"
+                        style="border-left-color: #cc00ff;"><span>☂️ Daszek 100x200</span> <span>Zestaw</span></button>
                 </div>
 
 
@@ -579,9 +570,6 @@
                         <button class="btn btn-rotate" onclick="addTurn('left')">↰ 90° L</button>
                         <button class="btn btn-rotate" onclick="addTurn('right')">↱ 90° P</button>
                     </div>
-                    <button class="btn btn-action" onclick="autoResolveCorners()"
-                        style="color:#ffcc00; margin-top: 5px;">✨
-                        Auto-Naprawa Narożników</button>
                     <button class="btn btn-action" onclick="undo()" style="margin-top: 5px;">⎌ Cofnij Krok</button>
                 </div>
             </div>
@@ -817,44 +805,112 @@
         </div>
 
         <div class="fab-container-left">
-            <button class="fab-main" style="background: #9c27b0; box-shadow: 0 4px 15px rgba(156, 39, 176, 0.4);"
-                onclick="document.getElementById('instructionsModal').style.display='flex'">
-                💡 Instrukcje
-            </button>
-            <button id="btnMagnetPull" class="fab-main" style="background: #ff0080; box-shadow: 0 4px 15px rgba(255, 0, 128, 0.4); font-weight: bold; border: none; color: #fff;" onclick="magnetPull()">
-                🧲 Magnet Pull (Shift+C)
-            </button>
-            <button id="btnToggleRadial" class="fab-main"
-                style="display: none; background: #ffaa00; color: #000; box-shadow: 0 4px 15px rgba(255, 170, 0, 0.4); border: 2px solid #ffcc00;"
-                onclick="toggleRadialMenus()">
-                ⚙️ Konfigurator wydruków
-            </button>
+            <!-- Tutaj dynamicznie dodaje się tylko przycisk AR (WebXR) -->
+        </div>
 
-            <!-- Przyciski konfiguratora wydruków (widoczne tylko w trybie wydruki) -->
-            <button id="btnWydrukiReport" class="fab-main"
-                style="display:none; background: linear-gradient(135deg, #00b894, #00cec9); color:#000; box-shadow: 0 4px 15px rgba(0,206,201,0.4); font-weight:bold; border:none;"
-                onclick="generateWydrukiReport()">
-                📊 Raport
-            </button>
-            <button id="btnWydrukiMatch" class="fab-main"
-                style="display:none; background: linear-gradient(135deg, #e17055, #d63031); color:#fff; box-shadow: 0 4px 15px rgba(214,48,49,0.4); font-weight:bold; border:none;"
-                onclick="checkEdgeMatching()">
-                🔍 Sprawdź pasowania
-            </button>
-            <button id="btnWydrukiClearStage" class="fab-main"
-                style="display:none; background: linear-gradient(135deg, #636e72, #2d3436); color:#ff5555; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-weight:bold; border:1px solid #ff5555;"
-                onclick="clearWydruki()">
-                🗑 Wyczyść
-            </button>
-            <button id="btnRandomizeGraphics" class="fab-main" onclick="randomizeProjectGraphics(this)"
-                style="display: none; background: linear-gradient(135deg, #10ac84, #1dd1a1); color: #000; border: none; font-weight: bold; box-shadow: 0 4px 15px rgba(29, 209, 161, 0.4);">🎲
-                Losuj grafiki</button>
-            <button id="btnToggleDimensions" class="fab-main" onclick="toggleDimensions()"
-                style="display: none; background: linear-gradient(135deg, #444, #222); color: #ccc; border: 1px solid #555; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">📏
-                Wizualizacja techniczna</button>
-            <button id="btnModuleList" class="fab-main" onclick="toggleModuleListMode()"
-                style="display: none; background: linear-gradient(135deg, #444, #222); color: #ccc; border: 1px solid #555; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.3);">📋
-                Lista modułów</button>
+        <div class="bottom-toolbar-toggle" id="bottomToolbarToggleBtn" onclick="toggleBottomToolbar()">
+            <span id="bottomToolbarToggleIcon">▼</span>
+        </div>
+
+        <div class="bottom-toolbar" id="bottomToolbar">
+            <div class="bottom-toolbar-inner">
+                <button id="btnToggle2D3D" class="btn-bottom neon-green" onclick="toggle3D()">
+                    👁️ Podgląd 3D
+                </button>
+                <button id="btnToggleHallEnv" class="btn-bottom neon-cyan" onclick="toggleHallEnvironment()">
+                    🏢 Otoczenie Hali
+                </button>
+                <button id="btnSceneSettingsToggle" class="btn-bottom neon-cyan" onclick="toggleSceneSettings()">
+                    ⚙️ Ustawienia sceny
+                </button>
+
+                <!-- Podgląd techniczny -->
+                <div class="group-btn-container" id="groupBtnTechPreview" style="display: none;">
+                    <button class="btn-bottom neon-cyan group-trigger" onclick="toggleSubmenuUp(this)">
+                        ⚙️ Podgląd techniczny
+                    </button>
+                    <div class="submenu-up">
+                        <button id="btnToggleDimensions" class="btn-bottom neon-cyan" onclick="toggleDimensions()" style="display: none;">
+                            📐 Wizualizacja techniczna
+                        </button>
+                        <button id="btnModuleList" class="btn-bottom neon-cyan" onclick="toggleModuleListMode()" style="display: none;">
+                            📋 Numerowanie modułów
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Autonaprawa -->
+                <div class="group-btn-container" id="groupBtnAutorepair">
+                    <button class="btn-bottom neon-pink group-trigger" onclick="toggleSubmenuUp(this)">
+                        ✨ Autonaprawa
+                    </button>
+                    <div class="submenu-up">
+                        <button id="btnMagnetPull" class="btn-bottom neon-pink" onclick="magnetPull()">
+                            🧲 Magnet Pull (Shift+C)
+                        </button>
+                        <button id="btnAutoResolveCorners" class="btn-bottom neon-pink" onclick="autoResolveCorners()">
+                            ✨ Auto-Naprawa Narożników
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Panel graficzny -->
+                <div class="group-btn-container" id="groupBtnGraphicsPanel" style="display: none;">
+                    <button class="btn-bottom neon-orange group-trigger" onclick="toggleSubmenuUp(this)">
+                        📊 Panel graficzny
+                    </button>
+                    <div class="submenu-up">
+                        <button id="btnWydrukiImport" class="btn-bottom neon-orange" onclick="document.getElementById('imageInput').click()" style="display: none;">
+                            📥 Importuj grafiki
+                        </button>
+                        <button id="btnWydrukiAnalyze" class="btn-bottom neon-orange" onclick="analyzeWydrukiAdvanced()" style="display: none;">
+                            🔬 Analiza zaawansowana
+                        </button>
+                        <button id="btnWydrukiReport" class="btn-bottom neon-orange" onclick="generateWydrukiReport()" style="display: none;">
+                            📊 Raport
+                        </button>
+                        <button id="btnWydrukiMatch" class="btn-bottom neon-orange" onclick="checkEdgeMatching()" style="display: none;">
+                            🔍 Pasowania
+                        </button>
+                        <button id="btnWydrukiClearStage" class="btn-bottom neon-orange" onclick="clearWydruki()" style="display: none; color: #ff5555;">
+                            🗑 Wyczyść
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Pozostałe przyciski -->
+                <button id="btnRandomizeGraphics" class="btn-bottom neon-pink" onclick="randomizeProjectGraphics(this)" style="display: none;">
+                    🎲 Losuj grafiki
+                </button>
+                <button id="btnSpakuj" class="btn-bottom neon-pink fab-spakuj" onclick="toggleSpakuj()" style="display: none;">
+                    📦 Spakuj projekt
+                </button>
+
+                <button id="btnToggleRadial" class="btn-bottom neon-orange" onclick="toggleRadialMenus()" style="display: none;">
+                    ⚙️ Konfigurator
+                </button>
+
+                <div class="group-btn-container" id="groupBtnFeedback">
+                    <button id="btnFeedbackMain" class="btn-bottom neon-purple group-trigger" onclick="toggleSubmenuUp(this)">
+                        ⓘ Zmiany / Poprawki
+                    </button>
+                    <div class="submenu-up">
+                        <button class="btn-bottom neon-purple" onclick="openBugModal()">
+                            ❗ Zgłoś błąd
+                        </button>
+                        <button class="btn-bottom neon-purple" onclick="fetchData('reports')">
+                            🔍 Zgłoszenia
+                        </button>
+                        <button class="btn-bottom neon-purple" onclick="fetchData('changelog')">
+                            📜 Changelog
+                        </button>
+                    </div>
+                </div>
+
+                <div id="ARButtonContainer" style="display: inline-block;">
+                    <!-- Tutaj dynamicznie przypnie się przycisk AR (WebXR) -->
+                </div>
+            </div>
         </div>
 
         <div id="instructionsModal" class="ticketModal"
@@ -885,7 +941,6 @@
         <div id="foldable-ui-layer"></div>
 
         <div class="ui-3d-panel">
-            <button class="close-3d-btn" onclick="toggle3D()">❌ Wróć do 2D</button>
             <button class="ctrl-3d-btn" onclick="toggleGraphicsPanel()"
                 style="background:#0055ff; border-color:#0055ff; color:#fff;">🖼️ Lista Grafik</button>
 
@@ -895,8 +950,8 @@
             </div>
             <button id="btnAutoRotate" class="ctrl-3d-btn active" style="margin-top:5px;"
                 onclick="toggleAutoRotate()">🔄 Auto-Obrót: WŁ</button>
-            <button id="btnSceneSettingsToggle" class="ctrl-3d-btn" style="margin-top:5px;"
-                onclick="toggleSceneSettings()">⚙️ Ustawienia sceny</button>
+            <button id="btnToggleHuman" class="ctrl-3d-btn" style="margin-top:5px;"
+                onclick="toggleHumanModel()">🧍 Postać: Dennis</button>
         </div>
 
         <div id="settingsPanel" class="settings-panel">
@@ -1700,6 +1755,15 @@
             </div>
 
             <div class="kaseton-section">
+                <label class="kaseton-label"><span class="kaseton-badge">3b</span> Sposób pakowania</label>
+                <select id="kasetonPacking" class="kaseton-select" onchange="if(typeof onKasetonPackingChange === 'function') onKasetonPackingChange(this.value)">
+                    <option value="kartony" selected>kartony</option>
+                    <option value="torby">torby na kółkach</option>
+                    <option value="luzem">luzem</option>
+                </select>
+            </div>
+
+            <div class="kaseton-section">
                 <label class="kaseton-label"><span class="kaseton-badge">4</span> Wydruk</label>
                 <select id="kasetonPrint" class="kaseton-select">
                     <option value="single">Jednostronny + Blockout tył</option>
@@ -1708,6 +1772,38 @@
                     <option value="back_blockout">Tylko Blockout tył</option>
                     <option value="no_print">Bez wydruku (sama rama)</option>
                 </select>
+            </div>
+
+            <div class="kaseton-section">
+                <label class="kaseton-label"><span class="kaseton-badge">4b</span> Malowanie proszkowe</label>
+                <div style="display: flex; gap: 10px; align-items: center;" data-info-key="coating">
+                    <select id="kasetonCoating" class="kaseton-select" onchange="onCoatingChange(this.value, 'modal')">
+                        <option value="none" selected>brak</option>
+                        <option value="standard_mat">malowanie proszkowe standardowe mat</option>
+                        <option value="standard_semi">malowanie standardowe półmat</option>
+                        <option value="standard_gloss">malowanie standardowe połysk</option>
+                        <option value="custom_mat">malowanie proszkowe niestandardowe mat</option>
+                        <option value="custom_semi">malowanie niestandardowe półmat</option>
+                        <option value="custom_gloss">malowanie niestandardowe połysk</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="kasetonRalSection" class="kaseton-section" style="display: none;">
+                <label id="kasetonRalLabel" class="kaseton-label"><span class="kaseton-badge">🎨</span> Kolor RAL</label>
+                
+                <div id="kasetonRalManualContainer" style="display: none; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <input type="text" id="kasetonRal" class="kaseton-input" placeholder="np. RAL 7016" style="flex: 1;" oninput="onRalInput(this.value, 'modal')">
+                </div>
+
+                <div id="kasetonRalPreviewContainer" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 6px; background: rgba(0,0,0,0.3); border-radius: 4px;">
+                    <div id="kasetonSelectedRalText" style="font-size: 12px; font-weight: bold; color: #fff;">Wybrany kolor: <span id="kasetonSelectedRalValue" style="color: var(--kaseton-neon, #00e5ff);">Brak</span></div>
+                    <div id="kasetonRalColorPreview" style="width: 30px; height: 30px; border: 1px solid #555; border-radius: 4px; background: #ccc; transition: background 0.3s;"></div>
+                </div>
+
+                <div id="kasetonRalPicker" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 10px; background: rgba(0,0,0,0.5); border: 1px solid #444; border-radius: 6px; max-height: 150px; overflow-y: auto;">
+                    <!-- JS generated -->
+                </div>
             </div>
 
             <div class="kaseton-section">
@@ -1731,10 +1827,27 @@
             <div id="kasetonLightSection" class="kaseton-section kaseton-conditional">
                 <label class="kaseton-label"><span class="kaseton-badge">💡</span> Układ oświetlenia LED</label>
                 <select id="kasetonLight" class="kaseton-select">
-                    <option value="power_long">Krawędziowo - Długie boki (Góra/Dół)</option>
-                    <option value="power_short">Krawędziowo - Krótkie boki (Lewo/Prawo)</option>
+                    <option value="power_long">Krawędziowo - Długie boki</option>
+                    <option value="power_short">Krawędziowo - Krótkie boki</option>
                     <option value="power_around">Po obwodzie (Wszystkie 4 boki)</option>
                 </select>
+            </div>
+
+            <div id="kasetonCableExitSection" class="kaseton-section kaseton-conditional">
+                <label class="kaseton-label"><span class="kaseton-badge">🔌</span> Wyjście przewodu zasilającego</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select id="kasetonCableExit" class="kaseton-select" onchange="onKasetonCableExitChange(this)" style="flex: 1;">
+                        <option value="back_print" selected>przez tylny wydruk</option>
+                        <option value="drill_bottom">nawiert dolny profil</option>
+                        <option value="drill_top">nawiert górny profil</option>
+                        <option value="drill_left">nawiert lewy profil</option>
+                        <option value="drill_right">nawiert prawy profil</option>
+                    </select>
+                    <div id="kasetonCableDrillValContainer" style="display: none; width: 170px; flex-shrink: 0; flex-direction: column; gap: 4px;">
+                        <span id="kasetonCableDrillLabel" style="font-size: 10px; color: #aaa; white-space: normal; line-height: 1.2;">odległość od lewej krawędzi (mm)</span>
+                        <input type="number" id="kasetonCableDrillVal" class="kaseton-input" placeholder="mm" min="0" style="width: 100%; box-sizing: border-box;">
+                    </div>
+                </div>
             </div>
 
             <div class="kaseton-separator"></div>
@@ -1743,14 +1856,16 @@
         </div>
     </div>
 
-    <script src="js/data.js?v=5"></script>
-    <script src="js/export.js?v=5"></script>
-    <script src="js/ui.js?v=5"></script>
-    <script src="js/3d-builder.js?v=5"></script>
-    <script src="js/3d-engine.js?v=5"></script>
-    <script src="js/bom.js?v=5"></script>
-    <script src="js/prompt_generator.js?v=5"></script>
-    <script src="js/main.js?v=5"></script>
+    <script src="js/ral-database.js?v=13"></script>
+    <script src="js/data.js?v=13"></script>
+    <script src="js/export.js?v=13"></script>
+    <script src="js/ui.js?v=13"></script>
+    <script src="js/info.js?v=13"></script>
+    <script src="js/3d-builder.js?v=13"></script>
+    <script src="js/3d-engine.js?v=13"></script>
+    <script src="js/bom.js?v=13"></script>
+    <script src="js/prompt_generator.js?v=13"></script>
+    <script src="js/main.js?v=13"></script>
 </body>
 
 </html>

@@ -255,31 +255,59 @@ function applyTextureToMesh(mesh, matIndex, planIdx, source, quadIdx, isFloor = 
       let isOut = ringSide === 'Out';
       if (!isOut) { texture.wrapS = THREE.RepeatWrapping; texture.repeat.x = -1; }
 
-      // Aktualizujemy pierścień
-      mesh.material = new THREE.MeshStandardMaterial({
+      // Aktualizujemy pierścień z właściwościami emisyjnymi
+      const baseIntensity = typeof currentLedIntensity !== 'undefined' ? currentLedIntensity : 1.5;
+      const baseEmissiveColor = typeof currentLedColor !== 'undefined' ? new THREE.Color(currentLedColor) : new THREE.Color(0xffffff);
+
+      const newMat = new THREE.MeshStandardMaterial({
+        ...PBR_SETTINGS,
         map: texture,
         side: isOut ? THREE.FrontSide : THREE.BackSide,
         transparent: true,
         alphaTest: 0.1,
-        ...PBR_SETTINGS
+        emissive: baseEmissiveColor,
+        emissiveMap: texture,
+        emissiveIntensity: baseIntensity * 0.6
       });
+      mesh.material = newMat;
       mesh.material.needsUpdate = true;
-    } else {
-      if (quadIdx !== undefined) {
-        if (!plan[planIdx].quadTextures) plan[planIdx].quadTextures = {};
-        let side = matIndex === 4 ? 'Out' : 'In';
-        plan[planIdx].quadTextures[side + quadIdx] = dataUrl;
-      } else {
-        if (matIndex === 4) plan[planIdx].textureFront = dataUrl;
-        if (matIndex === 5) plan[planIdx].textureBack = dataUrl;
-      }
 
-      // Aktualizujemy ścianę/daszek
-      mesh.material[matIndex] = new THREE.MeshStandardMaterial({
-        map: texture,
-        ...PBR_SETTINGS
-      });
-      mesh.material[matIndex].needsUpdate = true;
+      if (window.activeLedMaterials) {
+        window.activeLedMaterials.push(newMat);
+      }
+    } else {
+        if (quadIdx !== undefined) {
+          if (!plan[planIdx].quadTextures) plan[planIdx].quadTextures = {};
+          let side = matIndex === 4 ? 'Out' : 'In';
+          plan[planIdx].quadTextures[side + quadIdx] = dataUrl;
+        } else {
+          const isFlipped = plan[planIdx] ? plan[planIdx].isFlipped : false;
+          if (isFlipped) {
+            if (matIndex === 4) plan[planIdx].textureBack = dataUrl;
+            if (matIndex === 5) plan[planIdx].textureFront = dataUrl;
+          } else {
+            if (matIndex === 4) plan[planIdx].textureFront = dataUrl;
+            if (matIndex === 5) plan[planIdx].textureBack = dataUrl;
+          }
+        }
+
+        // Aktualizujemy ścianę/daszek z właściwościami emisyjnymi
+        const baseIntensity = typeof currentLedIntensity !== 'undefined' ? currentLedIntensity : 1.5;
+        const baseEmissiveColor = typeof currentLedColor !== 'undefined' ? new THREE.Color(currentLedColor) : new THREE.Color(0xffffff);
+
+        const newMat = new THREE.MeshStandardMaterial({
+          ...PBR_SETTINGS,
+          map: texture,
+          emissive: baseEmissiveColor,
+          emissiveMap: texture,
+          emissiveIntensity: baseIntensity * 0.6
+        });
+        mesh.material[matIndex] = newMat;
+        mesh.material[matIndex].needsUpdate = true;
+
+        if (window.activeLedMaterials) {
+          window.activeLedMaterials.push(newMat);
+        }
     }
 
     // Odświeżamy scenę po fizycznym nałożeniu tekstury
@@ -575,6 +603,71 @@ function addModule(id) {
   render();
 }
 
+function addStackedModule(heightVal) {
+  let targetIdx = (typeof selectedItemIndex !== 'undefined' && selectedItemIndex !== null) ? selectedItemIndex : null;
+  if (targetIdx === null || !plan[targetIdx] || plan[targetIdx].type !== 'wall') {
+    alert("ZAZNACZ MODUŁ: Wybierz moduł ścienny, na którym chcesz umieścić moduł górny!");
+    return;
+  }
+  let baseItem = plan[targetIdx];
+  let baseW = baseItem.length;
+  let baseH = baseItem.height || 250;
+  let baseElev = baseItem.elevation || 0;
+
+  // Znajdź główną ścianę u podstawy (na podłodze)
+  let rootItem = baseItem;
+  while (rootItem.isStacked && rootItem.stackedOnIndex !== undefined && plan[rootItem.stackedOnIndex]) {
+    rootItem = plan[rootItem.stackedOnIndex];
+  }
+  let rootW = rootItem.length;
+
+  let moduleKey = null;
+  if (heightVal === 100) {
+    if (rootW !== 100 || baseW !== 100) {
+      alert("ZABLOKOWANO: Generowanie modułu 100x100 na górze jest możliwe wyłącznie dla ścian o podstawie (szerokości) 100 cm!");
+      return;
+    }
+    moduleKey = 'sego100x100';
+  } else if (heightVal === 200) {
+    if (rootW !== 100 || baseW !== 100) {
+      alert("ZABLOKOWANO: Generowanie modułu 100x200 na górze jest możliwe wyłącznie dla ścian o podstawie (szerokości) 100 cm!");
+      return;
+    }
+    moduleKey = 'sego100x200';
+  } else if (heightVal === 250) {
+    if (baseW === 85) moduleKey = 'sego85x250';
+    else if (baseW === 100) moduleKey = 'sego100x250';
+    else if (baseW === 200) moduleKey = 'sego200x250';
+    else if (baseW === 300) moduleKey = 'sego300x250';
+  } else if (heightVal === 300) {
+    if (baseW === 85) moduleKey = 'sego85x300';
+    else if (baseW === 100) moduleKey = 'sego100x300';
+    else if (baseW === 200) moduleKey = 'sego200x300';
+    else if (baseW === 300) moduleKey = 'sego300x300';
+  }
+
+  if (!moduleKey || !DB[moduleKey]) return;
+
+  let newMod = JSON.parse(JSON.stringify(DB[moduleKey]));
+  newMod.elevation = baseElev + baseH;
+  newMod.isStacked = true;
+  newMod.stackedOnIndex = targetIdx;
+  newMod.leftFoot = false;
+  newMod.rightFoot = false;
+  newMod.accessories = [];
+
+  if (baseItem.offsetX !== undefined) newMod.offsetX = baseItem.offsetX;
+  if (baseItem.offsetY !== undefined) newMod.offsetY = baseItem.offsetY;
+  if (baseItem.freeAngle !== undefined) newMod.freeAngle = baseItem.freeAngle;
+  if (baseItem.isFlipped !== undefined) newMod.isFlipped = baseItem.isFlipped;
+
+  plan.push(newMod);
+  if (typeof selectedItemIndices !== 'undefined') selectedItemIndices.clear();
+  selectedItemIndex = plan.length - 1;
+  if (typeof selectedItemIndices !== 'undefined') selectedItemIndices.add(selectedItemIndex);
+  if (typeof render === 'function') render();
+}
+
 function addAccessory(id) {
   let target = selectedItemIndex;
   if (target === null) for (let i = plan.length - 1; i >= 0; i--) if (plan[i].type === 'wall') { target = i; break; }
@@ -621,7 +714,7 @@ function rotateFreestanding(index, e) {
 }
 
 function selectItem(index, e) {
-
+  window.isHumanSelected = false;
   e.stopPropagation();
   if (e && e.ctrlKey) {
     // Ctrl+Klik – multi-select
@@ -1891,7 +1984,10 @@ function drawKasetonScene() {
       depth: 200,
       cut: 'none',
       print: 'single',
-      usage: 'freestanding'
+      usage: 'freestanding',
+      coating: 'none',
+      ral: '',
+      packing: 'kartony'
     };
   }
   const config = window.currentKasetonConfig;
@@ -1913,12 +2009,56 @@ function drawKasetonScene() {
   console.log('📐 Drawing custom Kaseton frame in 3D:', W, 'x', H, 'cm, System:', sys);
   // ... dalsza część kodu
 
-  // 1. MOTYW I MATERIAŁY (Premium Anodized Aluminum)
-  // Zmniejszona połyskliwość (roughness: 0.45, metalness: 0.55) zgodnie z zaleceniem
+  let aluColor = 0xe2e6ea;
+  let aluRoughness = 0.65;
+  let aluMetalness = 0.35;
+
+  const coating = config.coating || 'none';
+  const ral = config.ral || '';
+
+  if (coating && coating !== 'none') {
+      const db = window.RAL_DATABASE || {};
+      const cleanRal = ral.trim().toUpperCase();
+      let cleanKey = cleanRal.replace('RAL', '').trim();
+      
+      let resolvedHex = null;
+      if (db[cleanRal]) {
+          resolvedHex = db[cleanRal];
+      } else if (db[cleanKey]) {
+          resolvedHex = db[cleanKey];
+      } else {
+          const digitsMatch = cleanRal.match(/\d{4}/);
+          if (digitsMatch && db[digitsMatch[0]]) {
+              resolvedHex = db[digitsMatch[0]];
+          }
+      }
+
+      if (resolvedHex) {
+          const hexVal = parseInt(resolvedHex.replace('#', '0x'), 16);
+          if (!isNaN(hexVal)) aluColor = hexVal;
+      } else if (cleanRal.startsWith('#')) {
+          const hexVal = parseInt(cleanRal.replace('#', '0x'), 16);
+          if (!isNaN(hexVal)) aluColor = hexVal;
+      } else {
+          aluColor = coating.includes('standard') ? 0x3b444b : 0x555555;
+      }
+
+      if (coating.includes('mat')) {
+          aluRoughness = 0.9;
+          aluMetalness = 0.1;
+      } else if (coating.includes('semi')) {
+          aluRoughness = 0.45;
+          aluMetalness = 0.2;
+      } else if (coating.includes('gloss')) {
+          aluRoughness = 0.08;
+          aluMetalness = 0.5;
+      }
+  }
+
   const aluMat = new THREE.MeshStandardMaterial({
-    color: 0xd0d4d9,
-    metalness: 0.55,
-    roughness: 0.45,
+    color: aluColor,
+    metalness: aluMetalness,
+    roughness: aluRoughness,
     name: 'anodized_aluminum'
   });
 
@@ -2070,28 +2210,33 @@ function drawKasetonScene() {
   function createProfileGroupLMD(L) {
     const group = new THREE.Group();
     const edgeMat = new THREE.LineBasicMaterial({ color: 0x444444 });
+    const allGeoms = [];
 
-    const leftGeom = createMiteredSegmentGeometry(L, -7, -3.8, 0.8);
-    const leftMesh = new THREE.Mesh(leftGeom, aluMat);
-    group.add(leftMesh);
+    // Base plate for smooth outer wall (z = -7 to 7, thickness = 0.8)
+    const baseGeom = createMiteredSegmentGeometry(L, -7, 7, 0.8);
+    group.add(new THREE.Mesh(baseGeom, aluMat));
+    allGeoms.push(baseGeom);
 
-    const bodyLeftGeom = createMiteredSegmentGeometry(L, -3.8, -1.25, 3.2);
-    const bodyLeftMesh = new THREE.Mesh(bodyLeftGeom, aluMat);
-    group.add(bodyLeftMesh);
+    // bodyLeft on top of base (z = -3.8 to -1.25, additional thickness = 2.4, offset = 0.8)
+    const bodyLeftGeom = createMiteredSegmentGeometry(L, -3.8, -1.25, 2.4);
+    bodyLeftGeom.translate(0, 0.8, 0);
+    group.add(new THREE.Mesh(bodyLeftGeom, aluMat));
+    allGeoms.push(bodyLeftGeom);
 
-    const channelGeom = createMiteredSegmentGeometry(L, -1.25, 1.25, 2.0);
-    const channelMesh = new THREE.Mesh(channelGeom, aluMat);
-    group.add(channelMesh);
+    // channel on top of base (z = -1.25 to 1.25, additional thickness = 1.2, offset = 0.8)
+    const channelGeom = createMiteredSegmentGeometry(L, -1.25, 1.25, 1.2);
+    channelGeom.translate(0, 0.8, 0);
+    group.add(new THREE.Mesh(channelGeom, aluMat));
+    allGeoms.push(channelGeom);
 
-    const bodyRightGeom = createMiteredSegmentGeometry(L, 1.25, 3.8, 3.2);
-    const bodyRightMesh = new THREE.Mesh(bodyRightGeom, aluMat);
-    group.add(bodyRightMesh);
+    // bodyRight on top of base (z = 1.25 to 3.8, additional thickness = 2.4, offset = 0.8)
+    const bodyRightGeom = createMiteredSegmentGeometry(L, 1.25, 3.8, 2.4);
+    bodyRightGeom.translate(0, 0.8, 0);
+    group.add(new THREE.Mesh(bodyRightGeom, aluMat));
+    allGeoms.push(bodyRightGeom);
 
-    const rightGeom = createMiteredSegmentGeometry(L, 3.8, 7, 0.8);
-    const rightMesh = new THREE.Mesh(rightGeom, aluMat);
-    group.add(rightMesh);
-
-    [leftGeom, bodyLeftGeom, channelGeom, bodyRightGeom, rightGeom].forEach(g => {
+    // Contour lines
+    allGeoms.forEach(g => {
       const edges = new THREE.EdgesGeometry(g);
       const line = new THREE.LineSegments(edges, edgeMat);
       group.add(line);
@@ -2112,35 +2257,34 @@ function drawKasetonScene() {
     var edgeMat2 = new THREE.LineBasicMaterial({ color: 0x444444 });
     var allGeoms = [];
 
-    // Segment 1: Tylne skrzydło (uchwyt) - z = -6.0 do -5.0, wysokość 0.4
-    var g1 = createMiteredSegmentGeometry(L, -6.0, -5.0, 0.4);
-    lmsGroup.add(new THREE.Mesh(g1, aluMat));
-    allGeoms.push(g1);
+    // Base plate for smooth outer wall (z = -6.0 to 6.0, thickness = 0.4)
+    var baseGeom = createMiteredSegmentGeometry(L, -6.0, 6.0, 0.4);
+    lmsGroup.add(new THREE.Mesh(baseGeom, aluMat));
+    allGeoms.push(baseGeom);
 
-    // Segment 2: Tylna ściana - z = -5.0 do -4.5, wysokość 4.5
-    var g2 = createMiteredSegmentGeometry(L, -5.0, -4.5, 4.5);
+    // Segment 2: Tylna ściana on top of base (z = -5.0 to -4.5, additional thickness = 4.1, offset = 0.4)
+    var g2 = createMiteredSegmentGeometry(L, -5.0, -4.5, 4.1);
+    g2.translate(0, 0.4, 0);
     lmsGroup.add(new THREE.Mesh(g2, aluMat));
     allGeoms.push(g2);
 
-    // Segment 3: Kanał LED (wgłębienie 5.7mm) - z = -4.5 do -2.5, wysokość 3.93
-    var g3 = createMiteredSegmentGeometry(L, -4.5, -2.5, 3.93);
+    // Segment 3: Kanał LED on top of base (z = -4.5 to -2.5, additional thickness = 3.53, offset = 0.4)
+    var g3 = createMiteredSegmentGeometry(L, -4.5, -2.5, 3.53);
+    g3.translate(0, 0.4, 0);
     lmsGroup.add(new THREE.Mesh(g3, aluMat));
     allGeoms.push(g3);
 
-    // Segment 4: Ścianka kanału LED (wewnętrzna) - z = -2.5 do -2.0, wysokość 4.5
-    var g4 = createMiteredSegmentGeometry(L, -2.5, -2.0, 4.5);
+    // Segment 4: Ścianka kanału LED on top of base (z = -2.5 to -2.0, additional thickness = 4.1, offset = 0.4)
+    var g4 = createMiteredSegmentGeometry(L, -2.5, -2.0, 4.1);
+    g4.translate(0, 0.4, 0);
     lmsGroup.add(new THREE.Mesh(g4, aluMat));
     allGeoms.push(g4);
 
-    // Segment 5: Jedna płaska płaszczyzna skosu pod kątem 135 st. (skos z 4.5 do 0.4) - z = -2.0 do 2.1
-    var g5 = createMiteredSlopedGeometry(L, -2.0, 2.1, 4.5, 0.4);
+    // Segment 5: Skos on top of base (z = -2.0 to 2.1, sloped from 4.1 to 0.0, offset = 0.4)
+    var g5 = createMiteredSlopedGeometry(L, -2.0, 2.1, 4.1, 0.0);
+    g5.translate(0, 0.4, 0);
     lmsGroup.add(new THREE.Mesh(g5, aluMat));
     allGeoms.push(g5);
-
-    // Segment 6: Przednie skrzydło (uchwyt) - z = 2.1 do 6.0, wysokość 0.4
-    var g6 = createMiteredSegmentGeometry(L, 2.1, 6.0, 0.4);
-    lmsGroup.add(new THREE.Mesh(g6, aluMat));
-    allGeoms.push(g6);
 
     // Linie konturowe
     allGeoms.forEach(function (gg) {
@@ -2225,6 +2369,27 @@ function drawKasetonScene() {
   // 4. STRIP PACKING ALGORITHMS FOR LEDS
   // Wyliczenie segmentów pola roboczego zgodnie z cięciem i 50mm marginesami na rogach
   function getWorkingSegments(profileLength, isHorizontal) {
+    if (config.cut === 'custom') {
+      if (!config.customSupports) return [{ start: 5, end: profileLength - 5, length: profileLength - 10 }];
+      const supports = isHorizontal ? (config.customSupports.vertical || []) : (config.customSupports.horizontal || []);
+      const positions = supports.map(s => s.pos).sort((a, b) => a - b);
+      const segments = [];
+      let currentStart = 5;
+      for (let i = 0; i < positions.length; i++) {
+        const pos = positions[i];
+        const end = pos - 2.5;
+        if (end > currentStart + 1) {
+          segments.push({ start: currentStart, end: end, length: end - currentStart });
+        }
+        currentStart = pos + 2.5;
+      }
+      const finalEnd = profileLength - 5;
+      if (finalEnd > currentStart + 1) {
+        segments.push({ start: currentStart, end: finalEnd, length: finalEnd - currentStart });
+      }
+      return segments;
+    }
+
     let numSegments = 1;
     if (isHorizontal) {
       if (config.cut && config.cut.includes('half_w')) numSegments = 2;
@@ -2571,12 +2736,24 @@ function drawKasetonScene() {
     if (H > maxLen) numSegmentsH = Math.ceil(H / maxLen);
   }
 
-  const numCutsW = numSegmentsW - 1;
-  const numCutsH = numSegmentsH - 1;
+  let numCutsW = numSegmentsW - 1;
+  let numCutsH = numSegmentsH - 1;
   const cutX = [];
-  for (let i = 1; i <= numCutsW; i++) cutX.push(-W / 2 + (W / numSegmentsW) * i);
   const cutY = [];
-  for (let i = 1; i <= numCutsH; i++) cutY.push(elevY + (H / numSegmentsH) * i);
+
+  if (config.cut === 'custom' && config.customSupports) {
+    numCutsW = config.customSupports.vertical ? config.customSupports.vertical.length : 0;
+    numCutsH = config.customSupports.horizontal ? config.customSupports.horizontal.length : 0;
+    (config.customSupports.vertical || []).forEach(vs => {
+      cutX.push(-W / 2 + vs.pos);
+    });
+    (config.customSupports.horizontal || []).forEach(hs => {
+      cutY.push(elevY + hs.pos);
+    });
+  } else {
+    for (let i = 1; i <= numCutsW; i++) cutX.push(-W / 2 + (W / numSegmentsW) * i);
+    for (let i = 1; i <= numCutsH; i++) cutY.push(elevY + (H / numSegmentsH) * i);
+  }
 
   let supportThickness = 1.5;
   let supportZ = 0;
@@ -2595,31 +2772,38 @@ function drawKasetonScene() {
     supportZ = 0;
   }
 
+  const isWallSTF_STFL = (sys === 'STF' || sys === 'STFL') && config.usage === 'wall';
+
+  let supportSegmentsCount = 0;
   // Vertical supports (continuous)
-  cutX.forEach(cx => {
-    const vGeom = new THREE.BoxGeometry(5, H - 6.4, supportThickness);
-    const vMesh = new THREE.Mesh(vGeom, supportMat);
-    vMesh.position.set(cx, elevY + H / 2, supportZ);
-    kGroup.add(vMesh);
-  });
+  if (!isWallSTF_STFL) {
+    cutX.forEach(cx => {
+      const vGeom = new THREE.BoxGeometry(5, H - 6.4, supportThickness);
+      const vMesh = new THREE.Mesh(vGeom, supportMat);
+      vMesh.position.set(cx, elevY + H / 2, supportZ);
+      kGroup.add(vMesh);
+      supportSegmentsCount++;
+    });
 
-  // Horizontal supports (broken at vertical intersections)
-  const xBounds = [-W / 2 + 3.2];
-  cutX.forEach(cx => { xBounds.push(cx - 2.5, cx + 2.5); });
-  xBounds.push(W / 2 - 3.2);
+    // Horizontal supports (broken at vertical intersections)
+    const xBounds = [-W / 2 + 3.2];
+    cutX.forEach(cx => { xBounds.push(cx - 2.5, cx + 2.5); });
+    xBounds.push(W / 2 - 3.2);
 
-  cutY.forEach(cy => {
-    for (let i = 0; i < xBounds.length; i += 2) {
-      const left = xBounds[i];
-      const right = xBounds[i + 1];
-      if (right > left) {
-        const hGeom = new THREE.BoxGeometry(right - left, 5, supportThickness);
-        const hMesh = new THREE.Mesh(hGeom, supportMat);
-        hMesh.position.set((left + right) / 2, cy, supportZ);
-        kGroup.add(hMesh);
+    cutY.forEach(cy => {
+      for (let i = 0; i < xBounds.length; i += 2) {
+        const left = xBounds[i];
+        const right = xBounds[i + 1];
+        if (right > left) {
+          const hGeom = new THREE.BoxGeometry(right - left, 5, supportThickness);
+          const hMesh = new THREE.Mesh(hGeom, supportMat);
+          hMesh.position.set((left + right) / 2, cy, supportZ);
+          kGroup.add(hMesh);
+          supportSegmentsCount++;
+        }
       }
-    }
-  });
+    });
+  }
 
   // 7.1. ŁĄCZNIKI DŁUGIE W ZEWNĘTRZNYCH ROWKACH (przy cięciach profili głównych)
   // 200mm × 15mm × 5mm = 20 × 1.5 × 0.5 cm in 3D units
@@ -2748,14 +2932,19 @@ function drawKasetonScene() {
 
   window.currentKasetonConfig.numCutsW = numCutsW;
   window.currentKasetonConfig.numCutsH = numCutsH;
-  window.currentKasetonConfig.totalSupportLengthM = (numCutsW * (H - 6.4 + 1.0) + numCutsH * (W - 6.4 + 1.0)) / 100; // +5mm na każde łączenie z profilem głównym (2 łączenia × 0.5cm = 1.0cm)
+  if (config.cut === 'custom') {
+    window.currentKasetonConfig.totalSupportLengthM = ((numCutsW * (H - 5.4) + numCutsH * (W - 5.4)) / 100);
+  } else {
+    window.currentKasetonConfig.totalSupportLengthM = isWallSTF_STFL ? 0 : ((numCutsW * (H - 6.4 + 1.0) + numCutsH * (W - 6.4 + 1.0)) / 100);
+  }
   window.currentKasetonConfig.totalPowerW = totalPowerW;
+  window.currentKasetonConfig.supportSegmentsCount = supportSegmentsCount;
 
   // 7.5. GENEROWANIE STÓP (dla konfiguracji wolnostojącej)
   if (config.usage === 'freestanding' || config.usage === 'freestanding_tri') {
     const isTriFoot = (config.usage === 'freestanding_tri' && sys === 'DTF');
     const footXPositions = [-W / 2 + 15, W / 2 - 15];
-    if (numCutsW > 0) {
+    if (numCutsW > 0 && config.cut !== 'custom') {
       cutX.forEach(cx => footXPositions.push(cx));
     } else if (W >= 200) {
       footXPositions.push(0);
@@ -2937,7 +3126,7 @@ function drawKasetonScene() {
 
 
     // Przód
-    const hasFrontMesh = (sys === 'LMS')
+    const hasFrontMesh = (sys === 'LMS' || sys === 'LMSM')
       ? ['backlit_white', 'backlit_blockout'].includes(printOption)
       : ['single', 'double', 'front_blockout', 'front_blockout_2', 'double_blockout'].includes(printOption);
 
@@ -2952,12 +3141,12 @@ function drawKasetonScene() {
     }
 
     // Tył
-    const hasBackMesh = (sys === 'LMS')
+    const hasBackMesh = (sys === 'LMS' || sys === 'LMSM')
       ? ['backlit_white', 'backlit_blockout', 'back_white'].includes(printOption)
       : ['single', 'double', 'front_blockout', 'front_blockout_2', 'back_blockout', 'double_blockout'].includes(printOption);
 
     if (hasBackMesh) {
-      const isBackBlockout = (sys === 'LMS')
+      const isBackBlockout = (sys === 'LMS' || sys === 'LMSM')
         ? ['backlit_blockout'].includes(printOption)
         : ['single', 'front_blockout', 'front_blockout_2', 'back_blockout', 'double_blockout'].includes(printOption);
 
@@ -3155,26 +3344,6 @@ function drawKasetonScene() {
           const cGeomBlack = new THREE.TubeGeometry(new THREE.LineCurve3(startPt, exitPtInside), 8, 0.18, 6, false);
           kGroup.add(new THREE.Mesh(cGeomBlack, cableBlackMat));
         }
-
-        // Coiled main power cable exiting the kaseton at this corner
-        const coilPts = [
-          exitPtInside,
-          new THREE.Vector3(exitX, elevY, 5), // pass through fabric
-          new THREE.Vector3(exitX + (px < 0 ? -3 : 3), elevY - 5, 8)
-        ];
-        let angle = 0;
-        for (let j = 0; j <= 25; j++) {
-          const t = j / 25;
-          const r = 3 + t * 2;
-          const cx_coil = exitX + (px < 0 ? -5 : 5) + Math.cos(angle) * r * (px < 0 ? 1 : -1);
-          const cz_coil = 12 + Math.sin(angle) * r;
-          const cy_coil = elevY - 10 - t * 6;
-          coilPts.push(new THREE.Vector3(cx_coil, cy_coil, cz_coil));
-          angle += Math.PI * 0.45;
-        }
-        const coilCurve = new THREE.CatmullRomCurve3(coilPts);
-        const coilGeom = new THREE.TubeGeometry(coilCurve, 64, 0.25, 8, false);
-        kGroup.add(new THREE.Mesh(coilGeom, cableBlackMat));
       });
     } else {
       const cableRedMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.85, metalness: 0.1 });
@@ -3192,24 +3361,56 @@ function drawKasetonScene() {
         const endPt = new THREE.Vector3(px, py + psuBoxH / 2, 5);
         const cGeomRed = new THREE.TubeGeometry(new THREE.LineCurve3(startPt, endPt), 8, 0.15, 6, false);
         kGroup.add(new THREE.Mesh(cGeomRed, cableRedMat));
-
-        // Black coiled cable from PSU
-        const coilPts = [new THREE.Vector3(px, py - psuBoxH / 2, 5)];
-        let angle = 0;
-        for (let j = 0; j <= 15; j++) {
-          const t = j / 15;
-          const r = 2 + t;
-          const cx_coil = px - 3 + Math.cos(angle) * r;
-          const cz_coil = 8 + Math.sin(angle) * r;
-          const cy_coil = py - 3 - t * 4;
-          coilPts.push(new THREE.Vector3(cx_coil, cy_coil, cz_coil));
-          angle += Math.PI * 0.6;
-        }
-        const coilCurve = new THREE.CatmullRomCurve3(coilPts);
-        const coilGeom = new THREE.TubeGeometry(coilCurve, 32, 0.25, 8, false);
-        kGroup.add(new THREE.Mesh(coilGeom, cableBlackMat));
       });
     }
+  }
+
+  // --- CUSTOM CABLE EXIT DRILL AND WIRE (Kaseton) ---
+  if (isLedSys && ['drill_bottom', 'drill_top', 'drill_left', 'drill_right'].includes(config.cableExit)) {
+    const val = parseFloat(config.cableDrillVal) || 0;
+    const valCm = val / 10;
+    let hx = 0, hy = 0, hz = 0;
+    let wx = 0, wy = 0, wz = 0;
+    let isHoriz = true;
+
+    if (config.cableExit === 'drill_bottom') {
+      hx = -W / 2 + valCm; hy = elevY + 0.25; hz = 0;
+      wx = hx; wy = elevY - 1.5; wz = 0;
+      isHoriz = true;
+    } else if (config.cableExit === 'drill_top') {
+      hx = -W / 2 + valCm; hy = elevY + H - 0.25; hz = 0;
+      wx = hx; wy = elevY + H + 1.5; wz = 0;
+      isHoriz = true;
+    } else if (config.cableExit === 'drill_left') {
+      hx = -W / 2 + 0.25; hy = elevY + valCm; hz = 0;
+      wx = -W / 2 - 1.5; wy = hy; wz = 0;
+      isHoriz = false;
+    } else if (config.cableExit === 'drill_right') {
+      hx = W / 2 - 0.25; hy = elevY + valCm; hz = 0;
+      wx = W / 2 + 1.5; wy = hy; wz = 0;
+      isHoriz = false;
+    }
+
+    // Draw 6mm Hole
+    const holeGeom = new THREE.CylinderGeometry(0.3, 0.3, 0.5, 16);
+    const holeMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 1.0 });
+    const holeMesh = new THREE.Mesh(holeGeom, holeMat);
+    holeMesh.position.set(hx, hy, hz);
+    if (!isHoriz) {
+      holeMesh.rotation.z = Math.PI / 2;
+    }
+    kGroup.add(holeMesh);
+
+    // Draw 30mm Wire
+    const wireGeom = new THREE.CylinderGeometry(0.15, 0.15, 3.0, 8);
+    const wireColor = (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? 0xff0000 : 0x111111;
+    const wireMat = new THREE.MeshStandardMaterial({ color: wireColor, roughness: 0.85 });
+    const wireMesh = new THREE.Mesh(wireGeom, wireMat);
+    wireMesh.position.set(wx, wy, wz);
+    if (!isHoriz) {
+      wireMesh.rotation.z = Math.PI / 2;
+    }
+    kGroup.add(wireMesh);
   }
 
   // 10. LINIE WYMIAROWE I NAPISY
@@ -3339,6 +3540,38 @@ function drawKasetonScene() {
         'Taśma LED',
         ledDesc
       );
+    }
+
+    // ── G) Nawiert na przewód zasilający ──
+    if (isLedSys && ['drill_bottom', 'drill_top', 'drill_left', 'drill_right'].includes(config.cableExit)) {
+      const val = parseFloat(config.cableDrillVal) || 0;
+      let label = '';
+      if (config.cableExit === 'drill_bottom') {
+        label = `Nawiert w dolnym profilu (odległość od lewej: ${val} mm)`;
+      } else if (config.cableExit === 'drill_top') {
+        label = `Nawiert w górnym profilu (odległość od lewej: ${val} mm)`;
+      } else if (config.cableExit === 'drill_left') {
+        label = `Nawiert w lewym profilu (odległość od dołu: ${val} mm)`;
+      } else if (config.cableExit === 'drill_right') {
+        label = `Nawiert w prawym profilu (odległość od dołu: ${val} mm)`;
+      }
+      
+      const valCm = val / 10;
+      let targetX = 0, targetY = 0;
+      if (config.cableExit === 'drill_bottom') {
+        targetX = -W / 2 + valCm; targetY = elevY;
+      } else if (config.cableExit === 'drill_top') {
+        targetX = -W / 2 + valCm; targetY = elevY + H;
+      } else if (config.cableExit === 'drill_left') {
+        targetX = -W / 2; targetY = elevY + valCm;
+      } else if (config.cableExit === 'drill_right') {
+        targetX = W / 2; targetY = elevY + valCm;
+      }
+
+      addNumberedMarker('CABLE_EXIT_DRILL',
+        new THREE.Vector3(targetX, targetY, 0),
+        'Nawiert na przewód zasilający',
+        label);
     }
 
     // Publikuj dane do panelu HTML
@@ -3725,6 +3958,10 @@ function drawKasetonScene() {
   // 12. GENERUJ BOM
   generateKasetonBOM();
 
+  if (typeof renderer !== 'undefined' && renderer && scene && camera) {
+    renderer.render(scene, camera);
+  }
+
   console.log('✨ 3D Kaseton scene rendered successfully!');
 }
 
@@ -3758,7 +3995,52 @@ function drawCTFScene(config) {
   const kGroup = new THREE.Group();
   kGroup.userData = { isKaseton: true };
 
-  // --- MATERIAŁY ---
+  let aluColor = 0xe2e6ea;
+  let aluRoughness = 0.65;
+  let aluMetalness = 0.35;
+
+  const coating = config.coating || 'none';
+  const ral = config.ral || '';
+
+  if (coating && coating !== 'none') {
+      const db = window.RAL_DATABASE || {};
+      const cleanRal = ral.trim().toUpperCase();
+      let cleanKey = cleanRal.replace('RAL', '').trim();
+      
+      let resolvedHex = null;
+      if (db[cleanRal]) {
+          resolvedHex = db[cleanRal];
+      } else if (db[cleanKey]) {
+          resolvedHex = db[cleanKey];
+      } else {
+          const digitsMatch = cleanRal.match(/\d{4}/);
+          if (digitsMatch && db[digitsMatch[0]]) {
+              resolvedHex = db[digitsMatch[0]];
+          }
+      }
+
+      if (resolvedHex) {
+          const hexVal = parseInt(resolvedHex.replace('#', '0x'), 16);
+          if (!isNaN(hexVal)) aluColor = hexVal;
+      } else if (cleanRal.startsWith('#')) {
+          const hexVal = parseInt(cleanRal.replace('#', '0x'), 16);
+          if (!isNaN(hexVal)) aluColor = hexVal;
+      } else {
+          aluColor = coating.includes('standard') ? 0x3b444b : 0x555555;
+      }
+
+      if (coating.includes('mat')) {
+          aluRoughness = 0.9;
+          aluMetalness = 0.1;
+      } else if (coating.includes('semi')) {
+          aluRoughness = 0.45;
+          aluMetalness = 0.2;
+      } else if (coating.includes('gloss')) {
+          aluRoughness = 0.08;
+          aluMetalness = 0.5;
+      }
+  }
+
   const aluMat = isBlueprintMode ? new THREE.MeshStandardMaterial({
     color: 0x4488ff,
     metalness: 0.7,
@@ -3767,9 +4049,9 @@ function drawCTFScene(config) {
     opacity: 0.2,
     name: 'ctf_aluminum_blueprint'
   }) : new THREE.MeshStandardMaterial({
-    color: 0xd0d4d9,
-    metalness: 0.55,
-    roughness: 0.45,
+    color: aluColor,
+    metalness: aluMetalness,
+    roughness: aluRoughness,
     name: 'ctf_aluminum'
   });
   const edgeMat = new THREE.LineBasicMaterial({ color: 0x444444 });
@@ -4243,6 +4525,7 @@ function drawCTFScene(config) {
   // 🛠️ NOWOŚĆ: GENERATOR I SOLVER POPRZECZEK WZMACNIAJĄCYCH SUPPORT LIGHT
   // =========================================================================
   let totalSupportLengthM = 0;
+  let supportSegmentsCount = 0;
 
   // 1. Definicja linii podziałów pod segmenty ramy (logika LMD)
   let numSegmentsW = 1, numSegmentsH = 1;
@@ -4262,21 +4545,82 @@ function drawCTFScene(config) {
     if (H > maxLen) numSegmentsH = Math.ceil(H / maxLen);
   }
 
-  const cutX = [];
-  if (numSegmentsW > 1) {
-    for (let i = 1; i < numSegmentsW; i++) cutX.push(-W / 2 + (W / numSegmentsW) * i);
-  } else if (W > 200) { cutX.push(0); } // Reguła wzmocnienia dla nieciętej ramy > 2m
+  const cutX_FB = [];
+  const cutY_FB = [];
+  const cutZ_LR = [];
+  const cutY_LR = [];
+  const cutX_TB = [];
+  const cutZ_TB = [];
 
-  const cutY = [];
-  if (numSegmentsH > 1) {
-    for (let i = 1; i < numSegmentsH; i++) cutY.push((H / numSegmentsH) * i);
-  } else if (H > 200) { cutY.push(H / 2); } // Reguła wzmocnienia dla nieciętej ramy > 2m
+  if (config.cut === 'custom' && config.customSupports) {
+    const cs = config.customSupports;
+    if (cs.frontBack) {
+      (cs.frontBack.vertical || []).forEach(vs => cutX_FB.push(-W / 2 + vs.pos));
+      (cs.frontBack.horizontal || []).forEach(hs => cutY_FB.push(hs.pos));
+    } else if (cs.vertical) {
+      // Fallback for standard configuration schema
+      (cs.vertical || []).forEach(vs => {
+        cutX_FB.push(-W / 2 + vs.pos);
+        cutX_TB.push(-W / 2 + vs.pos);
+      });
+      (cs.horizontal || []).forEach(hs => {
+        cutY_FB.push(hs.pos);
+        cutY_LR.push(hs.pos);
+      });
+    }
 
-  const cutZ = D > 200 ? [0] : []; // Wzmocnienie osi głębokości (Z) jeśli boki > 2m
+    if (cs.leftRight) {
+      (cs.leftRight.vertical || []).forEach(vs => cutZ_LR.push(-hd + vs.pos));
+      (cs.leftRight.horizontal || []).forEach(hs => cutY_LR.push(hs.pos));
+    }
 
-  const allX = [-W / 2, ...cutX, W / 2];
-  const allY = [0, ...cutY, H];
-  const allZ = [-hd, ...cutZ, hd];
+    if (cs.topBottom) {
+      (cs.topBottom.vertical || []).forEach(vs => cutX_TB.push(-W / 2 + vs.pos));
+      (cs.topBottom.horizontal || []).forEach(hs => cutZ_TB.push(-hd + hs.pos));
+    }
+
+    cutX_FB.sort((a, b) => a - b);
+    cutY_FB.sort((a, b) => a - b);
+    cutZ_LR.sort((a, b) => a - b);
+    cutY_LR.sort((a, b) => a - b);
+    cutX_TB.sort((a, b) => a - b);
+    cutZ_TB.sort((a, b) => a - b);
+  } else {
+    if (numSegmentsW > 1) {
+      for (let i = 1; i < numSegmentsW; i++) {
+        const val = -W / 2 + (W / numSegmentsW) * i;
+        cutX_FB.push(val);
+        cutX_TB.push(val);
+      }
+    } else if (W > 200) {
+      cutX_FB.push(0);
+      cutX_TB.push(0);
+    }
+
+    if (numSegmentsH > 1) {
+      for (let i = 1; i < numSegmentsH; i++) {
+        const val = (H / numSegmentsH) * i;
+        cutY_FB.push(val);
+        cutY_LR.push(val);
+      }
+    } else if (H > 200) {
+      cutY_FB.push(H / 2);
+      cutY_LR.push(H / 2);
+    }
+
+    const cutZ_std = D > 200 ? [0] : [];
+    cutZ_std.forEach(cz => {
+      cutZ_LR.push(cz);
+      cutZ_TB.push(cz);
+    });
+  }
+
+  const allX_FB = [-W / 2, ...cutX_FB, W / 2];
+  const allY_FB = [0, ...cutY_FB, H];
+  const allZ_LR = [-hd, ...cutZ_LR, hd];
+  const allY_LR = [0, ...cutY_LR, H];
+  const allX_TB = [-W / 2, ...cutX_TB, W / 2];
+  const allZ_TB = [-hd, ...cutZ_TB, hd];
 
   // 2. Uniwersalny, trójwymiarowy generator belek z docięciem krawędziowym 45 stopni
   function createCustomSupportMesh(sizeX, sizeY, sizeZ, miterType, touchStart, touchEnd) {
@@ -4325,22 +4669,24 @@ function drawCTFScene(config) {
 
   // 3. 📱 ŚCIANA FRONTOWA I TYLNA (Płaszczyzny XY)
   // Słupki pionowe (Ciągłe)
-  cutX.forEach(cx => {
+  cutX_FB.forEach(cx => {
     const vFront = createCustomSupportMesh(5, lenY, 1.5, 'V', true, true);
     vFront.position.set(cx, elevY + H / 2, frontZ);
     kGroup.add(vFront); totalSupportLengthM += lenY / 100;
+    supportSegmentsCount++;
 
     const vBack = createCustomSupportMesh(5, lenY, 1.5, 'V', true, true);
     vBack.position.set(cx, elevY + H / 2, backZ);
     vBack.rotation.y = Math.PI;
     kGroup.add(vBack); totalSupportLengthM += lenY / 100;
+    supportSegmentsCount++;
   });
 
   // Belki poziome (Dzielone / Interlocking)
-  cutY.forEach(cy => {
-    for (let i = 0; i < allX.length - 1; i++) {
-      let startX = allX[i]; let endX = allX[i + 1];
-      let touchLeft = (i === 0); let touchRight = (i === allX.length - 2);
+  cutY_FB.forEach(cy => {
+    for (let i = 0; i < allX_FB.length - 1; i++) {
+      let startX = allX_FB[i]; let endX = allX_FB[i + 1];
+      let touchLeft = (i === 0); let touchRight = (i === allX_FB.length - 2);
 
       if (!touchLeft) startX += 2.5;
       if (!touchRight) endX -= 2.5;
@@ -4350,34 +4696,36 @@ function drawCTFScene(config) {
         const hFront = createCustomSupportMesh(segLen, 5, 1.5, 'H', touchLeft, touchRight);
         hFront.position.set(startX + segLen / 2, elevY + cy, frontZ);
         kGroup.add(hFront); totalSupportLengthM += segLen / 100;
+        supportSegmentsCount++;
 
         const hBack = createCustomSupportMesh(segLen, 5, 1.5, 'H', touchLeft, touchRight);
         hBack.position.set(startX + segLen / 2, elevY + cy, backZ);
         hBack.rotation.y = Math.PI;
         kGroup.add(hBack); totalSupportLengthM += segLen / 100;
+        supportSegmentsCount++;
       }
     }
   });
 
   // 4. 🚪 ŚCIANA LEWA I PRAWA (Płaszczyzny ZY)
   // Słupki pionowe (Dla głębokich kasetonów na linii cięcia osi Z)
-  cutZ.forEach(cz => {
+  cutZ_LR.forEach(cz => {
     const vLeft = createCustomSupportMesh(1.5, lenY, 5, 'V', true, true);
     vLeft.position.set(leftX, elevY + H / 2, cz);
-    vLeft.rotation.y = Math.PI / 2;
     kGroup.add(vLeft); totalSupportLengthM += lenY / 100;
+    supportSegmentsCount++;
 
     const vRight = createCustomSupportMesh(1.5, lenY, 5, 'V', true, true);
     vRight.position.set(rightX, elevY + H / 2, cz);
-    vRight.rotation.y = -Math.PI / 2;
     kGroup.add(vRight); totalSupportLengthM += lenY / 100;
+    supportSegmentsCount++;
   });
 
   // Belki głębokości (Dzielone rury Z zorientowane poziomo na ścianach bocznych)
-  cutY.forEach(cy => {
-    for (let j = 0; j < allZ.length - 1; j++) {
-      let startZ = allZ[j]; let endZ = allZ[j + 1];
-      let touchFront = (j === 0); let touchBack = (j === allZ.length - 2);
+  cutY_LR.forEach(cy => {
+    for (let j = 0; j < allZ_LR.length - 1; j++) {
+      let startZ = allZ_LR[j]; let endZ = allZ_LR[j + 1];
+      let touchFront = (j === 0); let touchBack = (j === allZ_LR.length - 2);
 
       if (!touchFront) startZ += 2.5;
       if (!touchBack) endZ -= 2.5;
@@ -4387,10 +4735,12 @@ function drawCTFScene(config) {
         const zLeft = createCustomSupportMesh(1.5, 5, segLen, 'Z_XY', touchFront, touchBack);
         zLeft.position.set(leftX, elevY + cy, startZ + segLen / 2);
         kGroup.add(zLeft); totalSupportLengthM += segLen / 100;
+        supportSegmentsCount++;
 
         const zRight = createCustomSupportMesh(1.5, 5, segLen, 'Z_XY', touchFront, touchBack);
         zRight.position.set(rightX, elevY + cy, startZ + segLen / 2);
         kGroup.add(zRight); totalSupportLengthM += segLen / 100;
+        supportSegmentsCount++;
       }
     }
   });
@@ -4400,10 +4750,10 @@ function drawCTFScene(config) {
 
   // Belki głębokości Z na dole (zBottom) - rysujemy jeśli brak plafonów na dole
   if (config.light !== 'plafon_dol') {
-    cutX.forEach(cx => {
-      for (let j = 0; j < allZ.length - 1; j++) {
-        let startZ = allZ[j]; let endZ = allZ[j + 1];
-        let touchFront = (j === 0); let touchBack = (j === allZ.length - 2);
+    cutX_TB.forEach(cx => {
+      for (let j = 0; j < allZ_TB.length - 1; j++) {
+        let startZ = allZ_TB[j]; let endZ = allZ_TB[j + 1];
+        let touchFront = (j === 0); let touchBack = (j === allZ_TB.length - 2);
 
         if (!touchFront) startZ += 2.5;
         if (!touchBack) endZ -= 2.5;
@@ -4413,6 +4763,7 @@ function drawCTFScene(config) {
           const zBottom = createCustomSupportMesh(5, 1.5, segLen, 'Z_XY', touchFront, touchBack);
           zBottom.position.set(cx, elevY + bottomY, startZ + segLen / 2);
           kGroup.add(zBottom); totalSupportLengthM += segLen / 100;
+          supportSegmentsCount++;
         }
       }
     });
@@ -4420,11 +4771,11 @@ function drawCTFScene(config) {
 
   // Belki głębokości Z na górze (zTop) - rysujemy jeśli brak plafonów na górze
   if (config.light !== 'plafon_gora') {
-    const sufitCutX = (config.light === 'zarowka' && cutX.length === 0) ? [0] : cutX;
+    const sufitCutX = (config.light === 'zarowka' && cutX_TB.length === 0) ? [0] : cutX_TB;
     sufitCutX.forEach(cx => {
-      for (let j = 0; j < allZ.length - 1; j++) {
-        let startZ = allZ[j]; let endZ = allZ[j + 1];
-        let touchFront = (j === 0); let touchBack = (j === allZ.length - 2);
+      for (let j = 0; j < allZ_TB.length - 1; j++) {
+        let startZ = allZ_TB[j]; let endZ = allZ_TB[j + 1];
+        let touchFront = (j === 0); let touchBack = (j === allZ_TB.length - 2);
 
         if (!touchFront) startZ += 2.5;
         if (!touchBack) endZ -= 2.5;
@@ -4434,16 +4785,17 @@ function drawCTFScene(config) {
           const zTop = createCustomSupportMesh(5, 1.5, segLen, 'Z_XY', touchFront, touchBack);
           zTop.position.set(cx, elevY + topY, startZ + segLen / 2);
           kGroup.add(zTop); totalSupportLengthM += segLen / 100;
+          supportSegmentsCount++;
         }
       }
     });
   }
 
   // Belki poziome X (Dla głębokich kasetonów leżące płasko na liniach cutZ)
-  cutZ.forEach(cz => {
-    for (let i = 0; i < allX.length - 1; i++) {
-      let startX = allX[i]; let endX = allX[i + 1];
-      let touchLeft = (i === 0); let touchRight = (i === allX.length - 2);
+  cutZ_TB.forEach(cz => {
+    for (let i = 0; i < allX_TB.length - 1; i++) {
+      let startX = allX_TB[i]; let endX = allX_TB[i + 1];
+      let touchLeft = (i === 0); let touchRight = (i === allX_TB.length - 2);
 
       if (!touchLeft) startX += 2.5;
       if (!touchRight) endX -= 2.5;
@@ -4455,6 +4807,7 @@ function drawCTFScene(config) {
           const hBottom = createCustomSupportMesh(segLen, 1.5, 5, 'H', touchLeft, touchRight);
           hBottom.position.set(startX + segLen / 2, elevY + bottomY, cz);
           kGroup.add(hBottom); totalSupportLengthM += segLen / 100;
+          supportSegmentsCount++;
         }
 
         // Góra (hTop) - rysujemy jeśli brak plafonów na górze
@@ -4462,6 +4815,7 @@ function drawCTFScene(config) {
           const hTop = createCustomSupportMesh(segLen, 1.5, 5, 'H', touchLeft, touchRight);
           hTop.position.set(startX + segLen / 2, elevY + topY, cz);
           kGroup.add(hTop); totalSupportLengthM += segLen / 100;
+          supportSegmentsCount++;
         }
       }
     }
@@ -4475,61 +4829,15 @@ function drawCTFScene(config) {
 
   // 1. Opcja: żarówka (zarowka)
   if (sys === 'CTF_LED' && config.light === 'zarowka') {
-    const cableLen = topY - (H / 2 + 14);
-    if (cableLen > 0) {
-      const cableGeo = new THREE.CylinderGeometry(0.15, 0.15, cableLen, 8);
-      const cableMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
-      const cableMesh = new THREE.Mesh(cableGeo, cableMat);
-      cableMesh.position.set(0, elevY + topY - cableLen / 2, 0);
-      kGroup.add(cableMesh);
-    }
+    const numX = 1 + Math.ceil(Math.max(0, W - 100) / 100);
+    const numZ = 1 + Math.ceil(Math.max(0, D - 100) / 100);
 
-    const baseGeo = new THREE.CylinderGeometry(1.2, 1.5, 3.5, 16);
-    const baseMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.8, roughness: 0.2 });
-    const baseMesh = new THREE.Mesh(baseGeo, baseMat);
-    baseMesh.position.set(0, elevY + H / 2 + 12.25, 0);
-    kGroup.add(baseMesh);
-
-    const capGeo = new THREE.CylinderGeometry(1.5, 4.0, 3.0, 24);
-    const capMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
-    const capMesh = new THREE.Mesh(capGeo, capMat);
-    capMesh.position.set(0, elevY + H / 2 + 9.0, 0);
-    kGroup.add(capMesh);
-
-    const bulbGeo = new THREE.CylinderGeometry(4.0, 4.0, 18.0, 24);
-    const bulbMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      emissive: 0xfff0dd,
-      emissiveIntensity: 1.5,
-      roughness: 0.2,
-      metalness: 0.1
-    });
-    const bulbMesh = new THREE.Mesh(bulbGeo, bulbMat);
-    bulbMesh.position.set(0, elevY + H / 2 - 1.5, 0);
-    kGroup.add(bulbMesh);
-
-    const tipGeo = new THREE.CylinderGeometry(4.0, 3.5, 1.5, 24);
-    const tipMesh = new THREE.Mesh(tipGeo, baseMat);
-    tipMesh.position.set(0, elevY + H / 2 - 11.25, 0);
-    kGroup.add(tipMesh);
-  }
-
-  // 2. Opcja: Plafony LED (plafon_dol / plafon_gora)
-  if (sys === 'CTF_LED' && (config.light === 'plafon_dol' || config.light === 'plafon_gora')) {
-    const isGora = (config.light === 'plafon_gora');
-    const railY = isGora ? topY : bottomY;
-
-    let numX = Math.floor((W - 5) / 35);
-    if (numX < 1 && W >= 40) numX = 1;
-    let numZ = Math.floor((D - 5) / 35);
-    if (numZ < 1 && D >= 40) numZ = 1;
-
-    const zStart = -D/2 + 20;
-    const zEnd = D/2 - 20;
+    const zStart = -D/2 + 25;
+    const zEnd = D/2 - 25;
     const stepZ = (numZ > 1) ? (zEnd - zStart) / (numZ - 1) : 0;
 
-    const xStart = -W/2 + 20;
-    const xEnd = W/2 - 20;
+    const xStart = -W/2 + 25;
+    const xEnd = W/2 - 25;
     const stepX = (numX > 1) ? (xEnd - xStart) / (numX - 1) : 0;
 
     const railLen = W - 2 * innerAttachOffset;
@@ -4537,43 +4845,124 @@ function drawCTFScene(config) {
     for (let j = 0; j < numZ; j++) {
       const zVal = (numZ > 1) ? (zStart + j * stepZ) : 0;
 
-      // Szyna z dwóch belek montażowych
-      const rail1 = createCustomSupportMesh(railLen, 1.5, 5, 'H', true, true);
-      rail1.position.set(0, elevY + railY, zVal - 10);
-      kGroup.add(rail1);
+      // Szyna montażowa pod żarówki
+      const rail = createCustomSupportMesh(railLen, 1.5, 5, 'H', true, true);
+      rail.position.set(0, elevY + topY, zVal);
+      kGroup.add(rail);
       totalSupportLengthM += railLen / 100;
-
-      const rail2 = createCustomSupportMesh(railLen, 1.5, 5, 'H', true, true);
-      rail2.position.set(0, elevY + railY, zVal + 10);
-      kGroup.add(rail2);
-      totalSupportLengthM += railLen / 100;
+      supportSegmentsCount++;
 
       for (let i = 0; i < numX; i++) {
         const xVal = (numX > 1) ? (xStart + i * stepX) : 0;
-        const centerY = isGora ? (topY - 2.25) : (bottomY + 2.25);
 
-        // Świecąca część plafonu
-        const panelGeo = new THREE.BoxGeometry(28, 1.4, 28);
-        const panelMat = new THREE.MeshStandardMaterial({
+        const cableLen = topY - (H / 2 + 14);
+        if (cableLen > 0) {
+          const cableGeo = new THREE.CylinderGeometry(0.15, 0.15, cableLen, 8);
+          const cableMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
+          const cableMesh = new THREE.Mesh(cableGeo, cableMat);
+          cableMesh.position.set(xVal, elevY + topY - cableLen / 2, zVal);
+          kGroup.add(cableMesh);
+        }
+
+        const baseGeo = new THREE.CylinderGeometry(1.2, 1.5, 3.5, 16);
+        const baseMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.8, roughness: 0.2 });
+        const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+        baseMesh.position.set(xVal, elevY + H / 2 + 12.25, zVal);
+        kGroup.add(baseMesh);
+
+        const capGeo = new THREE.CylinderGeometry(1.5, 4.0, 3.0, 24);
+        const capMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+        const capMesh = new THREE.Mesh(capGeo, capMat);
+        capMesh.position.set(xVal, elevY + H / 2 + 9.0, zVal);
+        kGroup.add(capMesh);
+
+        const bulbGeo = new THREE.CylinderGeometry(4.0, 4.0, 18.0, 24);
+        const bulbMat = new THREE.MeshStandardMaterial({
           color: 0xffffff,
-          emissive: 0xffffff,
+          emissive: 0xfff0dd,
           emissiveIntensity: 1.5,
-          roughness: 0.1,
+          roughness: 0.2,
           metalness: 0.1
         });
-        const panelMesh = new THREE.Mesh(panelGeo, panelMat);
-        panelMesh.position.set(xVal, elevY + centerY, zVal);
-        kGroup.add(panelMesh);
+        const bulbMesh = new THREE.Mesh(bulbGeo, bulbMat);
+        bulbMesh.position.set(xVal, elevY + H / 2 - 1.5, zVal);
+        kGroup.add(bulbMesh);
 
-        // Ramka metalowa obwódki
-        const frameGeo = new THREE.BoxGeometry(30, 1.5, 30);
-        const frameMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4, metalness: 0.8 });
-        const frameMesh = new THREE.Mesh(frameGeo, frameMat);
-        frameMesh.position.set(xVal, elevY + centerY, zVal);
-        frameMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(frameGeo), edgeMat));
-        kGroup.add(frameMesh);
+        const tipGeo = new THREE.CylinderGeometry(4.0, 3.5, 1.5, 24);
+        const tipMesh = new THREE.Mesh(tipGeo, baseMat);
+        tipMesh.position.set(xVal, elevY + H / 2 - 11.25, zVal);
+        kGroup.add(tipMesh);
       }
     }
+  }
+
+  // 2. Opcja: Plafony LED (plafon_dol / plafon_gora / plafon_gora_dol)
+  if (sys === 'CTF_LED' && (config.light === 'plafon_dol' || config.light === 'plafon_gora' || config.light === 'plafon_gora_dol')) {
+    const isGoraOptions = [];
+    if (config.light === 'plafon_gora' || config.light === 'plafon_gora_dol') isGoraOptions.push(true);
+    if (config.light === 'plafon_dol' || config.light === 'plafon_gora_dol') isGoraOptions.push(false);
+
+    isGoraOptions.forEach(isGora => {
+      const railY = isGora ? topY : bottomY;
+
+      let numX = Math.floor((W - 5) / 35);
+      if (numX < 1 && W >= 40) numX = 1;
+      let numZ = Math.floor((D - 5) / 35);
+      if (numZ < 1 && D >= 40) numZ = 1;
+
+      const zStart = -D/2 + 20;
+      const zEnd = D/2 - 20;
+      const stepZ = (numZ > 1) ? (zEnd - zStart) / (numZ - 1) : 0;
+
+      const xStart = -W/2 + 20;
+      const xEnd = W/2 - 20;
+      const stepX = (numX > 1) ? (xEnd - xStart) / (numX - 1) : 0;
+
+      const railLen = W - 2 * innerAttachOffset;
+
+      for (let j = 0; j < numZ; j++) {
+        const zVal = (numZ > 1) ? (zStart + j * stepZ) : 0;
+
+        // Szyna z dwóch belek montażowych
+        const rail1 = createCustomSupportMesh(railLen, 1.5, 5, 'H', true, true);
+        rail1.position.set(0, elevY + railY, zVal - 10);
+        kGroup.add(rail1);
+        totalSupportLengthM += railLen / 100;
+        supportSegmentsCount++;
+
+        const rail2 = createCustomSupportMesh(railLen, 1.5, 5, 'H', true, true);
+        rail2.position.set(0, elevY + railY, zVal + 10);
+        kGroup.add(rail2);
+        totalSupportLengthM += railLen / 100;
+        supportSegmentsCount++;
+
+        for (let i = 0; i < numX; i++) {
+          const xVal = (numX > 1) ? (xStart + i * stepX) : 0;
+          const centerY = isGora ? (topY - 2.25) : (bottomY + 2.25);
+
+          // Świecąca część plafonu
+          const panelGeo = new THREE.BoxGeometry(28, 1.4, 28);
+          const panelMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            emissive: 0xffffff,
+            emissiveIntensity: 1.5,
+            roughness: 0.1,
+            metalness: 0.1
+          });
+          const panelMesh = new THREE.Mesh(panelGeo, panelMat);
+          panelMesh.position.set(xVal, elevY + centerY, zVal);
+          kGroup.add(panelMesh);
+
+          // Ramka metalowa obwódki
+          const frameGeo = new THREE.BoxGeometry(30, 1.5, 30);
+          const frameMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4, metalness: 0.8 });
+          const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+          frameMesh.position.set(xVal, elevY + centerY, zVal);
+          frameMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(frameGeo), edgeMat));
+          kGroup.add(frameMesh);
+        }
+      }
+    });
   }
 
   // Helpery do pasków LED pod blatem
@@ -4723,6 +5112,7 @@ function drawCTFScene(config) {
   }
 
   window.currentKasetonConfig.totalSupportLengthM = totalSupportLengthM;
+  window.currentKasetonConfig.supportSegmentsCount = supportSegmentsCount;
   // =========================================================================
 
   // --- BLAT GÓRNY ---
@@ -4875,16 +5265,19 @@ function drawCTFScene(config) {
     // 4. Elementy oświetlenia dla CTF_LED
     if (sys === 'CTF_LED') {
       if (config.light === 'zarowka') {
+        const numX = 1 + Math.ceil(Math.max(0, W - 100) / 100);
+        const numZ = 1 + Math.ceil(Math.max(0, D - 100) / 100);
+        const totalBulbs = numX * numZ;
         addNumberedMarker('LIGHT_BULB',
           new THREE.Vector3(0, elevY + H / 2 - 1.5, 0),
           'Żarówka LED 40W',
-          'Oświetlenie wiszące (wisząca kukurydza)');
-      } else if (config.light === 'plafon_dol' || config.light === 'plafon_gora') {
-        const isGora = (config.light === 'plafon_gora');
+          `${totalBulbs} szt. – oświetlenie wiszące (wisząca kukurydza)`);
+      } else if (config.light === 'plafon_dol' || config.light === 'plafon_gora' || config.light === 'plafon_gora_dol') {
+        const isGora = (config.light === 'plafon_gora' || config.light === 'plafon_gora_dol');
         addNumberedMarker('LIGHT_PLAFON',
           new THREE.Vector3(0, elevY + (isGora ? (topY - 2.25) : (bottomY + 2.25)), 0),
-          'Plafon LED 30x30',
-          'Kasetonowy panel oświetleniowy montowany na szynach');
+          config.light === 'plafon_gora_dol' ? 'Plafon LED (góra + dół)' : 'Plafon LED 30x30',
+          config.light === 'plafon_gora_dol' ? 'Kasetonowe panele oświetleniowe montowane na górze i dole' : 'Kasetonowy panel oświetleniowy montowany na szynach');
       } else if (config.light === 'paski_led' && topPanel === 'mdf') {
         addNumberedMarker('LIGHT_STRIP',
           new THREE.Vector3(0, elevY + H + cOffset - 1.5, 0),
@@ -4905,6 +5298,38 @@ function drawCTFScene(config) {
         'Wykończenie górne kasetonu');
     }
 
+    // 6. Nawiert na przewód zasilający
+    if (['drill_bottom', 'drill_top', 'drill_left', 'drill_right'].includes(config.cableExit)) {
+      const val = parseFloat(config.cableDrillVal) || 0;
+      let label = '';
+      if (config.cableExit === 'drill_bottom') {
+        label = `Nawiert w dolnym profilu (odległość od lewej: ${val} mm)`;
+      } else if (config.cableExit === 'drill_top') {
+        label = `Nawiert w górnym profilu (odległość od lewej: ${val} mm)`;
+      } else if (config.cableExit === 'drill_left') {
+        label = `Nawiert w lewym profilu (odległość od dołu: ${val} mm)`;
+      } else if (config.cableExit === 'drill_right') {
+        label = `Nawiert w prawym profilu (odległość od dołu: ${val} mm)`;
+      }
+      
+      const valCm = val / 10;
+      let targetX = 0, targetY = 0;
+      if (config.cableExit === 'drill_bottom') {
+        targetX = -W / 2 + valCm; targetY = elevY;
+      } else if (config.cableExit === 'drill_top') {
+        targetX = -W / 2 + valCm; targetY = elevY + H;
+      } else if (config.cableExit === 'drill_left') {
+        targetX = -W / 2; targetY = elevY + valCm;
+      } else if (config.cableExit === 'drill_right') {
+        targetX = W / 2; targetY = elevY + valCm;
+      }
+
+      addNumberedMarker('CABLE_EXIT_DRILL',
+        new THREE.Vector3(targetX, targetY, -hd),
+        'Nawiert na przewód zasilający',
+        label);
+    }
+
     // Zapis do rejestru
     window.blueprintLegendItems = legendItems;
     window.blueprintDimensions = { W, H, D, sys };
@@ -4922,6 +5347,54 @@ function drawCTFScene(config) {
     const pD2 = new THREE.Vector3(W / 2, elevY, hd);
     kGroup.add(addDimension3D(pD1, pD2, D + ' cm', new THREE.Vector3(20, 0, 20), 1.3));
   }
+  // --- CUSTOM CABLE EXIT DRILL AND WIRE (CTF Box) ---
+  const isCTFLED = (sys === 'CTF_LED');
+  if (isCTFLED && ['drill_bottom', 'drill_top', 'drill_left', 'drill_right'].includes(config.cableExit)) {
+    const val = parseFloat(config.cableDrillVal) || 0;
+    const valCm = val / 10;
+    let hx = 0, hy = 0, hz = -hd;
+    let wx = 0, wy = 0, wz = -hd;
+    let isHoriz = true;
+
+    if (config.cableExit === 'drill_bottom') {
+      hx = -W / 2 + valCm; hy = elevY + 0.25;
+      wx = hx; wy = elevY - 1.5;
+      isHoriz = true;
+    } else if (config.cableExit === 'drill_top') {
+      hx = -W / 2 + valCm; hy = elevY + H - 0.25;
+      wx = hx; wy = elevY + H + 1.5;
+      isHoriz = true;
+    } else if (config.cableExit === 'drill_left') {
+      hx = -W / 2 + 0.25; hy = elevY + valCm;
+      wx = -W / 2 - 1.5; wy = hy;
+      isHoriz = false;
+    } else if (config.cableExit === 'drill_right') {
+      hx = W / 2 - 0.25; hy = elevY + valCm;
+      wx = W / 2 + 1.5; wy = hy;
+      isHoriz = false;
+    }
+
+    // Draw 6mm Hole
+    const holeGeom = new THREE.CylinderGeometry(0.3, 0.3, 0.5, 16);
+    const holeMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 1.0 });
+    const holeMesh = new THREE.Mesh(holeGeom, holeMat);
+    holeMesh.position.set(hx, hy, hz);
+    if (!isHoriz) {
+      holeMesh.rotation.z = Math.PI / 2;
+    }
+    kGroup.add(holeMesh);
+
+    // Draw 30mm Wire
+    const wireGeom = new THREE.CylinderGeometry(0.15, 0.15, 3.0, 8);
+    const wireColor = (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? 0xff0000 : 0x111111;
+    const wireMat = new THREE.MeshStandardMaterial({ color: wireColor, roughness: 0.85 });
+    const wireMesh = new THREE.Mesh(wireGeom, wireMat);
+    wireMesh.position.set(wx, wy, wz);
+    if (!isHoriz) {
+      wireMesh.rotation.z = Math.PI / 2;
+    }
+    kGroup.add(wireMesh);
+  }
 
   kGroup.rotation.y = Math.PI;
 
@@ -4937,6 +5410,10 @@ function drawCTFScene(config) {
 
   if (typeof generateKasetonBOM === 'function') generateKasetonBOM();
 
+  if (typeof renderer !== 'undefined' && renderer && scene && camera) {
+    renderer.render(scene, camera);
+  }
+
   console.log('✨ 3D CTF box scene rendered successfully!');
 }
 
@@ -4945,13 +5422,156 @@ function drawCartonScene() {
   const config = window.currentKasetonConfig;
   if (!config) return;
 
+  if (typeof generateKasetonBOM === 'function') {
+    generateKasetonBOM();
+  }
+
+  const packing = config.packing || 'kartony';
+  if (packing === 'luzem') {
+    if (typeof drawKasetonScene === 'function') drawKasetonScene();
+    return;
+  }
+
+  const isBag = (packing === 'torby');
   const cartonName = config.cartonName || 'Karton LMD/LMS/DTF - 210x16x33cm';
   const cartonQty = config.cartonQty || 1;
-  const dims = KASETON_CARTON_DIMENSIONS[cartonName] || { l: 210, w: 16, h: 33 };
   const totalWeight = calculateKasetonWeight(config);
+
+  let dims;
+  if (isBag) {
+    let bagLen = 213;
+    if (cartonName.includes('105') || cartonName.includes('110') || cartonName.includes('113')) bagLen = 113;
+    else if (cartonName.includes('130') || cartonName.includes('135') || cartonName.includes('144')) bagLen = 144;
+    else if (cartonName.includes('155') || cartonName.includes('160') || cartonName.includes('163')) bagLen = 163;
+    
+    dims = { l: bagLen, w: 32, h: 22 };
+  } else {
+    dims = KASETON_CARTON_DIMENSIONS[cartonName] || { l: 210, w: 16, h: 33 };
+  }
 
   const kGroup = new THREE.Group();
   kGroup.userData = { isKaseton: true };
+
+  // Create a light wooden floor showroom plane (500x500 cm) with a 5mm black grout
+  if (!isBlueprintMode) {
+    const backGeo = new THREE.PlaneGeometry(500, 500);
+    backGeo.rotateX(-Math.PI / 2);
+    const backMat = new THREE.MeshStandardMaterial({
+      color: 0x111111, // Nice dark grout color
+      roughness: 0.9,
+      metalness: 0.1
+    });
+    const backMesh = new THREE.Mesh(backGeo, backMat);
+    backMesh.position.set(0, -1.2, 0); // slightly lower
+    backMesh.receiveShadow = true;
+    kGroup.add(backMesh);
+
+    // Generate procedural dark wood texture
+    const createDarkWoodTexture = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+      
+      // Rich dark oak/walnut base color
+      ctx.fillStyle = '#4e321c';
+      ctx.fillRect(0, 0, 512, 512);
+      
+      // Draw grains horizontally
+      for (let x = 0; x < 512; x += 3) {
+        let yOffset = Math.sin(x * 0.035) * 15 + Math.sin(x * 0.007) * 30;
+        yOffset += (Math.random() - 0.5) * 1.5;
+        
+        for (let y = -60; y < 572; y += 40) {
+          const py = y + yOffset;
+          ctx.strokeStyle = `rgba(25, 12, 4, ${0.15 + Math.random() * 0.18})`;
+          ctx.lineWidth = 1 + Math.random() * 1.5;
+          ctx.beginPath();
+          ctx.moveTo(x, py);
+          ctx.lineTo(x + 3, py + (Math.random() - 0.5) * 3);
+          ctx.stroke();
+        }
+      }
+      
+      // Subtle lighter warm grains highlights
+      for (let x = 0; x < 512; x += 6) {
+        let yOffset = Math.sin(x * 0.03) * 12 + Math.sin(x * 0.008) * 25;
+        for (let y = -30; y < 542; y += 50) {
+          const py = y + yOffset;
+          ctx.strokeStyle = `rgba(120, 80, 50, ${0.05 + Math.random() * 0.08})`;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(x, py);
+          ctx.lineTo(x + 6, py + (Math.random() - 0.5) * 2);
+          ctx.stroke();
+        }
+      }
+      
+      // Add knots
+      for (let k = 0; k < 4; k++) {
+        const kx = Math.random() * 512;
+        const ky = Math.random() * 512;
+        const kr = 15 + Math.random() * 20;
+        
+        for (let r = kr; r > 3; r -= 3) {
+          ctx.strokeStyle = `rgba(20, 8, 2, ${0.08 + (1 - r/kr) * 0.25})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.ellipse(kx, ky, r, r * 0.45, Math.PI / 16 + (Math.random() - 0.5) * 0.1, 0, Math.PI * 2, false);
+          ctx.stroke();
+        }
+      }
+      
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      return texture;
+    };
+
+    const woodMaterials = [];
+    for (let i = 0; i < 5; i++) {
+      const tex = createDarkWoodTexture();
+      tex.offset.set(Math.random(), Math.random());
+      tex.needsUpdate = true;
+      const mat = new THREE.MeshStandardMaterial({
+        map: tex,
+        bumpMap: tex,
+        bumpScale: 0.015,
+        roughness: 0.8,
+        metalness: 0.04,
+        name: 'dark_wood_floor_' + i
+      });
+      woodMaterials.push(mat);
+    }
+
+    // Lay the planks in a brick pattern with 5mm gaps (grouting)
+    for (let row = 0; row < 25; row++) {
+      const zCenter = -250 + row * 20 + 10;
+      const startXOffset = (row % 2 === 1) ? -60 : 0;
+      const firstIdx = Math.floor((-250 - startXOffset) / 120);
+      const lastIdx = Math.ceil((250 - startXOffset) / 120);
+
+      for (let i = firstIdx; i <= lastIdx; i++) {
+        const plankStartX = startXOffset + i * 120;
+        const plankEndX = plankStartX + 120;
+        const finalStartX = Math.max(plankStartX, -250);
+        const finalEndX = Math.min(plankEndX, 250);
+
+        if (finalEndX > finalStartX + 0.5) {
+          const width = (finalEndX - finalStartX) - 0.5;
+          const cx = (finalStartX + finalEndX) / 2;
+
+          const plankGeom = new THREE.BoxGeometry(width, 1.0, 19.5);
+          const plankMat = woodMaterials[Math.floor(Math.random() * woodMaterials.length)];
+          const plankMesh = new THREE.Mesh(plankGeom, plankMat);
+          plankMesh.position.set(cx, -0.7, zCenter); // top face is exactly at Y = -0.2
+          plankMesh.castShadow = true;
+          plankMesh.receiveShadow = true;
+          kGroup.add(plankMesh);
+        }
+      }
+    }
+  }
 
   // --- Procedural cardboard texture ---
   const texCanvas = document.createElement('canvas');
@@ -4990,7 +5610,7 @@ function drawCartonScene() {
 
   const cardboardMat = new THREE.MeshStandardMaterial({
     map: cardboardTex,
-    roughness: 0.85,
+    roughness: 0.96, // Reduced glossiness (very matte)
     metalness: 0.0,
     color: 0xc69c6d
   });
@@ -4998,10 +5618,69 @@ function drawCartonScene() {
   // Tape material
   const tapeMat = new THREE.MeshStandardMaterial({
     color: 0xD2B48C,
-    roughness: 0.3,
+    roughness: 0.5,
     metalness: 0.1,
     transparent: true,
     opacity: 0.7
+  });
+
+  // --- Procedural bag fabric texture with organic creases and wrinkles ---
+  const bagTexCanvas = document.createElement('canvas');
+  bagTexCanvas.width = 512;
+  bagTexCanvas.height = 512;
+  const bCtx = bagTexCanvas.getContext('2d');
+
+  // Base dark charcoal color
+  bCtx.fillStyle = '#1c1c1c';
+  bCtx.fillRect(0, 0, 512, 512);
+
+  // Fabric texture noise
+  for (let i = 0; i < 20000; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const opacity = Math.random() * 0.03;
+    bCtx.fillStyle = Math.random() > 0.5 ? `rgba(255, 255, 255, ${opacity})` : `rgba(0, 0, 0, ${opacity})`;
+    bCtx.fillRect(x, y, 1, 1);
+  }
+
+  // Draw organic wrinkles and folds (lighter/darker shadow pairs)
+  bCtx.lineWidth = 2.5;
+  for (let w = 0; w < 16; w++) {
+    let startX = Math.random() * 512;
+    let startY = Math.random() * 512;
+    let cp1x = startX + (Math.random() - 0.5) * 150;
+    let cp1y = startY + (Math.random() - 0.5) * 150;
+    let cp2x = startX + (Math.random() - 0.5) * 300;
+    let cp2y = startY + (Math.random() - 0.5) * 300;
+    let endX = startX + (Math.random() - 0.5) * 400;
+    let endY = startY + (Math.random() - 0.5) * 400;
+
+    // Dark shadow crease
+    bCtx.strokeStyle = 'rgba(0, 0, 0, 0.25)';
+    bCtx.beginPath();
+    bCtx.moveTo(startX, startY);
+    bCtx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, endX, endY);
+    bCtx.stroke();
+
+    // Lighter highlight crease (slightly offset for 3D effect)
+    bCtx.strokeStyle = 'rgba(120, 120, 120, 0.09)';
+    bCtx.beginPath();
+    bCtx.moveTo(startX + 1.5, startY + 1.5);
+    bCtx.bezierCurveTo(cp1x + 1.5, cp1y + 1.5, cp2x + 1.5, cp2y + 1.5, endX + 1.5, endY + 1.5);
+    bCtx.stroke();
+  }
+
+  const bagTex = new THREE.CanvasTexture(bagTexCanvas);
+  bagTex.wrapS = THREE.RepeatWrapping;
+  bagTex.wrapT = THREE.RepeatWrapping;
+
+  const bagMat = new THREE.MeshStandardMaterial({
+    map: bagTex,
+    bumpMap: bagTex,
+    bumpScale: 0.15,
+    roughness: 0.98, // Completely matte fabric
+    metalness: 0.0,
+    color: 0x181818
   });
 
   // Position cartons side by side
@@ -5012,49 +5691,178 @@ function drawCartonScene() {
   for (let i = 0; i < cartonQty; i++) {
     const zPos = startZ + i * spacing;
 
-    // Main box
-    const boxGeom = new THREE.BoxGeometry(dims.l, dims.h, dims.w);
-    const box = new THREE.Mesh(boxGeom, cardboardMat);
-    box.position.set(0, dims.h / 2, zPos);
-    box.castShadow = true;
-    box.receiveShadow = true;
-    kGroup.add(box);
+    if (isBag) {
+      // --- DRAW WHEELED BAG ---
+      const bagGeom = new THREE.BoxGeometry(dims.l, dims.h, dims.w);
+      const bag = new THREE.Mesh(bagGeom, bagMat);
+      bag.position.set(0, dims.h / 2, zPos);
+      bag.castShadow = true;
+      bag.receiveShadow = true;
+      kGroup.add(bag);
 
-    // Tape strip on top (center seam)
-    const tapeGeom = new THREE.BoxGeometry(dims.l * 0.92, 0.4, 5);
-    const tape = new THREE.Mesh(tapeGeom, tapeMat);
-    tape.position.set(0, dims.h + 0.2, zPos);
-    kGroup.add(tape);
+      // Wheels
+      const wheelGeom = new THREE.CylinderGeometry(3.5, 3.5, 2.5, 16);
+      const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.6 });
+      const wheelHousingMat = new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 0.8 });
+      const housingGeom = new THREE.BoxGeometry(6, 7, 5);
 
-    // Cross tape
-    const crossTapeGeom = new THREE.BoxGeometry(5, 0.4, dims.w * 0.92);
-    const crossTape = new THREE.Mesh(crossTapeGeom, tapeMat);
-    crossTape.position.set(0, dims.h + 0.2, zPos);
-    kGroup.add(crossTape);
+      const zOffsets = [-dims.w / 2 + 5, dims.w / 2 - 5];
+      zOffsets.forEach(zo => {
+        const housing = new THREE.Mesh(housingGeom, wheelHousingMat);
+        housing.position.set(dims.l / 2 - 1, 3.5, zPos + zo);
+        kGroup.add(housing);
 
-    // Edge wireframe
-    const edgeGeo = new THREE.EdgesGeometry(boxGeom);
-    const edgeMat = new THREE.LineBasicMaterial({
-      color: 0x8B6914,
-      transparent: true,
-      opacity: 0.4
-    });
-    const edges = new THREE.LineSegments(edgeGeo, edgeMat);
-    edges.position.copy(box.position);
-    kGroup.add(edges);
+        const wheel = new THREE.Mesh(wheelGeom, wheelMat);
+        wheel.rotation.x = Math.PI / 2;
+        wheel.position.set(dims.l / 2 + 1.5, 3.5, zPos + zo);
+        wheel.castShadow = true;
+        kGroup.add(wheel);
+      });
 
-    // Flap lines on top (decorative crease)
-    const flapMat = new THREE.LineBasicMaterial({ color: 0x9B7B4A, transparent: true, opacity: 0.3 });
-    const flapGeo1 = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-dims.l / 2, dims.h + 0.1, zPos - dims.w / 4),
-      new THREE.Vector3(dims.l / 2, dims.h + 0.1, zPos - dims.w / 4)
-    ]);
-    kGroup.add(new THREE.Line(flapGeo1, flapMat));
-    const flapGeo2 = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(-dims.l / 2, dims.h + 0.1, zPos + dims.w / 4),
-      new THREE.Vector3(dims.l / 2, dims.h + 0.1, zPos + dims.w / 4)
-    ]);
-    kGroup.add(new THREE.Line(flapGeo2, flapMat));
+      // Carrying handles / straps (Fabric strap ucho)
+      const strapMat = new THREE.MeshStandardMaterial({
+        color: 0x0c0c0c,
+        roughness: 0.98,
+        metalness: 0.0
+      });
+      
+      // Short end left strap loop (at X = -L/2)
+      const leftAnchorGeo = new THREE.BoxGeometry(0.2, 3, 0.8);
+      const leftAnchor1 = new THREE.Mesh(leftAnchorGeo, strapMat);
+      leftAnchor1.position.set(-dims.l / 2 - 0.1, dims.h / 2, zPos - 3.5);
+      kGroup.add(leftAnchor1);
+
+      const leftAnchor2 = new THREE.Mesh(leftAnchorGeo, strapMat);
+      leftAnchor2.position.set(-dims.l / 2 - 0.1, dims.h / 2, zPos + 3.5);
+      kGroup.add(leftAnchor2);
+
+      const endDiagGeo = new THREE.BoxGeometry(2.5, 0.25, 0.8);
+      const leftSeg1 = new THREE.Mesh(endDiagGeo, strapMat);
+      leftSeg1.rotation.y = -0.45;
+      leftSeg1.position.set(-dims.l / 2 - 1.0, dims.h / 2, zPos - 2.6);
+      kGroup.add(leftSeg1);
+
+      const leftSeg2 = new THREE.Mesh(endDiagGeo, strapMat);
+      leftSeg2.rotation.y = 0.45;
+      leftSeg2.position.set(-dims.l / 2 - 1.0, dims.h / 2, zPos + 2.6);
+      kGroup.add(leftSeg2);
+
+      const endGripGeo = new THREE.BoxGeometry(0.25, 0.25, 5.2);
+      const leftGrip = new THREE.Mesh(endGripGeo, strapMat);
+      leftGrip.position.set(-dims.l / 2 - 2.0, dims.h / 2, zPos);
+      kGroup.add(leftGrip);
+
+      // Short end right strap loop (at X = +L/2)
+      const rightAnchor1 = new THREE.Mesh(leftAnchorGeo, strapMat);
+      rightAnchor1.position.set(dims.l / 2 + 0.1, dims.h / 2 + 3, zPos - 3.5);
+      kGroup.add(rightAnchor1);
+
+      const rightAnchor2 = new THREE.Mesh(leftAnchorGeo, strapMat);
+      rightAnchor2.position.set(dims.l / 2 + 0.1, dims.h / 2 + 3, zPos + 3.5);
+      kGroup.add(rightAnchor2);
+
+      const rightSeg1 = new THREE.Mesh(endDiagGeo, strapMat);
+      rightSeg1.rotation.y = 0.45;
+      rightSeg1.position.set(dims.l / 2 + 1.0, dims.h / 2 + 3, zPos - 2.6);
+      kGroup.add(rightSeg1);
+
+      const rightSeg2 = new THREE.Mesh(endDiagGeo, strapMat);
+      rightSeg2.rotation.y = -0.45;
+      rightSeg2.position.set(dims.l / 2 + 1.0, dims.h / 2 + 3, zPos + 2.6);
+      kGroup.add(rightSeg2);
+
+      const rightGrip = new THREE.Mesh(endGripGeo, strapMat);
+      rightGrip.position.set(dims.l / 2 + 2.0, dims.h / 2 + 3, zPos);
+      kGroup.add(rightGrip);
+
+      // Long side carrying handle strap loop (along zipper wall Z = +W/2)
+      const sideAnchorGeo = new THREE.BoxGeometry(1.6, 2.5, 0.25);
+      const sideAnchor1 = new THREE.Mesh(sideAnchorGeo, strapMat);
+      sideAnchor1.position.set(-10, dims.h / 2, zPos + dims.w / 2 + 0.1);
+      kGroup.add(sideAnchor1);
+
+      const sideAnchor2 = new THREE.Mesh(sideAnchorGeo, strapMat);
+      sideAnchor2.position.set(10, dims.h / 2, zPos + dims.w / 2 + 0.1);
+      kGroup.add(sideAnchor2);
+
+      const sideDiagGeo = new THREE.BoxGeometry(8, 0.25, 0.8);
+      const sideSeg1 = new THREE.Mesh(sideDiagGeo, strapMat);
+      sideSeg1.rotation.z = 0.5;
+      sideSeg1.position.set(-6.5, dims.h / 2 + 2.5, zPos + dims.w / 2 + 1.0);
+      kGroup.add(sideSeg1);
+
+      const sideSeg2 = new THREE.Mesh(sideDiagGeo, strapMat);
+      sideSeg2.rotation.z = -0.5;
+      sideSeg2.position.set(6.5, dims.h / 2 + 2.5, zPos + dims.w / 2 + 1.0);
+      kGroup.add(sideSeg2);
+
+      const sideGripGeo = new THREE.BoxGeometry(7, 0.25, 0.8);
+      const sideGrip = new THREE.Mesh(sideGripGeo, strapMat);
+      sideGrip.position.set(0, dims.h / 2 + 4.5, zPos + dims.w / 2 + 1.8);
+      kGroup.add(sideGrip);
+
+      // Zipper running along top face front edge
+      const zipMat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.3, metalness: 0.8 });
+      const zipGeom = new THREE.BoxGeometry(dims.l * 0.98, 0.5, 0.5);
+      const zipLine = new THREE.Mesh(zipGeom, zipMat);
+      zipLine.position.set(0, dims.h + 0.1, zPos + dims.w / 2 - 1);
+      kGroup.add(zipLine);
+
+      // Zipper pull tabs
+      const sliderGeom = new THREE.BoxGeometry(1.5, 0.8, 0.6);
+      const slider1 = new THREE.Mesh(sliderGeom, zipMat);
+      slider1.position.set(-5, dims.h + 0.3, zPos + dims.w / 2 - 1);
+      kGroup.add(slider1);
+
+      const slider2 = new THREE.Mesh(sliderGeom, zipMat);
+      slider2.position.set(5, dims.h + 0.3, zPos + dims.w / 2 - 1);
+      kGroup.add(slider2);
+
+    } else {
+      // --- DRAW CARDBOARD BOX ---
+      const boxGeom = new THREE.BoxGeometry(dims.l, dims.h, dims.w);
+      const box = new THREE.Mesh(boxGeom, cardboardMat);
+      box.position.set(0, dims.h / 2, zPos);
+      box.castShadow = true;
+      box.receiveShadow = true;
+      kGroup.add(box);
+
+      // Tape strip on top (center seam)
+      const tapeGeom = new THREE.BoxGeometry(dims.l * 0.92, 0.4, 5);
+      const tape = new THREE.Mesh(tapeGeom, tapeMat);
+      tape.position.set(0, dims.h + 0.2, zPos);
+      kGroup.add(tape);
+
+      // Cross tape
+      const crossTapeGeom = new THREE.BoxGeometry(5, 0.4, dims.w * 0.92);
+      const crossTape = new THREE.Mesh(crossTapeGeom, tapeMat);
+      crossTape.position.set(0, dims.h + 0.2, zPos);
+      kGroup.add(crossTape);
+
+      // Edge wireframe
+      const edgeGeo = new THREE.EdgesGeometry(boxGeom);
+      const edgeMat = new THREE.LineBasicMaterial({
+        color: 0x8B6914,
+        transparent: true,
+        opacity: 0.4
+      });
+      const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+      edges.position.copy(box.position);
+      kGroup.add(edges);
+
+      // Flap lines on top (decorative crease)
+      const flapMat = new THREE.LineBasicMaterial({ color: 0x9B7B4A, transparent: true, opacity: 0.3 });
+      const flapGeo1 = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-dims.l / 2, dims.h + 0.1, zPos - dims.w / 4),
+        new THREE.Vector3(dims.l / 2, dims.h + 0.1, zPos - dims.w / 4)
+      ]);
+      kGroup.add(new THREE.Line(flapGeo1, flapMat));
+      const flapGeo2 = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-dims.l / 2, dims.h + 0.1, zPos + dims.w / 4),
+        new THREE.Vector3(dims.l / 2, dims.h + 0.1, zPos + dims.w / 4)
+      ]);
+      kGroup.add(new THREE.Line(flapGeo2, flapMat));
+    }
   }
 
   // --- Label sprite helper ---
@@ -5105,7 +5913,7 @@ function drawCartonScene() {
 
   // Quantity label (if multiple)
   if (cartonQty > 1) {
-    const qtyLabel = makeLabel(`Ilo\u015b\u0107 karton\u00f3w: ${cartonQty}`, 50, 'rgba(230, 126, 34, 0.85)');
+    const qtyLabel = makeLabel(`Ilo\u015b\u0107 ${isBag ? 'toreb' : 'karton\u00f3w'}: ${cartonQty}`, 50, 'rgba(230, 126, 34, 0.85)');
     qtyLabel.position.set(0, dims.h + 60, 0);
     kGroup.add(qtyLabel);
   }
@@ -5178,6 +5986,10 @@ function drawCartonScene() {
   camera.position.set(dims.l * 0.4, dims.h * 1.5, maxDim * 1.1);
   controls.target.set(0, dims.h / 2, 0);
   controls.update();
+
+  if (typeof renderer !== 'undefined' && renderer && scene && camera) {
+    renderer.render(scene, camera);
+  }
 
   console.log('📦 Carton scene rendered:', cartonQty, 'x', cartonName, '| Weight:', totalWeight.toFixed(1), 'kg');
 }

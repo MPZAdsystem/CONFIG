@@ -170,7 +170,9 @@ async function executePDFGeneration() {
 
     for (let name in globalCounts) {
         let item = globalCounts[name];
+        let descText = item.description ? `\n(${item.description})` : '';
         let itemName = (lang !== 'PL') ? (Object.values(DB).find(e => e.name === name)?.labelEN || name) : name;
+        itemName += descText;
         let priceObj = typeof getPriceForRole === 'function' ? getPriceForRole(name) : { basePrice: item.unitPrice, price: item.unitPrice };
         let baseRowUnit = priceObj.basePrice * rate;
         let finalRowUnit = priceObj.price * rate * (1 - (discountPercent / 100));
@@ -498,11 +500,12 @@ async function exportToSheets() {
     for (let name in globalCounts) {
         let catNo = null;
         if (name === "Moduł 300x250") catNo = DB.sego300x250.catNo; else if (name === "Moduł 200x250") catNo = DB.sego200x250.catNo;
-        else if (name === "Moduł 100x250" || name === "- Daszek: Moduł 100x250 (Dach)") catNo = DB.sego100x250.catNo; else if (name === "Moduł 85x250") catNo = DB.sego85x250.catNo;
-        else if (name === "SEGO Door 100 (H:250)") catNo = DB.door100.catNo; else if (name === "Moduł 300x300") catNo = DB.sego300x300.catNo;
+        else if (name === "Moduł 100x250" || name === "- Daszek: Moduł 100x250 (Dach)") catNo = DB.sego100x250.catNo; else if (name === "Moduł 100x200" || name === "- Daszek: Moduł 100x200 (Dach)") catNo = DB.sego100x200.catNo; else if (name === "Moduł 100x100") catNo = DB.sego100x100.catNo; else if (name === "Moduł 85x250") catNo = DB.sego85x250.catNo;
+        else if (name === "SEGO Door 100 (H:250)") catNo = DB.door100.catNo; else if (name === "SEGO Door 100 (H:300)") catNo = DB.door100x300.catNo; else if (name === "Moduł 300x300") catNo = DB.sego300x300.catNo;
         else if (name === "Moduł 200x300") catNo = DB.sego200x300.catNo; else if (name === "Moduł 100x300" || name === "- Daszek: Moduł 100x300 (Noga)") catNo = DB.sego100x300.catNo;
         else if (name === "Moduł 85x300") catNo = DB.sego85x300.catNo; else if (name === "Panel TV") catNo = DB.tvPanel.catNo;
         else if (name === "Shelf Kit") catNo = DB.shelfKit.catNo; else if (name === "- Daszek: Bridge Connector" || name === "Bridge Connector") catNo = DB.bridge.catNo;
+        else if (name === "SEGO Łącznik nadstawka" || name === "SEGO 180 Connector") catNo = DB.segoStackConn.catNo;
         else if (name === "łącznik prosty (Clamp)") catNo = DB.clamp.catNo;
         else if (name === "łącznik kątowy (wew/zew)") catNo = DB.wewzew.catNo;
         else if (name === "SEGO łącznik zewnętrzny L") catNo = DB.zewzew.catNo;
@@ -1924,7 +1927,7 @@ async function randomizeProjectGraphics(btnElement) {
 
             if (item.accessories) {
                 item.accessories.forEach(acc => {
-                    if (acc.id === 'daszek') {
+                    if (acc.id === 'daszek' || acc.id === 'daszek100x200') {
                         acc.texRoofFront = null; acc.texRoofFrontName = null;
                         acc.texRoofBack = null; acc.texRoofBackName = null;
                         acc.texLegFront = null; acc.texLegFrontName = null;
@@ -2216,8 +2219,9 @@ async function randomizeProjectGraphics(btnElement) {
 
                 if (item.accessories) {
                     item.accessories.forEach(acc => {
-                        if (acc.id === 'daszek') {
-                            const gRoof = findBestGraphic(100, 250);
+                        if (acc.id === 'daszek' || acc.id === 'daszek100x200') {
+                            const roofLen = acc.roofLength || (acc.id === 'daszek100x200' ? 200 : 250);
+                            const gRoof = findBestGraphic(100, roofLen);
                             if (gRoof) { acc.texRoofFront = gRoof.url; acc.texRoofFrontName = gRoof.name; acc.texRoofBack = gRoof.url; acc.texRoofBackName = gRoof.name; updatedAny = true; }
                             const gLeg = findBestGraphic(100, item.height);
                             if (gLeg) { acc.texLegFront = gLeg.url; acc.texLegFrontName = gLeg.name; acc.texLegBack = gLeg.url; acc.texLegBackName = gLeg.name; }

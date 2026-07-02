@@ -301,14 +301,88 @@ window.initIntranetBomDraft = function () {
         else if (config.usage === 'wall') usageStr = 'wieszany na ścianie';
         else usageStr = config.usage || '';
 
+        let cutsDesc = "";
         let cutsStr = '';
-        const numCutsW = config.numCutsW || 0;
-        const numCutsH = config.numCutsH || 0;
-        const totalCuts = numCutsW + numCutsH;
-        if (totalCuts > 0) {
-            cutsStr = `${totalCuts} (pionowe: ${numCutsW}, poziome: ${numCutsH})`;
+        let vCuts = "";
+        let hCuts = "";
+        let horizLedsText = "";
+        let vertLedsText = "";
+        let numCutsW = 0;
+        let numCutsH = 0;
+
+        if (config.cut === 'custom') {
+            cutsStr = 'własne (Custom)';
+            if (config.customCuts) {
+                const isCTF = (sys === 'CTF' || sys === 'CTF_LED');
+                if (isCTF) {
+                    const cc = config.customCuts;
+                    const fbV = (cc.frontBack?.vertical || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+                    const fbH = (cc.frontBack?.horizontal || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+                    const lrV = (cc.leftRight?.vertical || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+                    const lrH = (cc.leftRight?.horizontal || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+                    const tbV = (cc.topBottom?.vertical || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+                    const tbH = (cc.topBottom?.horizontal || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+
+                    cutsDesc = `Cięcia niestandardowe: pionowe przód/tył (odległość od lewej): [${fbV}] / poziome przód/tył (odległość od dołu): [${fbH}] / pionowe boki (odległość od lewej): [${lrV}] / poziome boki (odległość od dołu): [${lrH}] / szerokość góra/dół (odległość od lewej): [${tbV}] / głębokość góra/dół (odległość od dołu): [${tbH}]`;
+                } else {
+                    const cc = config.customCuts;
+                    vCuts = (cc.vertical || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+                    hCuts = (cc.horizontal || []).map(c => `${c.pos}cm`).join(", ") || "w całości";
+                    numCutsW = (cc.vertical || []).length;
+                    numCutsH = (cc.horizontal || []).length;
+
+                    cutsDesc = `Cięcie niestandardowe - pionowe (odległość od lewej): ${vCuts} / poziome (odległość od dołu): ${hCuts}`;
+                }
+            }
         } else {
-            cutsStr = 'brak (ramy w całości)';
+            numCutsW = config.numCutsW || 0;
+            numCutsH = config.numCutsH || 0;
+            const totalCuts = numCutsW + numCutsH;
+            if (totalCuts > 0) {
+                cutsStr = `${totalCuts} (pionowe: ${numCutsW}, poziome: ${numCutsH})`;
+            } else {
+                cutsStr = 'brak (ramy w całości)';
+            }
+        }
+
+        // LED combo text calculations for flat systems inside export.js
+        if (['LMD', 'LMS', 'LMSM', 'LCD_LMD'].includes(sys)) {
+            const ledOption = config.light || 'power_long';
+            if (ledOption !== 'no_light') {
+                const isPower = ledOption.startsWith('power');
+                const type = isPower ? 'POWER' : 'NORMAL';
+                const drawBottom = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
+                const drawTop = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
+                const drawLeft = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
+                const drawRight = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
+
+                const numHorizFaces = (drawTop ? 1 : 0) + (drawBottom ? 1 : 0);
+                const numVertFaces = (drawLeft ? 1 : 0) + (drawRight ? 1 : 0);
+
+                function getLedComboText(length, count) {
+                    if (count <= 0) return '';
+                    const sizes = [50, 30, 24, 20];
+                    let best = [], bestSum = 0;
+                    function go(idx, combo, sum) {
+                        if (sum > length) return;
+                        if (sum > bestSum || (sum === bestSum && combo.length < best.length)) {
+                            bestSum = sum; best = [...combo];
+                        }
+                        for (let i = idx; i < sizes.length; i++) {
+                            go(i, [...combo, sizes[i]], sum + sizes[i]);
+                        }
+                    }
+                    go(0, [], 0);
+                    if (best.length === 0) return '';
+                    
+                    const counts = {};
+                    best.forEach(s => counts[s] = (counts[s] || 0) + count);
+                    return Object.keys(counts).map(s => `${counts[s]}x LED ${type} ${s}cm`).join(", ");
+                }
+
+                horizLedsText = getLedComboText(W - 10, numHorizFaces);
+                vertLedsText = getLedComboText(H - 10, numVertFaces);
+            }
         }
 
         let ledProfilesStr = 'brak';
@@ -339,6 +413,23 @@ window.initIntranetBomDraft = function () {
             }
         }
 
+        let cableExitDesc = '';
+        if (['LMD', 'LMS', 'LMSM', 'CTF_LED', 'LCD_LMD'].includes(sys)) {
+            const ce = config.cableExit || 'back_print';
+            const val = config.cableDrillVal;
+            if (ce === 'back_print') {
+                cableExitDesc = 'przewód zasilający: przez tylny wydruk';
+            } else if (ce === 'drill_bottom') {
+                cableExitDesc = `przewód zasilający: nawiert dolny profil (odległość od lewej: ${val} mm)`;
+            } else if (ce === 'drill_top') {
+                cableExitDesc = `przewód zasilający: nawiert górny profil (odległość od lewej: ${val} mm)`;
+            } else if (ce === 'drill_left') {
+                cableExitDesc = `przewód zasilający: nawiert lewy profil (odległość od dołu: ${val} mm)`;
+            } else if (ce === 'drill_right') {
+                cableExitDesc = `przewód zasilający: nawiert prawy profil (odległość od dołu: ${val} mm)`;
+            }
+        }
+
         let parentDesc = '';
         if (sys === 'CTF') {
             const D = parseFloat(config.height3D) || 120;
@@ -348,6 +439,14 @@ window.initIntranetBomDraft = function () {
         } else {
             const totalPower = Math.round(config.totalPowerW || 0);
             parentDesc = `Kaseton ${sys} ${W}x${H} cm, zastosowanie: ${usageStr}, liczba cięć: ${cutsStr}, LED na profilach: ${ledProfilesStr}, moc LED: ${totalPower}W`;
+        }
+        
+        if (cableExitDesc) {
+            parentDesc += `, ${cableExitDesc}`;
+        }
+
+        if (cutsDesc) {
+            parentDesc += ` | ${cutsDesc}`;
         }
 
         const finalEUR = window.globalTotalEUR || 0;
@@ -413,11 +512,36 @@ window.initIntranetBomDraft = function () {
             // Standardowa logika pakietowa dla LMD/LMS/LMSM (Ceny dzieci = null)
             const isMainProfile = item.name.startsWith('profil LMS') || item.name.startsWith('profil LMD') || item.name.startsWith('profil LMSM') || item.name.startsWith('profil LMSO');
             if (isMainProfile) {
+                let widthDesc = '';
+                let heightDesc = '';
+                if (config.cut === 'custom') {
+                    widthDesc = `${W}cm / cięcie: pionowe (odległość od lewej): ${vCuts}`;
+                    if (horizLedsText) widthDesc += ` / oświetlenie LED: ${horizLedsText}`;
+                    
+                    heightDesc = `${H}cm / cięcie: poziome (odległość od dołu): ${hCuts}`;
+                    if (vertLedsText) heightDesc += ` / oświetlenie LED: ${vertLedsText}`;
+                } else {
+                    widthDesc = `${W}cm / oświetlenie LED: ${ledProfilesStr} / cięcie: ${config.numCutsW > 0 ? 'cięty na pół' : 'cały'}`;
+                    heightDesc = `${H}cm / cięcie: ${config.numCutsH > 0 ? 'cięty na pół' : 'cały'}`;
+                }
+
+                if (config.cableExit === 'drill_top') {
+                    widthDesc += ` / nawiert na profilu: ${config.cableDrillVal} mm od lewej krawędzi`;
+                } else if (config.cableExit === 'drill_bottom') {
+                    widthDesc += ` / nawiert na profilu: ${config.cableDrillVal} mm od lewej krawędzi`;
+                }
+
+                if (config.cableExit === 'drill_left') {
+                    heightDesc += ` / nawiert na profilu: ${config.cableDrillVal} mm od dolnej krawędzi`;
+                } else if (config.cableExit === 'drill_right') {
+                    heightDesc += ` / nawiert na profilu: ${config.cableDrillVal} mm od dolnej krawędzi`;
+                }
+
                 draft.push({
-                    id: null, parentId: idVal || null, name: 'szerokość - ' + item.name, qty: W / 100, price: null, vat: '0%', displayName: '', description: `${W}cm / oświetlenie LED: ${ledProfilesStr} / cięcie: ${config.numCutsW > 0 ? 'cięty na pół' : 'cały'}`, isParent: false, isManual: false, isKaseton: true
+                    id: null, parentId: idVal || null, name: 'szerokość - ' + item.name, qty: W / 100, price: null, vat: '0%', displayName: '', description: widthDesc, isParent: false, isManual: false, isKaseton: true
                 });
                 draft.push({
-                    id: null, parentId: idVal || null, name: 'wysokość - ' + item.name, qty: H / 100, price: null, vat: '0%', displayName: '', description: `${H}cm / cięcie: ${config.numCutsH > 0 ? 'cięty na pół' : 'cały'}`, isParent: false, isManual: false, isKaseton: true
+                    id: null, parentId: idVal || null, name: 'wysokość - ' + item.name, qty: H / 100, price: null, vat: '0%', displayName: '', description: heightDesc, isParent: false, isManual: false, isKaseton: true
                 });
                 return;
             }
@@ -442,8 +566,22 @@ window.initIntranetBomDraft = function () {
                 return;
             }
 
+            const isConnOrFoamOrImbus = item.name.includes('łącznik') || item.name.includes('zamek') || item.name.includes('connector') || item.name.includes('pianka') || item.name.includes('imbus');
+            let genericDesc = isConnOrFoamOrImbus ? '' : (item.description || '');
+            if (item.name === 'profil CTF') {
+                if (config.cableExit === 'drill_top') {
+                    genericDesc += (genericDesc ? ' / ' : '') + `nawiert na górnym profilu: ${config.cableDrillVal} mm od lewej krawędzi`;
+                } else if (config.cableExit === 'drill_bottom') {
+                    genericDesc += (genericDesc ? ' / ' : '') + `nawiert na dolnym profilu: ${config.cableDrillVal} mm od lewej krawędzi`;
+                } else if (config.cableExit === 'drill_left') {
+                    genericDesc += (genericDesc ? ' / ' : '') + `nawiert na lewym profilu: ${config.cableDrillVal} mm od dolnej krawędzi`;
+                } else if (config.cableExit === 'drill_right') {
+                    genericDesc += (genericDesc ? ' / ' : '') + `nawiert na prawym profilu: ${config.cableDrillVal} mm od dolnej krawędzi`;
+                }
+            }
+
             draft.push({
-                id: null, parentId: idVal || null, name: item.name, qty: item.qty, price: null, vat: '0%', displayName: '', description: item.description || '', isParent: false, isManual: item.isManual || false, isKaseton: true
+                id: null, parentId: idVal || null, name: item.name, qty: item.qty, price: null, vat: '0%', displayName: '', description: genericDesc, isParent: false, isManual: item.isManual || false, isKaseton: true
             });
         });
     } else {
@@ -455,8 +593,10 @@ window.initIntranetBomDraft = function () {
                     for (let key in DB) { if (DB[key].name === item.name) { idVal = DB[key].intranetId || DB[key].catNo; break; } }
                 }
             }
+            const isConnOrFoamOrImbus = item.name.includes('łącznik') || item.name.includes('zamek') || item.name.includes('connector') || item.name.includes('pianka') || item.name.includes('imbus');
+            const descVal = isConnOrFoamOrImbus ? '' : (item.description || '');
             draft.push({
-                id: idVal || null, parentId: null, name: item.name, qty: item.qty, price: item.price || 0, vat: '23%', displayName: '', description: item.description || '', isParent: false, isManual: item.isManual || false, isKaseton: false
+                id: idVal || null, parentId: null, name: item.name, qty: item.qty, price: item.price || 0, vat: '23%', displayName: '', description: descVal, isParent: false, isManual: item.isManual || false, isKaseton: false
             });
         });
     }
