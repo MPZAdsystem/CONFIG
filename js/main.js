@@ -2127,9 +2127,9 @@ async function randomizeProjectGraphics(btnElement) {
 
         if (currentSystem === 'kasetony_niestandardowe' && window.currentKasetonConfig) {
             const conf = window.currentKasetonConfig;
-            const kw = parseFloat(conf.width) || 100;
+            const kw = parseFloat(conf.width) || 200;
             const kh = parseFloat(conf.depth) || 200;
-            const kd = parseFloat(conf.height3D) || 120;
+            const kd = parseFloat(conf.height3D) || 200;
             const printOption = conf.print || '6_sides';
 
             if (printOption !== 'no_print') {

@@ -261,7 +261,7 @@ const PARENT_PRODUCTS = {
     'STFL': { id: 10594, name: 'adFrame STFL (bez wydruku)' },
     'CTF': { id: 18337, name: 'adFrame CTF' },
     'CTF_LED': { id: 12160, name: 'adFrame CTF (bez wydruku)' },
-    'LCD_LMD': { id: 10334, name: 'adFrame LMD (bez wydruku)' },
+    'LCD_LMD': { id: 13504, name: 'adFrame LCD' },
     'STF': { id: 18254, name: 'adFrame STF' } // <-- 1. DODANO AKTYWNE ID DLA STF
 };
 
@@ -286,6 +286,7 @@ window.initIntranetBomDraft = function () {
     const config = window.currentKasetonConfig || {};
     const W = parseFloat(config.width) || 120;
     const H = parseFloat(config.depth) || 200;
+    const D = parseFloat(config.height3D) || 120;
     const sys = config.system || 'LMD';
 
     const bomItems = window.lastGeneratedBOM || [];
@@ -349,15 +350,29 @@ window.initIntranetBomDraft = function () {
         if (['LMD', 'LMS', 'LMSM', 'LCD_LMD'].includes(sys)) {
             const ledOption = config.light || 'power_long';
             if (ledOption !== 'no_light') {
-                const isPower = ledOption.startsWith('power');
+                const isPower = ledOption.startsWith('power') || sys === 'LCD_LMD';
                 const type = isPower ? 'POWER' : 'NORMAL';
-                const drawBottom = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
-                const drawTop = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
-                const drawLeft = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
-                const drawRight = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
 
-                const numHorizFaces = (drawTop ? 1 : 0) + (drawBottom ? 1 : 0);
-                const numVertFaces = (drawLeft ? 1 : 0) + (drawRight ? 1 : 0);
+                let numHorizFaces = 0;
+                let numVertFaces = 0;
+                let lenW = W - 10;
+                let lenH = H - 10;
+
+                if (sys === 'LCD_LMD') {
+                    const isTop = ledOption === 'top_bottom' || ledOption === 'top_only';
+                    const isBottom = ledOption === 'top_bottom' || ledOption === 'bottom_only';
+                    numHorizFaces = (isTop ? 2 : 0) + (isBottom ? 2 : 0);
+                    numVertFaces = (isTop ? 2 : 0) + (isBottom ? 2 : 0);
+                    lenW = W - 28;
+                    lenH = D - 28;
+                } else {
+                    const drawBottom = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
+                    const drawTop = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
+                    const drawLeft = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
+                    const drawRight = ledOption.includes('around') || (W < H && ledOption.includes('long')) || (W >= H && ledOption.includes('short'));
+                    numHorizFaces = (drawTop ? 1 : 0) + (drawBottom ? 1 : 0);
+                    numVertFaces = (drawLeft ? 1 : 0) + (drawRight ? 1 : 0);
+                }
 
                 function getLedComboText(length, count) {
                     if (count <= 0) return '';
@@ -380,8 +395,8 @@ window.initIntranetBomDraft = function () {
                     return Object.keys(counts).map(s => `${counts[s]}x LED ${type} ${s}cm`).join(", ");
                 }
 
-                horizLedsText = getLedComboText(W - 10, numHorizFaces);
-                vertLedsText = getLedComboText(H - 10, numVertFaces);
+                horizLedsText = getLedComboText(lenW, numHorizFaces);
+                vertLedsText = getLedComboText(lenH, numVertFaces);
             }
         }
 
@@ -390,6 +405,10 @@ window.initIntranetBomDraft = function () {
             const ledOption = config.light || 'power_long';
             if (ledOption === 'no_light') {
                 ledProfilesStr = 'brak';
+            } else if (sys === 'LCD_LMD') {
+                if (ledOption === 'top_bottom') ledProfilesStr = 'góra+dół';
+                else if (ledOption === 'bottom_only') ledProfilesStr = 'tylko dół';
+                else if (ledOption === 'top_only') ledProfilesStr = 'tylko góra';
             } else {
                 const drawBottom = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
                 const drawTop = ledOption.includes('around') || (W >= H && ledOption.includes('long')) || (W < H && ledOption.includes('short'));
@@ -432,13 +451,13 @@ window.initIntranetBomDraft = function () {
 
         let parentDesc = '';
         if (sys === 'CTF') {
-            const D = parseFloat(config.height3D) || 120;
             const topPanel = config.topPanel || 'none';
             let topPanelStr = topPanel === 'none' ? 'brak blatu' : (topPanel === 'mdf' ? 'blat MDF' : (topPanel === 'plexi' ? 'blat PLEXI' : 'blat poliwęglan'));
             parentDesc = `Kostka CTF ${W}x${H}x${D} cm, zastosowanie: ${usageStr}, wykończenie: ${topPanelStr}`;
         } else {
             const totalPower = Math.round(config.totalPowerW || 0);
-            parentDesc = `Kaseton ${sys} ${W}x${H} cm, zastosowanie: ${usageStr}, liczba cięć: ${cutsStr}, LED na profilach: ${ledProfilesStr}, moc LED: ${totalPower}W`;
+            const dimStr = sys === 'LCD_LMD' ? `${W}x${H}x${D}` : `${W}x${H}`;
+            parentDesc = `Kaseton ${sys} ${dimStr} cm, zastosowanie: ${usageStr}, liczba cięć: ${cutsStr}, LED na profilach: ${ledProfilesStr}, moc LED: ${totalPower}W`;
         }
         
         if (cableExitDesc) {
@@ -457,7 +476,7 @@ window.initIntranetBomDraft = function () {
             parentId: null,
             name: parentInfo.name,
             qty: 1,
-            price: (sys === 'STF' || sys === 'STFL' || sys === 'DTF') ? 0 : finalEUR,
+            price: (sys === 'STF' || sys === 'STFL' || sys === 'DTF' || sys === 'LCD_LMD') ? 0 : finalEUR,
             vat: '23%',
             displayName: '',
             description: parentDesc,
@@ -492,7 +511,74 @@ window.initIntranetBomDraft = function () {
             }
 
             // 3. DLA STF/STFL/DTF WPISUJEMY CENĘ I ID BEZPOŚREDNIO DO DZIECKA (Bypass paczkowania cenowego)
-            if (sys === 'STF' || sys === 'STFL' || sys === 'DTF') {
+            if (sys === 'STF' || sys === 'STFL' || sys === 'DTF' || sys === 'LCD_LMD') {
+                if (sys === 'LCD_LMD') {
+                    if (item.name === 'profil LMD odchudzony') {
+                        const unitPrice = item.qty > 0 ? (item.price || 0) / item.qty : 0;
+                        const qtyW = (4 * W) / 100;
+                        const priceW = qtyW * unitPrice;
+                        let descW = `${W}cm`;
+                        if (horizLedsText) descW += ` / oświetlenie LED: ${horizLedsText}`;
+                        descW += ` / scięty obustronnie na 45 stopni`;
+
+                        const qtyD = (4 * D) / 100;
+                        const priceD = qtyD * unitPrice;
+                        let descD = `${D}cm`;
+                        if (vertLedsText) descD += ` / oświetlenie LED: ${vertLedsText}`;
+                        descD += ` / scięty obustronnie na 45 stopni`;
+
+                        draft.push({
+                            id: idVal || null,
+                            parentId: parentInfo.id,
+                            name: 'szerokość - profil LMD odchudzony',
+                            qty: qtyW,
+                            price: priceW,
+                            vat: '23%',
+                            displayName: '',
+                            description: descW,
+                            isParent: false,
+                            isManual: item.isManual || false,
+                            isKaseton: true
+                        });
+
+                        draft.push({
+                            id: idVal || null,
+                            parentId: parentInfo.id,
+                            name: 'głębokość - profil LMD odchudzony',
+                            qty: qtyD,
+                            price: priceD,
+                            vat: '23%',
+                            displayName: '',
+                            description: descD,
+                            isParent: false,
+                            isManual: item.isManual || false,
+                            isKaseton: true
+                        });
+                        return;
+                    }
+
+                    if (item.name === 'adFrame LCD profil przedni z gumką' ||
+                        item.name === 'adFrame LCD profil tylny z gumką/bez gumki' ||
+                        item.name === 'adFrame LCD profil z gumką środkowy') {
+                        let descH = `${H}cm`;
+
+                        draft.push({
+                            id: idVal || null,
+                            parentId: parentInfo.id,
+                            name: 'długość - ' + item.name,
+                            qty: item.qty,
+                            price: item.price || 0,
+                            vat: '23%',
+                            displayName: '',
+                            description: descH,
+                            isParent: false,
+                            isManual: item.isManual || false,
+                            isKaseton: true
+                        });
+                        return;
+                    }
+                }
+
                 draft.push({
                     id: idVal || null,
                     parentId: parentInfo.id, // Łączenie z id rodzica

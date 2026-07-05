@@ -468,9 +468,21 @@ function init3D() {
           break;
         }
       } else if (mesh.userData && mesh.userData.isKasetonPrint) {
-        const side = mesh.userData.side; // 'front', 'back', 'left', 'right', 'top', 'bottom'
+        const side = mesh.userData.side;
         if (!window.currentKasetonConfig) window.currentKasetonConfig = {};
-        const keySuffix = side.charAt(0).toUpperCase() + side.slice(1);
+
+        // Normalize side names to base keys (Front, Back, Left, Right, Top, Bottom)
+        const lowerSide = side.toLowerCase();
+        let dir = 'Front';
+        if (lowerSide.includes('back')) dir = 'Back';
+        else if (lowerSide.includes('left')) dir = 'Left';
+        else if (lowerSide.includes('right')) dir = 'Right';
+        else if (lowerSide.includes('top')) dir = 'Top';
+        else if (lowerSide.includes('bottom')) dir = 'Bottom';
+
+        const isInner = lowerSide.includes('inner');
+        const keySuffix = dir + (isInner ? 'Inner' : '');
+
         const nameKey = 'texture' + keySuffix + 'Name';
         const texKey = 'texture' + keySuffix;
         window.currentKasetonConfig[nameKey] = file.name;

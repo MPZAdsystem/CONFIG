@@ -1516,7 +1516,7 @@ if (stageEl) {
 
     stageEl.ondragover = (e) => {
 
-        if (currentSystem !== 'wydruki') return;
+        if (currentSystem !== 'wydruki' && currentSystem !== 'kasetony_niestandardowe') return;
 
         e.preventDefault();
 
@@ -1532,7 +1532,7 @@ if (stageEl) {
 
     stageEl.ondrop = (e) => {
 
-        if (currentSystem !== 'wydruki') return;
+        if (currentSystem !== 'wydruki' && currentSystem !== 'kasetony_niestandardowe') return;
 
         e.preventDefault();
 

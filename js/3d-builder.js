@@ -1970,6 +1970,72 @@ function createQuadBackground(scene, textureUrls, radius = 2000, height = 1000) 
   scene.add(bgGroup);
 }
 
+// ─────────────────────────────────────────────────────────────────
+// OŚWIETLENIE LED Z SOCZEWKAMI LMD (Module Scope Helpers)
+// ─────────────────────────────────────────────────────────────────
+function getBestLedCombination(maxLength) {
+  const sizes = [50, 30, 24, 20]; let bestCombo = []; let bestSum = 0;
+  function search(index, currentCombo, currentSum) {
+    if (currentSum > maxLength) return;
+    if (currentSum > bestSum) { bestSum = currentSum; bestCombo = [...currentCombo]; }
+    else if (currentSum === bestSum && currentCombo.length < bestCombo.length) { bestCombo = [...currentCombo]; }
+    for (let i = index; i < sizes.length; i++) { currentCombo.push(sizes[i]); search(i, currentCombo, currentSum + sizes[i]); currentCombo.pop(); }
+  }
+  search(0, [], 0); return bestCombo;
+}
+
+function createLedStripeMesh(size) {
+  const stripeGroup = new THREE.Group();
+  let pcbColor = 0xffffff;
+  if (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) {
+    if (size === 50) pcbColor = 0xef4444; else if (size === 30) pcbColor = 0x3b82f6; else if (size === 24) pcbColor = 0xf59e0b; else if (size === 20) pcbColor = 0x06b6d4;
+  }
+  const pcb = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.15, size), new THREE.MeshStandardMaterial({
+    color: pcbColor, roughness: 0.8, metalness: 0.1,
+    emissive: (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? pcbColor : 0x000000, emissiveIntensity: (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? 0.8 : 0.0
+  }));
+  pcb.position.set(0, 0.075, 0); stripeGroup.add(pcb);
+
+  const numLenses = Math.floor(size / 5);
+  const lensGeom = new THREE.CylinderGeometry(1.1, 1.1, 2.0, 16);
+  const lensColor = (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? pcbColor : 0xffcc00;
+  const lensMat = new THREE.MeshStandardMaterial({ color: lensColor, transparent: true, opacity: 0.6, roughness: 0.1, metalness: 0.8 });
+  const glowMesh = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({ color: lensColor }));
+
+  for (let i = 0; i < numLenses; i++) {
+    const zPos = -size / 2 + 2.5 + i * 5;
+    const lens = new THREE.Mesh(lensGeom, lensMat); lens.position.set(0, 1.15, zPos); stripeGroup.add(lens);
+    const gl = glowMesh.clone(); gl.position.set(0, 1.15, zPos); stripeGroup.add(gl);
+  }
+  stripeGroup.userData = { isInternalAnatomy: true }; return stripeGroup;
+}
+
+function populateProfileLeds(profileGroup, length, yPos = 0.5, isTop = false) {
+  const availableLength = length - 10; if (availableLength <= 0) return;
+  const combo = getBestLedCombination(availableLength);
+  const totalStripesLength = combo.reduce((sum, val) => sum + val, 0);
+  let currentOffset = 5 + (availableLength - totalStripesLength) / 2;
+
+  combo.forEach((size, idx) => {
+    const stripe = createLedStripeMesh(size);
+    stripe.position.set(currentOffset + size / 2, yPos, 0);
+    stripe.rotation.y = Math.PI / 2;
+    if (isTop) {
+      stripe.rotation.x = Math.PI;
+    }
+    profileGroup.add(stripe);
+    if (idx < combo.length - 1) {
+      const conn = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 1.2), new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.5, metalness: 0.2 }));
+      conn.position.set(currentOffset + size, yPos + (isTop ? -0.1 : 0.1), 0);
+      if (isTop) {
+        conn.rotation.x = Math.PI;
+      }
+      profileGroup.add(conn);
+    }
+    currentOffset += size;
+  });
+}
+
 function drawKasetonScene() {
   if (!scene) return;
 
@@ -1996,8 +2062,8 @@ function drawKasetonScene() {
   const H = parseFloat(config.depth) || 200;
   const sys = config.system || 'LMD';
 
-  // CTF: completely different 3D model (box/cuboid), delegate to dedicated function
-  if (sys === 'CTF' || sys === 'CTF_LED') {
+  // CTF and LCD_LMD: completely different 3D model (box/cuboid), delegate to dedicated function
+  if (sys === 'CTF' || sys === 'CTF_LED' || sys === 'LCD_LMD') {
     return drawCTFScene(config);
   }
 
@@ -3971,14 +4037,16 @@ function drawKasetonScene() {
 function drawCTFScene(config) {
   if (!scene) return;
 
+  const sys = config.system || 'CTF';
+
   // Usuwamy poprzedni kaseton
   const oldKasetony = [];
   scene.traverse(obj => { if (obj.userData && obj.userData.isKaseton) oldKasetony.push(obj); });
   oldKasetony.forEach(obj => scene.remove(obj));
 
-  const W = parseFloat(config.width) || 100;   // Szerokość (X)
+  const W = parseFloat(config.width) || 200;   // Szerokość (X)
   const H = parseFloat(config.depth) || 200;    // Wysokość (Y)
-  const D = parseFloat(config.height3D) || 120;  // Głębokość 3D (Z)
+  const D = parseFloat(config.height3D) || 200;  // Głębokość 3D (Z)
   const elevY = config.usage === 'suspended' ? 100 : 0;
 
   const connLen = 6;   // Długość ramienia łącznika (60mm = 6cm od wierzchołka)
@@ -4258,20 +4326,34 @@ function drawCTFScene(config) {
 
   // --- MATERIAŁ DLA TKANIN ---
   function createFabricMaterial(textureUrl, isBlockout = false) {
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
+    const isLedSys = ['LMD', 'LMS', 'LMSM', 'CTF_LED', 'LCD_LMD'].includes(sys);
+    const matParams = {
+      color: (isBlockout && !textureUrl) ? 0xeeeeee : 0xffffff,
       roughness: isBlockout ? 0.95 : 0.75,
       metalness: 0.0,
       side: THREE.DoubleSide
-    });
+    };
+
+    if (isLedSys) {
+      if (isBlockout) {
+        matParams.emissive = new THREE.Color(0x000000);
+        matParams.emissiveIntensity = 0.0;
+      } else {
+        matParams.emissive = new THREE.Color(0xffffff);
+        matParams.emissiveIntensity = 0.8;
+      }
+    }
+
     if (textureUrl) {
       const tex = new THREE.TextureLoader().load(textureUrl);
       tex.encoding = THREE.sRGBEncoding;
-      mat.map = tex;
-    } else if (isBlockout) {
-      mat.color.setHex(0xeeeeee);
+      matParams.map = tex;
+      if (isLedSys && !isBlockout) {
+        matParams.emissiveMap = tex;
+      }
     }
-    return mat;
+
+    return new THREE.MeshStandardMaterial(matParams);
   }
 
   // --- FUNKCJA BAZOWA: Tworzenie geometrii tkaniny z zagięciem (nieindeksowana, bez rozciągania) ---
@@ -4376,158 +4458,9 @@ function drawCTFScene(config) {
   const hh = H / 2;  // half height
   const hd = D / 2;  // half depth
 
-  // --- GENEROWANIE 12 PROFILI ---
-
-  // 4 krawędzie pionowe (wzdłuż Y)
-  const vertProfilesConfig = [
-    { start: new THREE.Vector3(hw, connLen, -hd), end: new THREE.Vector3(hw, H - connLen, -hd), outer: new THREE.Vector3(1, 0, -1) },
-    { start: new THREE.Vector3(-hw, connLen, -hd), end: new THREE.Vector3(-hw, H - connLen, -hd), outer: new THREE.Vector3(-1, 0, -1) },
-    { start: new THREE.Vector3(hw, connLen, hd), end: new THREE.Vector3(hw, H - connLen, hd), outer: new THREE.Vector3(1, 0, 1) },
-    { start: new THREE.Vector3(-hw, connLen, hd), end: new THREE.Vector3(-hw, H - connLen, hd), outer: new THREE.Vector3(-1, 0, 1) }
-  ];
-  vertProfilesConfig.forEach(cfg => {
-    const startP = cfg.start.clone();
-    startP.y += elevY;
-    const endP = cfg.end.clone();
-    endP.y += elevY;
-    const prof = createCTFProfile(profLenY, startP, endP, cfg.outer);
-    kGroup.add(prof);
-  });
-
-  // 4 krawędzie poziome wzdłuż X
-  const horizXProfilesConfig = [
-    { start: new THREE.Vector3(-hw + connLen, 0, -hd), end: new THREE.Vector3(hw - connLen, 0, -hd), outer: new THREE.Vector3(0, -1, -1) },
-    { start: new THREE.Vector3(-hw + connLen, 0, hd), end: new THREE.Vector3(hw - connLen, 0, hd), outer: new THREE.Vector3(0, -1, 1) },
-    { start: new THREE.Vector3(-hw + connLen, H, -hd), end: new THREE.Vector3(hw - connLen, H, -hd), outer: new THREE.Vector3(0, 1, -1) },
-    { start: new THREE.Vector3(-hw + connLen, H, hd), end: new THREE.Vector3(hw - connLen, H, hd), outer: new THREE.Vector3(0, 1, 1) }
-  ];
-  horizXProfilesConfig.forEach(cfg => {
-    const startP = cfg.start.clone();
-    startP.y += elevY;
-    const endP = cfg.end.clone();
-    endP.y += elevY;
-    const prof = createCTFProfile(profLenX, startP, endP, cfg.outer);
-    kGroup.add(prof);
-  });
-
-  // 4 krawędzie poziome wzdłuż Z
-  const horizZProfilesConfig = [
-    { start: new THREE.Vector3(-hw, 0, -hd + connLen), end: new THREE.Vector3(-hw, 0, hd - connLen), outer: new THREE.Vector3(-1, -1, 0) },
-    { start: new THREE.Vector3(hw, 0, -hd + connLen), end: new THREE.Vector3(hw, 0, hd - connLen), outer: new THREE.Vector3(1, -1, 0) },
-    { start: new THREE.Vector3(-hw, H, -hd + connLen), end: new THREE.Vector3(-hw, H, hd - connLen), outer: new THREE.Vector3(-1, 1, 0) },
-    { start: new THREE.Vector3(hw, H, -hd + connLen), end: new THREE.Vector3(hw, H, hd - connLen), outer: new THREE.Vector3(1, 1, 0) }
-  ];
-  horizZProfilesConfig.forEach(cfg => {
-    const startP = cfg.start.clone();
-    startP.y += elevY;
-    const endP = cfg.end.clone();
-    endP.y += elevY;
-    const prof = createCTFProfile(profLenZ, startP, endP, cfg.outer);
-    kGroup.add(prof);
-  });
-
-  // --- 8 ŁĄCZNIKÓW NAROŻNYCH ---
-  const corners = [
-    // Dolne 4 narożniki
-    { x: -hw, y: 0, z: -hd, dx: 1, dy: 1, dz: 1 },
-    { x: hw, y: 0, z: -hd, dx: -1, dy: 1, dz: 1 },
-    { x: -hw, y: 0, z: hd, dx: 1, dy: 1, dz: -1 },
-    { x: hw, y: 0, z: hd, dx: -1, dy: 1, dz: -1 },
-    // Górne 4 narożniki
-    { x: -hw, y: H, z: -hd, dx: 1, dy: -1, dz: 1 },
-    { x: hw, y: H, z: -hd, dx: -1, dy: -1, dz: 1 },
-    { x: -hw, y: H, z: hd, dx: 1, dy: -1, dz: -1 },
-    { x: hw, y: H, z: hd, dx: -1, dy: -1, dz: -1 }
-  ];
-  corners.forEach(c => {
-    const conn = createCTFConnector(c.x, c.y, c.z, c.dx, c.dy, c.dz);
-    conn.position.set(0, elevY, 0); // profile positions relative to center of cuboid
-    kGroup.add(conn);
-  });
-
-  // --- TKANINY REKLAMOWE (6 płacht od rowka do rowka z zagięciem) ---
-  const printOption = config.print || '6_sides';
-  if (printOption !== 'no_print' && !isBlueprintMode) {
-    const showFront = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides', 'front_back', 'single_front'].includes(printOption);
-    const showBack = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides', 'front_back'].includes(printOption);
-    const showLeft = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides'].includes(printOption);
-    const showRight = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides'].includes(printOption);
-    const showTop = ['6_sides', '5_sides_bottom_open'].includes(printOption);
-    const showBottom = ['6_sides', '5_sides_top_open'].includes(printOption);
-
-    // 1. Przód (Z = -hd - cOffset)
-    if (showFront) {
-      const frontGeom = createFabricGeometry(W, H);
-      const frontMat = createFabricMaterial(config.textureFront, !config.textureFront);
-      const frontMesh = new THREE.Mesh(frontGeom, frontMat);
-      frontMesh.position.set(0, elevY + hh, -hd - cOffset);
-      frontMesh.rotation.y = Math.PI;
-      frontMesh.userData = { isKasetonPrint: true, side: 'front' };
-      kGroup.add(frontMesh);
-    }
-
-    // 2. Tył (Z = hd + cOffset)
-    if (showBack) {
-      const backGeom = createFabricGeometry(W, H);
-      const backMat = createFabricMaterial(config.textureBack, !config.textureBack);
-      const backMesh = new THREE.Mesh(backGeom, backMat);
-      backMesh.position.set(0, elevY + hh, hd + cOffset);
-      backMesh.userData = { isKasetonPrint: true, side: 'back' };
-      kGroup.add(backMesh);
-    }
-
-    // 3. Lewo (X = -hw - cOffset)
-    if (showLeft) {
-      const leftGeom = createFabricGeometry(D, H);
-      const leftMat = createFabricMaterial(config.textureLeft, !config.textureLeft);
-      const leftMesh = new THREE.Mesh(leftGeom, leftMat);
-      leftMesh.position.set(-hw - cOffset, elevY + hh, 0);
-      leftMesh.rotation.y = -Math.PI / 2;
-      leftMesh.userData = { isKasetonPrint: true, side: 'left' };
-      kGroup.add(leftMesh);
-    }
-
-    // 4. Prawo (X = hw + cOffset)
-    if (showRight) {
-      const rightGeom = createFabricGeometry(D, H);
-      const rightMat = createFabricMaterial(config.textureRight, !config.textureRight);
-      const rightMesh = new THREE.Mesh(rightGeom, rightMat);
-      rightMesh.position.set(hw + cOffset, elevY + hh, 0);
-      rightMesh.rotation.y = Math.PI / 2;
-      rightMesh.userData = { isKasetonPrint: true, side: 'right' };
-      kGroup.add(rightMesh);
-    }
-
-    // 5. Góra (Y = H + cOffset)
-    if (showTop) {
-      const topFabGeom = createFabricGeometry(W, D);
-      const topFabMat = createFabricMaterial(config.textureTop, !config.textureTop);
-      const topFabMesh = new THREE.Mesh(topFabGeom, topFabMat);
-      topFabMesh.position.set(0, elevY + H + cOffset, 0);
-      topFabMesh.rotation.x = -Math.PI / 2;
-      topFabMesh.userData = { isKasetonPrint: true, side: 'top' };
-      kGroup.add(topFabMesh);
-    }
-
-    // 6. Dół (Y = -cOffset)
-    if (showBottom) {
-      const bottomFabGeom = createFabricGeometry(W, D);
-      const bottomFabMat = createFabricMaterial(config.textureBottom, !config.textureBottom);
-      const bottomFabMesh = new THREE.Mesh(bottomFabGeom, bottomFabMat);
-      bottomFabMesh.position.set(0, elevY - cOffset, 0);
-      bottomFabMesh.rotation.x = Math.PI / 2;
-      bottomFabMesh.userData = { isKasetonPrint: true, side: 'bottom' };
-      kGroup.add(bottomFabMesh);
-    }
-  }
-
-  // =========================================================================
-  // 🛠️ NOWOŚĆ: GENERATOR I SOLVER POPRZECZEK WZMACNIAJĄCYCH SUPPORT LIGHT
-  // =========================================================================
-  let totalSupportLengthM = 0;
-  let supportSegmentsCount = 0;
-
-  // 1. Definicja linii podziałów pod segmenty ramy (logika LMD)
+  // ──────────────────────────────────────────────────────────
+  // 🛠️ ROZPISANIE LINII CIĘĆ I SEGMENTACJI (LOGIKA KASETONU LMD)
+  // ──────────────────────────────────────────────────────────
   let numSegmentsW = 1, numSegmentsH = 1;
   if (config.cut && config.cut.includes('half_w')) numSegmentsW = 2;
   else if (config.cut && config.cut.includes('3w')) numSegmentsW = 3;
@@ -4558,7 +4491,6 @@ function drawCTFScene(config) {
       (cs.frontBack.vertical || []).forEach(vs => cutX_FB.push(-W / 2 + vs.pos));
       (cs.frontBack.horizontal || []).forEach(hs => cutY_FB.push(hs.pos));
     } else if (cs.vertical) {
-      // Fallback for standard configuration schema
       (cs.vertical || []).forEach(vs => {
         cutX_FB.push(-W / 2 + vs.pos);
         cutX_TB.push(-W / 2 + vs.pos);
@@ -4608,7 +4540,24 @@ function drawCTFScene(config) {
       cutY_LR.push(H / 2);
     }
 
-    const cutZ_std = D > 200 ? [0] : [];
+    let cutZ_std = [];
+    if (sys === 'LCD_LMD') {
+      let numSegmentsD = 1;
+      if (config.cut && config.cut.startsWith('auto')) {
+        const maxLen = config.cut === 'auto_dedicated' ? 300 : (config.cut === 'auto_courier_150' ? 150 : 200);
+        if (D > maxLen) numSegmentsD = Math.ceil(D / maxLen);
+      }
+      if (numSegmentsD > 1) {
+        for (let i = 1; i < numSegmentsD; i++) {
+          cutZ_std.push(-D / 2 + (D / numSegmentsD) * i);
+        }
+      } else if (D > 200) {
+        cutZ_std.push(0);
+      }
+    } else {
+      cutZ_std = D > 200 ? [0] : [];
+    }
+
     cutZ_std.forEach(cz => {
       cutZ_LR.push(cz);
       cutZ_TB.push(cz);
@@ -4621,6 +4570,883 @@ function drawCTFScene(config) {
   const allY_LR = [0, ...cutY_LR, H];
   const allX_TB = [-W / 2, ...cutX_TB, W / 2];
   const allZ_TB = [-hd, ...cutZ_TB, hd];
+
+  // Helper for populating LED strips with custom offsets and support cuts
+  function populateProfileLedsWithCuts(profileGroup, L, yPos = 0.5, isTop = false, cuts = []) {
+    const isLcd = sys === 'LCD_LMD';
+    const sideMargin = isLcd ? 14 : 5;
+    const availableLength = L - 2 * sideMargin;
+    if (availableLength <= 0) return;
+
+    const relativeCuts = cuts.map(c => c + L / 2);
+    const segments = [];
+    let currentStart = sideMargin;
+
+    const sortedCuts = relativeCuts.filter(c => c > sideMargin && c < L - sideMargin).sort((a, b) => a - b);
+
+    const supportGapHalf = isLcd ? 4.0 : 2.5;
+    for (let i = 0; i < sortedCuts.length; i++) {
+      const pos = sortedCuts[i];
+      const end = pos - supportGapHalf;
+      if (end > currentStart + 1) {
+        segments.push({ start: currentStart, end: end, length: end - currentStart });
+      }
+      currentStart = pos + supportGapHalf;
+    }
+    const finalEnd = L - sideMargin;
+    if (finalEnd > currentStart + 1) {
+      segments.push({ start: currentStart, end: finalEnd, length: finalEnd - currentStart });
+    }
+
+    segments.forEach(seg => {
+      const combo = getBestLedCombination(seg.length);
+      const totalStripesLength = combo.reduce((sum, val) => sum + val, 0);
+      const startOffset = seg.start + (seg.length - totalStripesLength) / 2;
+
+      let currentOffset = startOffset;
+      combo.forEach((size, idx) => {
+        const stripe = createLedStripeMesh(size);
+        stripe.position.set(currentOffset + size / 2, yPos, 0);
+        stripe.rotation.y = Math.PI / 2;
+        if (isTop) {
+          stripe.rotation.x = Math.PI;
+        }
+        profileGroup.add(stripe);
+
+        if (idx < combo.length - 1) {
+          const conn = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 0.4, 1.2),
+            new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.5, metalness: 0.2 })
+          );
+          conn.position.set(currentOffset + size, yPos + (isTop ? -0.1 : 0.1), 0);
+          if (isTop) conn.rotation.x = Math.PI;
+          profileGroup.add(conn);
+        }
+        currentOffset += size;
+      });
+    });
+  }
+
+  // --- GENEROWANIE 12 PROFILI ---
+
+  if (sys === 'LCD_LMD') {
+    // ----------------------------------------------------
+    // adFrame LCD LMD specific rendering (3D Cuboid)
+    // ----------------------------------------------------
+    
+    // 1. Geometry helpers
+    function createHorizontalMiteredGeometry(L, zMin, zMax, yMin, yMax) {
+      const geom = new THREE.BufferGeometry();
+      const x0 = zMin + 7;
+      const x1 = zMax + 7;
+      
+      const vertices = new Float32Array([
+        // Left end (x start)
+        x0, yMin, zMin,     // 0
+        x1, yMin, zMax,     // 1
+        x1, yMax, zMax,     // 2
+        x0, yMax, zMin,     // 3
+        
+        // Right end (x end)
+        L - x0, yMin, zMin, // 4
+        L - x1, yMin, zMax, // 5
+        L - x1, yMax, zMax, // 6
+        L - x0, yMax, zMin  // 7
+      ]);
+      
+      const indices = [
+        0, 4, 5, 0, 5, 1, // Bottom
+        2, 6, 7, 2, 7, 3, // Top
+        0, 3, 7, 0, 7, 4, // Front
+        1, 5, 6, 1, 6, 2, // Back
+        0, 1, 2, 0, 2, 3, // Left sloped
+        4, 7, 6, 4, 6, 5  // Right sloped
+      ];
+      
+      geom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      geom.setIndex(indices);
+      geom.computeVertexNormals();
+      return geom;
+    }
+
+    function createHorizontalProfileGroupLMD(L, drawLeds, isTop = false, cuts = []) {
+      const group = new THREE.Group();
+      const allGeoms = [];
+
+      const yBaseMin = isTop ? 2.4 : 0;
+      const yBaseMax = isTop ? 3.2 : 0.8;
+      
+      const yBodyMin = isTop ? 0 : 0.8;
+      const yBodyMax = isTop ? 2.4 : 3.2;
+      
+      const yChanMin = isTop ? 1.2 : 0.8;
+      const yChanMax = isTop ? 2.4 : 2.0;
+      
+      const yLed = isTop ? 2.3 : 0.9;
+
+      // Base plate for smooth outer wall (z = -7 to 7)
+      const baseGeom = createHorizontalMiteredGeometry(L, -7, 7, yBaseMin, yBaseMax);
+      group.add(new THREE.Mesh(baseGeom, aluMat));
+      allGeoms.push(baseGeom);
+
+      // bodyLeft (z = -3.8 to -1.25)
+      const bodyLeftGeom = createHorizontalMiteredGeometry(L, -3.8, -1.25, yBodyMin, yBodyMax);
+      group.add(new THREE.Mesh(bodyLeftGeom, aluMat));
+      allGeoms.push(bodyLeftGeom);
+
+      // channel (z = -1.25 to 1.25)
+      const channelGeom = createHorizontalMiteredGeometry(L, -1.25, 1.25, yChanMin, yChanMax);
+      group.add(new THREE.Mesh(channelGeom, aluMat));
+      allGeoms.push(channelGeom);
+
+      // bodyRight (z = 1.25 to 3.8)
+      const bodyRightGeom = createHorizontalMiteredGeometry(L, 1.25, 3.8, yBodyMin, yBodyMax);
+      group.add(new THREE.Mesh(bodyRightGeom, aluMat));
+      allGeoms.push(bodyRightGeom);
+
+      // Contour lines
+      allGeoms.forEach(g => {
+        const edges = new THREE.EdgesGeometry(g);
+        const line = new THREE.LineSegments(edges, edgeMat);
+        group.add(line);
+      });
+
+      if (drawLeds) {
+        populateProfileLedsWithCuts(group, L, yLed, isTop, cuts);
+      }
+
+      return group;
+    }
+
+    function createVerticalLCDProfile(length) {
+      const pGroup = new THREE.Group();
+      const diagLen = 14 * Math.SQRT2; // ≈ 19.80cm (diagonal of 14cm square)
+      const hd = diagLen / 2;          // ≈ 9.90cm half-diagonal
+      const outerRecess = 1.2;         // recess so profile hides ~5mm under LMD profiles
+      const outerX = -(hd - outerRecess); // outer end x-coordinate (~-8.7)
+
+      // ──────────────────────────────────────────────────────────
+      // LCD profile cross-section in local (x, y) coordinates:
+      //   x = distance along the corner diagonal
+      //       x < 0 = outer/corner side, x > 0 = inner/center side
+      //   y = thickness perpendicular to the diagonal
+      //
+      // The profile is assembled from 3 real components:
+      //   Front (outer, keder grooves): 10.3cm deep × 1.45cm wide
+      //   Middle (diamond connector):   5.15cm deep × 2.35cm wide
+      //   Back (inner, tapering):       7.6cm deep  × 1.0–3.5cm wide
+      //
+      // Extrusion along z → rotated so z becomes Y (vertical)
+      // ──────────────────────────────────────────────────────────
+
+      const shape = new THREE.Shape();
+
+      // Bottom outline (y-negative side), tracing from outer to inner
+      shape.moveTo(outerX, -0.5);       // outer end (1.0cm total width, fits inside boundary)
+      shape.lineTo(-2.0, -0.5);         // front body extends inward
+      shape.lineTo(-1.0, -1.175);       // widens toward middle section (2.35cm)
+      shape.lineTo(-0.3, -1.175);       // approaches diamond
+      shape.lineTo(0.0, -1.75);        // diamond tip bottom (3.5cm total)
+      shape.lineTo(0.3, -1.175);       // exits diamond
+      shape.lineTo(1.5, -1.175);       // middle body
+      shape.lineTo(3.5, -0.75);        // transition to back (1.5cm)
+      shape.lineTo(hd, -0.5);          // inner end (1.0cm total width)
+
+      // Top outline (y-positive side), tracing from inner back to outer
+      shape.lineTo(hd, 0.5);           // across inner end
+      shape.lineTo(3.5, 0.75);         // back body
+      shape.lineTo(1.5, 1.175);        // widens toward middle
+      shape.lineTo(0.3, 1.175);        // approaches diamond
+      shape.lineTo(0.0, 1.75);         // diamond tip top
+      shape.lineTo(-0.3, 1.175);       // exits diamond
+      shape.lineTo(-1.0, 1.175);       // middle body
+      shape.lineTo(-2.0, 0.5);          // narrows to front section
+      shape.lineTo(outerX, 0.5);         // outer end
+
+      shape.closePath();
+
+      // Extrude the cross-section vertically
+      const bodyGeom = new THREE.ExtrudeGeometry(shape, {
+        depth: length,
+        bevelEnabled: false
+      });
+      bodyGeom.translate(0, 0, -length / 2); // center along z
+      bodyGeom.rotateX(-Math.PI / 2);        // z → Y (vertical)
+
+      const bodyMesh = new THREE.Mesh(bodyGeom, aluMat);
+      bodyMesh.add(new THREE.LineSegments(
+        new THREE.EdgesGeometry(bodyGeom), edgeMat
+      ));
+      pGroup.add(bodyMesh);
+
+      // ── Diamond connector (rotated square at center) ──
+      const dSide = 1.8;
+      const dGeom = new THREE.BoxGeometry(dSide, length, dSide);
+      const dMesh = new THREE.Mesh(dGeom, aluMat);
+      dMesh.rotation.y = Math.PI / 4;
+      dMesh.add(new THREE.LineSegments(
+        new THREE.EdgesGeometry(dGeom), edgeMat
+      ));
+      pGroup.add(dMesh);
+
+      // ── Keder groove prongs (two thin plates beyond outer end) ──
+      // These hold the tension fabric (print) on the exterior
+      const kLen = 0.5, kThick = 0.2;
+      const kGeom = new THREE.BoxGeometry(kLen, length, kThick);
+
+      const k1 = new THREE.Mesh(kGeom, aluMat);
+      k1.position.set(outerX - kLen / 2, 0, -0.35);
+      k1.add(new THREE.LineSegments(
+        new THREE.EdgesGeometry(kGeom), edgeMat
+      ));
+      pGroup.add(k1);
+
+      const k2 = new THREE.Mesh(kGeom.clone(), aluMat);
+      k2.position.set(outerX - kLen / 2, 0, 0.35);
+      k2.add(new THREE.LineSegments(
+        new THREE.EdgesGeometry(kGeom), edgeMat
+      ));
+      pGroup.add(k2);
+
+      pGroup.userData = { isInternalAnatomy: true };
+      return pGroup;
+    }
+
+    // 2. Render horizontal frames
+    const drawTopLED = (config.light === 'top_bottom' || config.light === 'top_only');
+    const drawBottomLED = (config.light === 'top_bottom' || config.light === 'bottom_only');
+
+    // Bottom frame (lying flat, base plate at bottom y = 0, inner body facing up)
+    const bFront = createHorizontalProfileGroupLMD(W, drawBottomLED, false, cutX_FB);
+    bFront.position.set(-W/2, elevY, -D/2 + 7);
+    kGroup.add(bFront);
+
+    const bBack = createHorizontalProfileGroupLMD(W, drawBottomLED, false, cutX_FB);
+    bBack.rotation.y = Math.PI;
+    bBack.position.set(W/2, elevY, D/2 - 7);
+    kGroup.add(bBack);
+
+    const bLeft = createHorizontalProfileGroupLMD(D, drawBottomLED, false, cutZ_LR);
+    bLeft.rotation.y = Math.PI / 2;
+    bLeft.position.set(-W/2 + 7, elevY, D/2);
+    kGroup.add(bLeft);
+
+    const bRight = createHorizontalProfileGroupLMD(D, drawBottomLED, false, cutZ_LR);
+    bRight.rotation.y = -Math.PI / 2;
+    bRight.position.set(W/2 - 7, elevY, -D/2);
+    kGroup.add(bRight);
+
+    // Top frame (lying flat, base plate at top y = H, inner body facing down)
+    const tFront = createHorizontalProfileGroupLMD(W, drawTopLED, true, cutX_FB);
+    tFront.position.set(-W/2, elevY + H - 3.2, -D/2 + 7);
+    kGroup.add(tFront);
+
+    const tBack = createHorizontalProfileGroupLMD(W, drawTopLED, true, cutX_FB);
+    tBack.rotation.y = Math.PI;
+    tBack.position.set(W/2, elevY + H - 3.2, D/2 - 7);
+    kGroup.add(tBack);
+
+    const tLeft = createHorizontalProfileGroupLMD(D, drawTopLED, true, cutZ_LR);
+    tLeft.rotation.y = Math.PI / 2;
+    tLeft.position.set(-W/2 + 7, elevY + H - 3.2, D/2);
+    kGroup.add(tLeft);
+
+    const tRight = createHorizontalProfileGroupLMD(D, drawTopLED, true, cutZ_LR);
+    tRight.rotation.y = -Math.PI / 2;
+    tRight.position.set(W/2 - 7, elevY + H - 3.2, -D/2);
+    kGroup.add(tRight);
+
+    // 2.5 Render corner L-brackets (kątowniki płaskie 90 stopni w 2 zewnętrznych rynienkach)
+    function addCornerLBrackets() {
+      const bracketShape = new THREE.Shape();
+      bracketShape.moveTo(0, 0);
+      bracketShape.lineTo(5, 0);
+      bracketShape.lineTo(5, 1);
+      bracketShape.lineTo(1, 1);
+      bracketShape.lineTo(1, 5);
+      bracketShape.lineTo(0, 5);
+      bracketShape.closePath();
+
+      // Add 4 holes
+      const r = 0.15; // 3mm diameter screw hole
+      const hole1 = new THREE.Path();
+      hole1.absarc(2.0, 0.5, r, 0, Math.PI * 2, true);
+      bracketShape.holes.push(hole1);
+
+      const hole2 = new THREE.Path();
+      hole2.absarc(4.0, 0.5, r, 0, Math.PI * 2, true);
+      bracketShape.holes.push(hole2);
+
+      const hole3 = new THREE.Path();
+      hole3.absarc(0.5, 2.0, r, 0, Math.PI * 2, true);
+      bracketShape.holes.push(hole3);
+
+      const hole4 = new THREE.Path();
+      hole4.absarc(0.5, 4.0, r, 0, Math.PI * 2, true);
+      bracketShape.holes.push(hole4);
+
+      const extrudeSettings = { depth: 0.2, bevelEnabled: false };
+      
+      const bracketMat = new THREE.MeshStandardMaterial({
+        color: 0x888888,
+        metalness: 0.8,
+        roughness: 0.35,
+        name: 'ctf_l_bracket'
+      });
+
+      // 4 corners of the kaseton horizontal profiles
+      const corners = [
+        { name: 'FL', x: -hw + 7, z: -hd + 7, rot: 0 },
+        { name: 'FR', x: hw - 7, z: -hd + 7, rot: 3 * Math.PI / 2 },
+        { name: 'BR', x: hw - 7, z: hd - 7, rot: Math.PI },
+        { name: 'BL', x: -hw + 7, z: hd - 7, rot: Math.PI / 2 }
+      ];
+
+      corners.forEach(c => {
+        let dx_outer = 0, dz_outer = 0;
+        let dx_inner = 0, dz_inner = 0;
+
+        if (c.name === 'FL') {
+          dx_outer = -2.525; dz_outer = -2.525;
+          dx_inner = 2.525; dz_inner = 2.525;
+        } else if (c.name === 'FR') {
+          dx_outer = 2.525; dz_outer = -2.525;
+          dx_inner = -2.525; dz_inner = 2.525;
+        } else if (c.name === 'BR') {
+          dx_outer = 2.525; dz_outer = 2.525;
+          dx_inner = -2.525; dz_inner = -2.525;
+        } else if (c.name === 'BL') {
+          dx_outer = -2.525; dz_outer = 2.525;
+          dx_inner = 2.525; dz_inner = -2.525;
+        }
+
+        // Draw at bottom and top Y levels
+        const yLevels = [
+          { y: elevY + 0.8, isTop: false },
+          { y: elevY + H - 1.0, isTop: true }
+        ];
+
+        yLevels.forEach(lvl => {
+          // 1. Outer bracket
+          const geomOuter = new THREE.ExtrudeGeometry(bracketShape, extrudeSettings);
+          geomOuter.rotateX(Math.PI / 2);
+          geomOuter.rotateY(c.rot);
+          const meshOuter = new THREE.Mesh(geomOuter, bracketMat);
+          meshOuter.position.set(c.x + dx_outer, lvl.y, c.z + dz_outer);
+          meshOuter.userData = { isInternalAnatomy: true };
+          meshOuter.add(new THREE.LineSegments(new THREE.EdgesGeometry(geomOuter), edgeMat));
+          kGroup.add(meshOuter);
+
+          // 2. Inner bracket
+          const geomInner = new THREE.ExtrudeGeometry(bracketShape, extrudeSettings);
+          geomInner.rotateX(Math.PI / 2);
+          geomInner.rotateY(c.rot);
+          const meshInner = new THREE.Mesh(geomInner, bracketMat);
+          meshInner.position.set(c.x + dx_inner, lvl.y, c.z + dz_inner);
+          meshInner.userData = { isInternalAnatomy: true };
+          meshInner.add(new THREE.LineSegments(new THREE.EdgesGeometry(geomInner), edgeMat));
+          kGroup.add(meshInner);
+        });
+      });
+    }
+
+    if (sys === 'LCD_LMD') {
+      addCornerLBrackets();
+    }
+
+    function addCornerAnatomyBrackets() {
+      const bracketMat = new THREE.MeshStandardMaterial({
+        color: 0x888888,
+        metalness: 0.8,
+        roughness: 0.35,
+        name: 'ctf_lcd_bracket'
+      });
+
+      // 4 corners
+      const corners = [
+        { name: 'FL', x: -hw + 7, z: -hd + 7, dirX: 1, dirZ: 1 },
+        { name: 'FR', x: hw - 7, z: -hd + 7, dirX: -1, dirZ: 1 },
+        { name: 'BR', x: hw - 7, z: hd - 7, dirX: -1, dirZ: -1 },
+        { name: 'BL', x: -hw + 7, z: hd - 7, dirX: 1, dirZ: -1 }
+      ];
+
+      const extrudeSettings = { depth: 1.5, bevelEnabled: false };
+
+      // 1. Horizontal Arm Shape (in XY plane, extruded along Z)
+      const shapeH = new THREE.Shape();
+      shapeH.moveTo(0.9, 0);
+      shapeH.lineTo(4.9, 0);
+      shapeH.lineTo(4.9, 1.0);
+      shapeH.lineTo(1.9, 1.0);
+      shapeH.closePath();
+
+      // 2. Vertical Arm Shape (in XY plane, extruded along Z)
+      const shapeV = new THREE.Shape();
+      shapeV.moveTo(0.9, 0);
+      shapeV.lineTo(1.9, 1.0);
+      shapeV.lineTo(1.9, 4.0);
+      shapeV.lineTo(0.9, 4.0);
+      shapeV.closePath();
+
+      // Base geometries (center in Z since depth is 1.5)
+      const geomH = new THREE.ExtrudeGeometry(shapeH, extrudeSettings);
+      geomH.translate(0, 0, -0.75);
+
+      const geomV = new THREE.ExtrudeGeometry(shapeV, extrudeSettings);
+      geomV.translate(0, 0, -0.75);
+
+      // Dark cylinders for screw holes
+      const holeMat = new THREE.MeshBasicMaterial({ color: 0x1a1a1a });
+      
+      const geomHoleY = new THREE.CylinderGeometry(0.15, 0.15, 1.1, 8); // runs along Y
+      
+      const geomHoleX = new THREE.CylinderGeometry(0.15, 0.15, 1.1, 8);
+      geomHoleX.rotateZ(Math.PI / 2); // runs along X
+
+      corners.forEach(c => {
+        const yLevels = [
+          { y: elevY + 0.8, isTop: false },
+          { y: elevY + H - 0.8, isTop: true }
+        ];
+
+        yLevels.forEach(lvl => {
+          // --- X-bracket (Front/Back) ---
+          const geomOuterH_X = geomH.clone();
+          const geomOuterV_X = geomV.clone();
+
+          if (lvl.isTop) {
+            geomOuterH_X.rotateX(Math.PI);
+            geomOuterV_X.rotateX(Math.PI);
+          }
+          
+          if (c.dirX === -1) {
+            geomOuterH_X.rotateY(Math.PI);
+            geomOuterV_X.rotateY(Math.PI);
+          }
+          
+          const meshHX = new THREE.Mesh(geomOuterH_X, bracketMat);
+          meshHX.position.set(c.x, lvl.y, c.z);
+          meshHX.userData = { isInternalAnatomy: true };
+          meshHX.add(new THREE.LineSegments(new THREE.EdgesGeometry(geomOuterH_X), edgeMat));
+          
+          // Add holes to horizontal arm
+          const hX1 = new THREE.Mesh(geomHoleY, holeMat);
+          hX1.position.set(c.dirX * 3.0, lvl.isTop ? -0.5 : 0.5, 0);
+          meshHX.add(hX1);
+          const hX2 = new THREE.Mesh(geomHoleY, holeMat);
+          hX2.position.set(c.dirX * 4.2, lvl.isTop ? -0.5 : 0.5, 0);
+          meshHX.add(hX2);
+          
+          kGroup.add(meshHX);
+
+          const meshVX = new THREE.Mesh(geomOuterV_X, bracketMat);
+          meshVX.position.set(c.x, lvl.y, c.z);
+          meshVX.userData = { isInternalAnatomy: true };
+          meshVX.add(new THREE.LineSegments(new THREE.EdgesGeometry(geomOuterV_X), edgeMat));
+          
+          // Add holes to vertical arm (thickness center is at X = 1.4 in geometry)
+          const vX1 = new THREE.Mesh(geomHoleX, holeMat);
+          vX1.position.set(c.dirX * 1.4, lvl.isTop ? -2.2 : 2.2, 0);
+          meshVX.add(vX1);
+          const vX2 = new THREE.Mesh(geomHoleX, holeMat);
+          vX2.position.set(c.dirX * 1.4, lvl.isTop ? -3.4 : 3.4, 0);
+          meshVX.add(vX2);
+          
+          kGroup.add(meshVX);
+
+          // --- Z-bracket (Left/Right) ---
+          const geomOuterH_Z = geomH.clone();
+          const geomOuterV_Z = geomV.clone();
+
+          if (lvl.isTop) {
+            geomOuterH_Z.rotateX(Math.PI);
+            geomOuterV_Z.rotateX(Math.PI);
+          }
+          
+          const rotZ = c.dirZ === 1 ? -Math.PI / 2 : Math.PI / 2;
+          geomOuterH_Z.rotateY(rotZ);
+          geomOuterV_Z.rotateY(rotZ);
+          
+          const meshHZ = new THREE.Mesh(geomOuterH_Z, bracketMat);
+          meshHZ.position.set(c.x, lvl.y, c.z);
+          meshHZ.userData = { isInternalAnatomy: true };
+          meshHZ.add(new THREE.LineSegments(new THREE.EdgesGeometry(geomOuterH_Z), edgeMat));
+          
+          // Add holes to horizontal arm
+          const hZ1 = new THREE.Mesh(geomHoleY, holeMat);
+          hZ1.position.set(0, lvl.isTop ? -0.5 : 0.5, c.dirZ * 3.0);
+          meshHZ.add(hZ1);
+          const hZ2 = new THREE.Mesh(geomHoleY, holeMat);
+          hZ2.position.set(0, lvl.isTop ? -0.5 : 0.5, c.dirZ * 4.2);
+          meshHZ.add(hZ2);
+          
+          kGroup.add(meshHZ);
+
+          const meshVZ = new THREE.Mesh(geomOuterV_Z, bracketMat);
+          meshVZ.position.set(c.x, lvl.y, c.z);
+          meshVZ.userData = { isInternalAnatomy: true };
+          meshVZ.add(new THREE.LineSegments(new THREE.EdgesGeometry(geomOuterV_Z), edgeMat));
+          
+          // Add holes to vertical arm (thickness center is at Z = 1.4 in rotated geometry)
+          const vZ1 = new THREE.Mesh(geomHoleX, holeMat);
+          vZ1.position.set(0, lvl.isTop ? -2.2 : 2.2, c.dirZ * 1.4);
+          meshVZ.add(vZ1);
+          const vZ2 = new THREE.Mesh(geomHoleX, holeMat);
+          vZ2.position.set(0, lvl.isTop ? -3.4 : 3.4, c.dirZ * 1.4);
+          meshVZ.add(vZ2);
+          
+          kGroup.add(meshVZ);
+        });
+      });
+    }
+
+    if (sys === 'LCD_LMD') {
+      addCornerAnatomyBrackets();
+    }
+
+    // 3. Render vertical corner posts (LCD profiles)
+    // Profile positioned at the midpoint of each corner diagonal,
+    // rotated to align with the 45° miter line.
+    const verticalLength = H - 1.6; // extends to LMD base plate inner face (y=0.8 each side)
+    const yCenter = H / 2;
+
+    // Front-Left corner: diagonal toward (+X, +Z)
+    const vFL = createVerticalLCDProfile(verticalLength);
+    vFL.rotation.y = -Math.PI / 4;
+    vFL.position.set(-W/2 + 7, elevY + yCenter, -D/2 + 7);
+    kGroup.add(vFL);
+
+    // Front-Right corner: diagonal toward (-X, +Z)
+    const vFR = createVerticalLCDProfile(verticalLength);
+    vFR.rotation.y = -3 * Math.PI / 4;
+    vFR.position.set(W/2 - 7, elevY + yCenter, -D/2 + 7);
+    kGroup.add(vFR);
+
+    // Back-Right corner: diagonal toward (-X, -Z)
+    const vBR = createVerticalLCDProfile(verticalLength);
+    vBR.rotation.y = 3 * Math.PI / 4;
+    vBR.position.set(W/2 - 7, elevY + yCenter, D/2 - 7);
+    kGroup.add(vBR);
+
+    // Back-Left corner: diagonal toward (+X, -Z)
+    const vBL = createVerticalLCDProfile(verticalLength);
+    vBL.rotation.y = Math.PI / 4;
+    vBL.position.set(-W/2 + 7, elevY + yCenter, D/2 - 7);
+    kGroup.add(vBL);
+
+    // 4. Render PSU (Zasilacz) inside the top front profile groove
+    if (config.power !== 'none') {
+      const psuBoxW = 12, psuBoxH = 1.2, psuBoxD = 2.4;
+      const psuMat = new THREE.MeshStandardMaterial({ color: 0xeb8213, roughness: 0.5, metalness: 0.8 });
+      const psuGeom = new THREE.BoxGeometry(psuBoxW, psuBoxH, psuBoxD);
+      const psuMesh = new THREE.Mesh(psuGeom, psuMat);
+      psuMesh.position.set(0, elevY + H - 1.4, -D/2 + 7);
+      kGroup.add(psuMesh);
+      psuMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(psuGeom), edgeMat));
+    }
+  } else {
+    // 4 krawędzie pionowe (wzdłuż Y)
+    const vertProfilesConfig = [
+      { start: new THREE.Vector3(hw, connLen, -hd), end: new THREE.Vector3(hw, H - connLen, -hd), outer: new THREE.Vector3(1, 0, -1) },
+      { start: new THREE.Vector3(-hw, connLen, -hd), end: new THREE.Vector3(-hw, H - connLen, -hd), outer: new THREE.Vector3(-1, 0, -1) },
+      { start: new THREE.Vector3(hw, connLen, hd), end: new THREE.Vector3(hw, H - connLen, hd), outer: new THREE.Vector3(1, 0, 1) },
+      { start: new THREE.Vector3(-hw, connLen, hd), end: new THREE.Vector3(-hw, H - connLen, hd), outer: new THREE.Vector3(-1, 0, 1) }
+    ];
+    vertProfilesConfig.forEach(cfg => {
+      const startP = cfg.start.clone();
+      startP.y += elevY;
+      const endP = cfg.end.clone();
+      endP.y += elevY;
+      const prof = createCTFProfile(profLenY, startP, endP, cfg.outer);
+      kGroup.add(prof);
+    });
+
+    // 4 krawędzie poziome wzdłuż X
+    const horizXProfilesConfig = [
+      { start: new THREE.Vector3(-hw + connLen, 0, -hd), end: new THREE.Vector3(hw - connLen, 0, -hd), outer: new THREE.Vector3(0, -1, -1) },
+      { start: new THREE.Vector3(-hw + connLen, 0, hd), end: new THREE.Vector3(hw - connLen, 0, hd), outer: new THREE.Vector3(0, -1, 1) },
+      { start: new THREE.Vector3(-hw + connLen, H, -hd), end: new THREE.Vector3(hw - connLen, H, -hd), outer: new THREE.Vector3(0, 1, -1) },
+      { start: new THREE.Vector3(-hw + connLen, H, hd), end: new THREE.Vector3(hw - connLen, H, hd), outer: new THREE.Vector3(0, 1, 1) }
+    ];
+    horizXProfilesConfig.forEach(cfg => {
+      const startP = cfg.start.clone();
+      startP.y += elevY;
+      const endP = cfg.end.clone();
+      endP.y += elevY;
+      const prof = createCTFProfile(profLenX, startP, endP, cfg.outer);
+      kGroup.add(prof);
+    });
+
+    // 4 krawędzie poziome wzdłuż Z
+    const horizZProfilesConfig = [
+      { start: new THREE.Vector3(-hw, 0, -hd + connLen), end: new THREE.Vector3(-hw, 0, hd - connLen), outer: new THREE.Vector3(-1, -1, 0) },
+      { start: new THREE.Vector3(hw, 0, -hd + connLen), end: new THREE.Vector3(hw, 0, hd - connLen), outer: new THREE.Vector3(1, -1, 0) },
+      { start: new THREE.Vector3(-hw, H, -hd + connLen), end: new THREE.Vector3(-hw, H, hd - connLen), outer: new THREE.Vector3(-1, 1, 0) },
+      { start: new THREE.Vector3(hw, H, -hd + connLen), end: new THREE.Vector3(hw, H, hd - connLen), outer: new THREE.Vector3(1, 1, 0) }
+    ];
+    horizZProfilesConfig.forEach(cfg => {
+      const startP = cfg.start.clone();
+      startP.y += elevY;
+      const endP = cfg.end.clone();
+      endP.y += elevY;
+      const prof = createCTFProfile(profLenZ, startP, endP, cfg.outer);
+      kGroup.add(prof);
+    });
+
+    // --- 8 ŁĄCZNIKÓW NAROŻNYCH ---
+    const corners = [
+      // Dolne 4 narożniki
+      { x: -hw, y: 0, z: -hd, dx: 1, dy: 1, dz: 1 },
+      { x: hw, y: 0, z: -hd, dx: -1, dy: 1, dz: 1 },
+      { x: -hw, y: 0, z: hd, dx: 1, dy: 1, dz: -1 },
+      { x: hw, y: 0, z: hd, dx: -1, dy: 1, dz: -1 },
+      // Górne 4 narożniki
+      { x: -hw, y: H, z: -hd, dx: 1, dy: -1, dz: 1 },
+      { x: hw, y: H, z: -hd, dx: -1, dy: -1, dz: 1 },
+      { x: -hw, y: H, z: hd, dx: 1, dy: -1, dz: -1 },
+      { x: hw, y: H, z: hd, dx: -1, dy: -1, dz: -1 }
+    ];
+    corners.forEach(c => {
+      const conn = createCTFConnector(c.x, c.y, c.z, c.dx, c.dy, c.dz);
+      conn.position.set(0, elevY, 0); // profile positions relative to center of cuboid
+      kGroup.add(conn);
+    });
+  }
+
+  // --- TKANINY REKLAMOWE (6 płacht od rowka do rowka z zagięciem) ---
+  let printOption = config.print || '6_sides';
+  if (sys === 'LCD_LMD' && !['double_divided', 'double_wrapping', 'front_divided_back_blockout', 'front_wrapping_back_blockout', 'no_print'].includes(printOption)) {
+    if (printOption === 'single' || printOption === 'front_blockout') printOption = 'front_divided_back_blockout';
+    else if (printOption === 'double') printOption = 'double_divided';
+    else if (printOption === 'no_print') printOption = 'no_print';
+    else printOption = 'double_divided';
+  }
+
+  // Helper for wrapping fabric around 4 outer sides (FL -> FR -> BR -> BL -> FL)
+  function createWrappingFabricGeometry(wVal, hVal, dVal) {
+    const geom = new THREE.BufferGeometry();
+    const hw = wVal / 2 + 0.02;
+    const hd = dVal / 2 + 0.02;
+    const h0 = 0.02;
+    const h1 = hVal - 0.02;
+
+    const perimeter = 2 * wVal + 2 * dVal;
+    const u0 = 0;
+    const u1 = wVal / perimeter;
+    const u2 = (wVal + dVal) / perimeter;
+    const u3 = (2 * wVal + dVal) / perimeter;
+    const u4 = 1.0;
+
+    // Vertices (Front -> Right -> Back -> Left)
+    const vertices = new Float32Array([
+      // Front face
+      -hw, h0, -hd,  hw, h0, -hd,  hw, h1, -hd,
+      -hw, h0, -hd,  hw, h1, -hd, -hw, h1, -hd,
+
+      // Right face
+       hw, h0, -hd,  hw, h0,  hd,  hw, h1,  hd,
+       hw, h0, -hd,  hw, h1,  hd,  hw, h1, -hd,
+
+      // Back face
+       hw, h0,  hd, -hw, h0,  hd, -hw, h1,  hd,
+       hw, h0,  hd, -hw, h1,  hd,  hw, h1,  hd,
+
+      // Left face
+      -hw, h0,  hd, -hw, h0, -hd, -hw, h1, -hd,
+      -hw, h0,  hd, -hw, h1, -hd, -hw, h1,  hd
+    ]);
+
+    // UV coordinates mapped to wrap continuously
+    const uvs = new Float32Array([
+      // Front face
+      u0, 0,  u1, 0,  u1, 1,
+      u0, 0,  u1, 1,  u0, 1,
+
+      // Right face
+      u1, 0,  u2, 0,  u2, 1,
+      u1, 0,  u2, 1,  u1, 1,
+
+      // Back face
+      u2, 0,  u3, 0,  u3, 1,
+      u2, 0,  u3, 1,  u2, 1,
+
+      // Left face
+      u3, 0,  u4, 0,  u4, 1,
+      u3, 0,  u4, 1,  u3, 1
+    ]);
+
+    geom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    geom.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geom.computeVertexNormals();
+    return geom;
+  }
+
+  if (printOption !== 'no_print' && !isBlueprintMode) {
+    if (sys === 'LCD_LMD') {
+      const isDouble = ['double_divided', 'double_wrapping'].includes(printOption);
+      const isWrapping = ['double_wrapping', 'front_wrapping_back_blockout'].includes(printOption);
+
+      // 1. FRONT (Outer) prints - 4 side walls, no top/bottom
+      if (isWrapping) {
+        // Wrapping print (single mesh/material continuously mapped)
+        const wrapGeom = createWrappingFabricGeometry(W, H, D);
+        const wrapMat = createFabricMaterial(config.textureFront, false);
+        const wrapMesh = new THREE.Mesh(wrapGeom, wrapMat);
+        wrapMesh.position.set(0, elevY, 0);
+        wrapMesh.userData = { isKasetonPrint: true, side: 'wrapping_front' };
+        kGroup.add(wrapMesh);
+      } else {
+        // Divided print (4 separate planes with tiny 2mm recess gap)
+        const fPlane = new THREE.PlaneGeometry(W - 0.04, H - 0.04);
+        const dPlane = new THREE.PlaneGeometry(D - 0.04, H - 0.04);
+
+        // Front outer
+        const fMesh = new THREE.Mesh(fPlane, createFabricMaterial(config.textureFront, false));
+        fMesh.position.set(0, elevY + hh, -hd - 0.02);
+        fMesh.rotation.y = Math.PI;
+        fMesh.userData = { isKasetonPrint: true, side: 'front_outer' };
+        kGroup.add(fMesh);
+
+        // Back outer
+        const bMesh = new THREE.Mesh(fPlane, createFabricMaterial(config.textureBack, false));
+        bMesh.position.set(0, elevY + hh, hd + 0.02);
+        bMesh.userData = { isKasetonPrint: true, side: 'back_outer' };
+        kGroup.add(bMesh);
+
+        // Left outer
+        const lMesh = new THREE.Mesh(dPlane, createFabricMaterial(config.textureLeft, false));
+        lMesh.position.set(-hw - 0.02, elevY + hh, 0);
+        lMesh.rotation.y = -Math.PI / 2;
+        lMesh.userData = { isKasetonPrint: true, side: 'left_outer' };
+        kGroup.add(lMesh);
+
+        // Right outer
+        const rMesh = new THREE.Mesh(dPlane, createFabricMaterial(config.textureRight, false));
+        rMesh.position.set(hw + 0.02, elevY + hh, 0);
+        rMesh.rotation.y = Math.PI / 2;
+        rMesh.userData = { isKasetonPrint: true, side: 'right_outer' };
+        kGroup.add(rMesh);
+      }
+
+      // 2. BACK (Inner) prints - always divided, shorter by 28cm (14cm each end), height H - 1.6
+      const innerH = H - 1.6;
+      const isInnerBlockout = !isDouble;
+
+      const fInnerPlane = new THREE.PlaneGeometry(W - 28 - 0.04, innerH - 0.04);
+      const dInnerPlane = new THREE.PlaneGeometry(D - 28 - 0.04, innerH - 0.04);
+
+      // Front inner
+      const fiMesh = new THREE.Mesh(fInnerPlane, createFabricMaterial(config.textureFrontInner, isInnerBlockout));
+      fiMesh.position.set(0, elevY + hh, -hd + 14 - 0.02);
+      fiMesh.rotation.y = Math.PI;
+      fiMesh.userData = { isKasetonPrint: true, side: 'front_inner' };
+      kGroup.add(fiMesh);
+
+      // Back inner
+      const biMesh = new THREE.Mesh(fInnerPlane, createFabricMaterial(config.textureBackInner, isInnerBlockout));
+      biMesh.position.set(0, elevY + hh, hd - 14 + 0.02);
+      biMesh.userData = { isKasetonPrint: true, side: 'back_inner' };
+      kGroup.add(biMesh);
+
+      // Left inner
+      const liMesh = new THREE.Mesh(dInnerPlane, createFabricMaterial(config.textureLeftInner, isInnerBlockout));
+      liMesh.position.set(-hw + 14 - 0.02, elevY + hh, 0);
+      liMesh.rotation.y = -Math.PI / 2;
+      liMesh.userData = { isKasetonPrint: true, side: 'left_inner' };
+      kGroup.add(liMesh);
+
+      // Right inner
+      const riMesh = new THREE.Mesh(dInnerPlane, createFabricMaterial(config.textureRightInner, isInnerBlockout));
+      riMesh.position.set(hw - 14 + 0.02, elevY + hh, 0);
+      riMesh.rotation.y = Math.PI / 2;
+      riMesh.userData = { isKasetonPrint: true, side: 'right_inner' };
+      kGroup.add(riMesh);
+
+    } else {
+      // Standard CTF print rendering
+      let showFront = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides', 'front_back', 'single_front'].includes(printOption);
+      let showBack = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides', 'front_back'].includes(printOption);
+      let showLeft = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides'].includes(printOption);
+      let showRight = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides'].includes(printOption);
+      let showTop = ['6_sides', '5_sides_bottom_open'].includes(printOption);
+      let showBottom = ['6_sides', '5_sides_top_open'].includes(printOption);
+
+      let zOffset = cOffset;
+
+      // 1. Przód (Z = -hd - zOffset)
+      if (showFront) {
+        const frontGeom = createFabricGeometry(W, H);
+        const frontMat = createFabricMaterial(config.textureFront, !config.textureFront);
+        const frontMesh = new THREE.Mesh(frontGeom, frontMat);
+        frontMesh.position.set(0, elevY + hh, -hd - zOffset);
+        frontMesh.rotation.y = Math.PI;
+        frontMesh.userData = { isKasetonPrint: true, side: 'front' };
+        kGroup.add(frontMesh);
+      }
+
+      // 2. Tył (Z = hd + zOffset)
+      if (showBack) {
+        const backGeom = createFabricGeometry(W, H);
+        const backMat = createFabricMaterial(config.textureBack, !config.textureBack);
+        const backMesh = new THREE.Mesh(backGeom, backMat);
+        backMesh.position.set(0, elevY + hh, hd + zOffset);
+        backMesh.userData = { isKasetonPrint: true, side: 'back' };
+        kGroup.add(backMesh);
+      }
+
+      // 3. Lewo (X = -hw - zOffset)
+      if (showLeft) {
+        const leftGeom = createFabricGeometry(D, H);
+        const leftMat = createFabricMaterial(config.textureLeft, !config.textureLeft);
+        const leftMesh = new THREE.Mesh(leftGeom, leftMat);
+        leftMesh.position.set(-hw - zOffset, elevY + hh, 0);
+        leftMesh.rotation.y = -Math.PI / 2;
+        leftMesh.userData = { isKasetonPrint: true, side: 'left' };
+        kGroup.add(leftMesh);
+      }
+
+      // 4. Prawo (X = hw + zOffset)
+      if (showRight) {
+        const rightGeom = createFabricGeometry(D, H);
+        const rightMat = createFabricMaterial(config.textureRight, !config.textureRight);
+        const rightMesh = new THREE.Mesh(rightGeom, rightMat);
+        rightMesh.position.set(hw + zOffset, elevY + hh, 0);
+        rightMesh.rotation.y = Math.PI / 2;
+        rightMesh.userData = { isKasetonPrint: true, side: 'right' };
+        kGroup.add(rightMesh);
+      }
+
+      // 5. Góra (Y = H + zOffset)
+      if (showTop) {
+        const topFabGeom = createFabricGeometry(W, D);
+        const topFabMat = createFabricMaterial(config.textureTop, !config.textureTop);
+        const topFabMesh = new THREE.Mesh(topFabGeom, topFabMat);
+        topFabMesh.position.set(0, elevY + H + zOffset, 0);
+        topFabMesh.rotation.x = -Math.PI / 2;
+        topFabMesh.userData = { isKasetonPrint: true, side: 'top' };
+        kGroup.add(topFabMesh);
+      }
+
+      // 6. Dół (Y = -zOffset)
+      if (showBottom) {
+        const bottomFabGeom = createFabricGeometry(W, D);
+        const bottomFabMat = createFabricMaterial(config.textureBottom, !config.textureBottom);
+        const bottomFabMesh = new THREE.Mesh(bottomFabGeom, bottomFabMat);
+        bottomFabMesh.position.set(0, elevY - zOffset, 0);
+        bottomFabMesh.rotation.x = Math.PI / 2;
+        bottomFabMesh.userData = { isKasetonPrint: true, side: 'bottom' };
+        kGroup.add(bottomFabMesh);
+      }
+    }
+  }
+
+  // =========================================================================
+  // 🛠️ NOWOŚĆ: GENERATOR I SOLVER POPRZECZEK WZMACNIAJĄCYCH SUPPORT LIGHT
+  // =========================================================================
+  let totalSupportLengthM = 0;
+  let supportSegmentsCount = 0;
+
+  // Podziały zdefiniowane i obliczone na początku funkcji drawCTFScene
 
   // 2. Uniwersalny, trójwymiarowy generator belek z docięciem krawędziowym 45 stopni
   function createCustomSupportMesh(sizeX, sizeY, sizeZ, miterType, touchStart, touchEnd) {
@@ -4658,11 +5484,12 @@ function drawCTFScene(config) {
     return mesh;
   }
 
-  const innerAttachOffset = 2.1213; // Przesunięcie montażowe (3cm × cos(45°)) do płaskiej ścianki wewnętrznej ramy
-  const frontZ = -hd + innerAttachOffset;
-  const backZ = hd - innerAttachOffset;
-  const leftX = -hw + innerAttachOffset;
-  const rightX = hw - innerAttachOffset;
+  const isLcd = (sys === 'LCD_LMD');
+  const innerAttachOffset = isLcd ? 0.8 : 2.1213; // Przesunięcie montażowe do płaskiej ścianki wewnętrznej ramy
+  const frontZ = isLcd ? (-hd + 7) : (-hd + innerAttachOffset);
+  const backZ = isLcd ? (hd - 7) : (hd - innerAttachOffset);
+  const leftX = isLcd ? (-hw + 7) : (-hw + innerAttachOffset);
+  const rightX = isLcd ? (hw - 7) : (hw - innerAttachOffset);
   const bottomY = innerAttachOffset;
   const topY = H - innerAttachOffset;
   const lenY = H - 2 * innerAttachOffset;
@@ -4670,20 +5497,21 @@ function drawCTFScene(config) {
   // 3. 📱 ŚCIANA FRONTOWA I TYLNA (Płaszczyzny XY)
   // Słupki pionowe (Ciągłe)
   cutX_FB.forEach(cx => {
-    const vFront = createCustomSupportMesh(5, lenY, 1.5, 'V', true, true);
+    const vFront = createCustomSupportMesh(5, lenY, 1.5, 'V', !isLcd, !isLcd);
     vFront.position.set(cx, elevY + H / 2, frontZ);
     kGroup.add(vFront); totalSupportLengthM += lenY / 100;
     supportSegmentsCount++;
 
-    const vBack = createCustomSupportMesh(5, lenY, 1.5, 'V', true, true);
+    const vBack = createCustomSupportMesh(5, lenY, 1.5, 'V', !isLcd, !isLcd);
     vBack.position.set(cx, elevY + H / 2, backZ);
     vBack.rotation.y = Math.PI;
     kGroup.add(vBack); totalSupportLengthM += lenY / 100;
     supportSegmentsCount++;
   });
 
-  // Belki poziome (Dzielone / Interlocking)
-  cutY_FB.forEach(cy => {
+  // Belki poziome (Dzielone / Interlocking) - wyłączone dla LCD_LMD
+  if (sys !== 'LCD_LMD') {
+    cutY_FB.forEach(cy => {
     for (let i = 0; i < allX_FB.length - 1; i++) {
       let startX = allX_FB[i]; let endX = allX_FB[i + 1];
       let touchLeft = (i === 0); let touchRight = (i === allX_FB.length - 2);
@@ -4706,51 +5534,53 @@ function drawCTFScene(config) {
       }
     }
   });
+  }
 
   // 4. 🚪 ŚCIANA LEWA I PRAWA (Płaszczyzny ZY)
-  // Słupki pionowe (Dla głębokich kasetonów na linii cięcia osi Z)
+  // Słupki pionowe (Dla głębokich kasetonów na linii cięcia osi Z) - włączone dla wszystkich systemów w tym LCD_LMD
   cutZ_LR.forEach(cz => {
-    const vLeft = createCustomSupportMesh(1.5, lenY, 5, 'V', true, true);
+    const vLeft = createCustomSupportMesh(1.5, lenY, 5, 'V', !isLcd, !isLcd);
     vLeft.position.set(leftX, elevY + H / 2, cz);
     kGroup.add(vLeft); totalSupportLengthM += lenY / 100;
     supportSegmentsCount++;
 
-    const vRight = createCustomSupportMesh(1.5, lenY, 5, 'V', true, true);
+    const vRight = createCustomSupportMesh(1.5, lenY, 5, 'V', !isLcd, !isLcd);
     vRight.position.set(rightX, elevY + H / 2, cz);
     kGroup.add(vRight); totalSupportLengthM += lenY / 100;
     supportSegmentsCount++;
   });
 
-  // Belki głębokości (Dzielone rury Z zorientowane poziomo na ścianach bocznych)
-  cutY_LR.forEach(cy => {
-    for (let j = 0; j < allZ_LR.length - 1; j++) {
-      let startZ = allZ_LR[j]; let endZ = allZ_LR[j + 1];
-      let touchFront = (j === 0); let touchBack = (j === allZ_LR.length - 2);
+  // Belki głębokości (Dzielone rury Z zorientowane poziomo na ścianach bocznych) - wyłączone dla LCD_LMD
+  if (sys !== 'LCD_LMD') {
+    cutY_LR.forEach(cy => {
+      for (let j = 0; j < allZ_LR.length - 1; j++) {
+        let startZ = allZ_LR[j]; let endZ = allZ_LR[j + 1];
+        let touchFront = (j === 0); let touchBack = (j === allZ_LR.length - 2);
 
-      if (!touchFront) startZ += 2.5;
-      if (!touchBack) endZ -= 2.5;
-      const segLen = endZ - startZ;
+        if (!touchFront) startZ += 2.5;
+        if (!touchBack) endZ -= 2.5;
+        const segLen = endZ - startZ;
 
-      if (segLen > 0) {
-        const zLeft = createCustomSupportMesh(1.5, 5, segLen, 'Z_XY', touchFront, touchBack);
-        zLeft.position.set(leftX, elevY + cy, startZ + segLen / 2);
-        kGroup.add(zLeft); totalSupportLengthM += segLen / 100;
-        supportSegmentsCount++;
+        if (segLen > 0) {
+          const zLeft = createCustomSupportMesh(1.5, 5, segLen, 'Z_XY', touchFront, touchBack);
+          zLeft.position.set(leftX, elevY + cy, startZ + segLen / 2);
+          kGroup.add(zLeft); totalSupportLengthM += segLen / 100;
+          supportSegmentsCount++;
 
-        const zRight = createCustomSupportMesh(1.5, 5, segLen, 'Z_XY', touchFront, touchBack);
-        zRight.position.set(rightX, elevY + cy, startZ + segLen / 2);
-        kGroup.add(zRight); totalSupportLengthM += segLen / 100;
-        supportSegmentsCount++;
+          const zRight = createCustomSupportMesh(1.5, 5, segLen, 'Z_XY', touchFront, touchBack);
+          zRight.position.set(rightX, elevY + cy, startZ + segLen / 2);
+          kGroup.add(zRight); totalSupportLengthM += segLen / 100;
+          supportSegmentsCount++;
+        }
       }
-    }
-  });
+    });
+  }
 
-  // 5. 🗺️ PODŁOGA I SUFIT (Płaszczyzny XZ)
-  const sys = config.system || 'CTF';
-
-  // Belki głębokości Z na dole (zBottom) - rysujemy jeśli brak plafonów na dole
-  if (config.light !== 'plafon_dol') {
-    cutX_TB.forEach(cx => {
+  // 5. 🗺️ PODŁOGA I SUFIT (Płaszczyzny XZ) - wyłączone dla LCD_LMD
+  if (sys !== 'LCD_LMD') {
+    // Belki głębokości Z na dole (zBottom) - rysujemy jeśli brak plafonów na dole
+    if (config.light !== 'plafon_dol') {
+      cutX_TB.forEach(cx => {
       for (let j = 0; j < allZ_TB.length - 1; j++) {
         let startZ = allZ_TB[j]; let endZ = allZ_TB[j + 1];
         let touchFront = (j === 0); let touchBack = (j === allZ_TB.length - 2);
@@ -4820,6 +5650,7 @@ function drawCTFScene(config) {
       }
     }
   });
+  }
 
   const topPanel = config.topPanel || 'none';
 
@@ -5399,6 +6230,7 @@ function drawCTFScene(config) {
   kGroup.rotation.y = Math.PI;
 
   scene.add(kGroup);
+  sceneObjects.push(kGroup);
 
   // Ustawienie kamery na widok kasetonu
   if (camera && controls) {
@@ -6221,62 +7053,6 @@ function buildSegoInternalAnatomy(item, group) {
 
     addNumberedMarker(1, new THREE.Vector3(-w / 2 + 6, h / 2 + 6, 4), '#ffcc00');
     addNumberedMarker(2, new THREE.Vector3(-50, h / 2 + 8, 4), '#00ff99');
-  }
-
-  // ─────────────────────────────────────────────────────────────────
-  // OŚWIETLENIE LED Z SOCZEWKAMI LMD
-  // ─────────────────────────────────────────────────────────────────
-  function getBestLedCombination(maxLength) {
-    const sizes = [50, 30, 24, 20]; let bestCombo = []; let bestSum = 0;
-    function search(index, currentCombo, currentSum) {
-      if (currentSum > maxLength) return;
-      if (currentSum > bestSum) { bestSum = currentSum; bestCombo = [...currentCombo]; }
-      else if (currentSum === bestSum && currentCombo.length < bestCombo.length) { bestCombo = [...currentCombo]; }
-      for (let i = index; i < sizes.length; i++) { currentCombo.push(sizes[i]); search(i, currentCombo, currentSum + sizes[i]); currentCombo.pop(); }
-    }
-    search(0, [], 0); return bestCombo;
-  }
-
-  function createLedStripeMesh(size) {
-    const stripeGroup = new THREE.Group();
-    let pcbColor = 0xffffff;
-    if (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) {
-      if (size === 50) pcbColor = 0xef4444; else if (size === 30) pcbColor = 0x3b82f6; else if (size === 24) pcbColor = 0xf59e0b; else if (size === 20) pcbColor = 0x06b6d4;
-    }
-    const pcb = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.15, size), new THREE.MeshStandardMaterial({
-      color: pcbColor, roughness: 0.8, metalness: 0.1,
-      emissive: (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? pcbColor : 0x000000, emissiveIntensity: (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? 0.8 : 0.0
-    }));
-    pcb.position.set(0, 0.075, 0); stripeGroup.add(pcb);
-
-    const numLenses = Math.floor(size / 5);
-    const lensGeom = new THREE.CylinderGeometry(1.1, 1.1, 2.0, 16);
-    const lensColor = (typeof isBlueprintMode !== 'undefined' && isBlueprintMode) ? pcbColor : 0xffcc00;
-    const lensMat = new THREE.MeshStandardMaterial({ color: lensColor, transparent: true, opacity: 0.6, roughness: 0.1, metalness: 0.8 });
-    const glowMesh = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({ color: lensColor }));
-
-    for (let i = 0; i < numLenses; i++) {
-      const zPos = -size / 2 + 2.5 + i * 5;
-      const lens = new THREE.Mesh(lensGeom, lensMat); lens.position.set(0, 1.15, zPos); stripeGroup.add(lens);
-      const gl = glowMesh.clone(); gl.position.set(0, 1.15, zPos); stripeGroup.add(gl);
-    }
-    stripeGroup.userData = { isInternalAnatomy: true }; return stripeGroup;
-  }
-
-  function populateProfileLeds(profileGroup, length) {
-    const availableLength = length - 10; if (availableLength <= 0) return;
-    const combo = getBestLedCombination(availableLength);
-    const totalStripesLength = combo.reduce((sum, val) => sum + val, 0);
-    let currentOffset = 5 + (availableLength - totalStripesLength) / 2;
-
-    combo.forEach((size, idx) => {
-      const stripe = createLedStripeMesh(size); stripe.position.set(currentOffset + size / 2, 0.5, 0); stripe.rotation.y = Math.PI / 2; profileGroup.add(stripe);
-      if (idx < combo.length - 1) {
-        const conn = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 1.2), new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.5, metalness: 0.2 }));
-        conn.position.set(currentOffset + size, 0.6, 0); profileGroup.add(conn);
-      }
-      currentOffset += size;
-    });
   }
 
   populateProfileLeds(bottomP, w); populateProfileLeds(topP, w);

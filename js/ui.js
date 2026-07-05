@@ -87,6 +87,7 @@ function attemptLogin() {
             runFlavorLoading(() => { applyRolePermissions(); });
         } else {
             // Logowanie nieudane
+            console.warn("Błąd logowania (szczegóły diagnostyczne):", data);
             err.style.display = 'block';
             err.innerText = data.message || 'Nieprawidłowy login lub hasło!';
         }
@@ -1045,11 +1046,19 @@ function refreshGraphicsList() {
 
     if (currentSystem === 'kasetony_niestandardowe' && window.currentKasetonConfig) {
         const conf = window.currentKasetonConfig;
-        if (conf.textureFrontName || conf.textureBackName) {
+        const hasAnyKasetonFile = conf.textureFrontName || conf.textureBackName || conf.textureLeftName || conf.textureRightName ||
+                                  conf.textureFrontInnerName || conf.textureBackInnerName || conf.textureLeftInnerName || conf.textureRightInnerName;
+        if (hasAnyKasetonFile) {
             hasFiles = true;
             html += `<div class="graphics-item"><div class="graphics-item-title">Kaseton Niestandardowy (${conf.system})</div>`;
-            if (conf.textureFrontName) html += `<div>Przód: <span class="graphics-item-file">${conf.textureFrontName}</span></div>`;
-            if (conf.textureBackName) html += `<div>Tył: <span class="graphics-item-file">${conf.textureBackName}</span></div>`;
+            if (conf.textureFrontName) html += `<div>Zewn. Przód: <span class="graphics-item-file">${conf.textureFrontName}</span></div>`;
+            if (conf.textureBackName) html += `<div>Zewn. Tył: <span class="graphics-item-file">${conf.textureBackName}</span></div>`;
+            if (conf.textureLeftName) html += `<div>Zewn. Lewy: <span class="graphics-item-file">${conf.textureLeftName}</span></div>`;
+            if (conf.textureRightName) html += `<div>Zewn. Prawy: <span class="graphics-item-file">${conf.textureRightName}</span></div>`;
+            if (conf.textureFrontInnerName) html += `<div>Wewn. Przód: <span class="graphics-item-file">${conf.textureFrontInnerName}</span></div>`;
+            if (conf.textureBackInnerName) html += `<div>Wewn. Tył: <span class="graphics-item-file">${conf.textureBackInnerName}</span></div>`;
+            if (conf.textureLeftInnerName) html += `<div>Wewn. Lewy: <span class="graphics-item-file">${conf.textureLeftInnerName}</span></div>`;
+            if (conf.textureRightInnerName) html += `<div>Wewn. Prawy: <span class="graphics-item-file">${conf.textureRightInnerName}</span></div>`;
             html += `</div>`;
         }
     }
@@ -1833,12 +1842,23 @@ function onKasetonSystemChange(sel) {
     // Aktualizacja opcji oświetlenia dla CTF LED
     updateKasetonLightOptions();
 
-    // CTF:-specific sections: 3rd dimension and top panel
+    // CTF and LCD_LMD-specific sections: 3rd dimension
     const heightSec = document.getElementById('kasetonHeightSection');
     const topSec = document.getElementById('kasetonTopSection');
     if (heightSec) {
-        if (isCTF) heightSec.classList.add('visible');
-        else heightSec.classList.remove('visible');
+        if (isCTF || sys === 'LCD_LMD') {
+            heightSec.classList.add('visible');
+            const label = heightSec.querySelector('.kaseton-label');
+            if (label) {
+                if (sys === 'LCD_LMD') {
+                    label.innerHTML = '<span class="kaseton-badge">2b</span> Głębokość 3D (LCD LMD)';
+                } else {
+                    label.innerHTML = '<span class="kaseton-badge">2b</span> Głębokość 3D (CTF)';
+                }
+            }
+        } else {
+            heightSec.classList.remove('visible');
+        }
     }
     if (topSec) {
         if (isCTF) topSec.classList.add('visible');
@@ -1852,13 +1872,13 @@ function onKasetonSystemChange(sel) {
         if (cutParent) cutParent.style.display = '';
     }
 
-    // CTF / LMD: restrict usage options
+    // CTF / LMD / LCD_LMD: restrict usage options
     const usageEl = document.getElementById('kasetonUsage');
     if (usageEl) {
         if (isCTF) {
             usageEl.innerHTML = '<option value="freestanding">Wolnostojący (Stopy)</option>' +
                 '<option value="suspended">Podwieszany (Linki)</option>';
-        } else if (sys === 'LMD') {
+        } else if (sys === 'LMD' || sys === 'LCD_LMD') {
             usageEl.innerHTML = '<option value="freestanding">Wolnostojący (Stopy)</option>' +
                 '<option value="suspended">Podwieszany (Linki)</option>';
         } else if (sys === 'STF' || sys === 'STFL') {
@@ -1877,10 +1897,18 @@ function onKasetonSystemChange(sel) {
         }
     }
 
-    // CTF: adjust dimension limits
+    // CTF and LCD_LMD: adjust dimension limits and set defaults to 200x200x200
     const widthEl = document.getElementById('kasetonWidth');
     const depthEl = document.getElementById('kasetonDepth');
     const height3DEl = document.getElementById('kasetonHeight3D');
+    const is3D = (sys === 'CTF' || sys === 'CTF_LED' || sys === 'LCD_LMD');
+    
+    if (is3D) {
+        if (widthEl && (widthEl.value === '100' || widthEl.value === '120' || widthEl.value === '')) widthEl.value = '200';
+        if (depthEl && (depthEl.value === '200' || depthEl.value === '')) depthEl.value = '200';
+        if (height3DEl && (height3DEl.value === '120' || height3DEl.value === '')) height3DEl.value = '200';
+    }
+
     if (sys === 'CTF') {
         if (widthEl) { widthEl.min = 25; widthEl.max = 800; }
         if (depthEl) { depthEl.min = 25; depthEl.max = 800; }
@@ -1888,6 +1916,10 @@ function onKasetonSystemChange(sel) {
     } else if (sys === 'CTF_LED') {
         if (widthEl) { widthEl.min = 30; widthEl.max = 800; }
         if (depthEl) { depthEl.min = 30; depthEl.max = 800; }
+        if (height3DEl) { height3DEl.min = 30; height3DEl.max = 800; }
+    } else if (sys === 'LCD_LMD') {
+        if (widthEl) { widthEl.min = 40; widthEl.max = 1000; }
+        if (depthEl) { depthEl.min = 40; depthEl.max = 1000; }
         if (height3DEl) { height3DEl.min = 30; height3DEl.max = 800; }
     } else {
         if (widthEl) { widthEl.min = 40; widthEl.max = 1000; }
@@ -1905,6 +1937,13 @@ function onKasetonSystemChange(sel) {
                 '<option value="5_sides_top_open">Wydruk na 5 ścian (otwarta góra)</option>' +
                 '<option value="5_sides_bottom_open">Wydruk na 5 ścian (otwarty dół)</option>' +
                 '<option value="no_print">Bez wydruku (sama rama)</option>';
+        } else if (sys === 'LCD_LMD') {
+            // LCD_LMD: specific double/single fabric graphics options
+            printSel.innerHTML = '<option value="double_divided" selected>obustronny backlit dzielony (domyślny)</option>' +
+                '<option value="double_wrapping">obustronny backlit przechodzący</option>' +
+                '<option value="front_divided_back_blockout">backlit front dzielony+ blockout tył</option>' +
+                '<option value="front_wrapping_back_blockout">backlit front przechodzący+ blockout tył</option>' +
+                '<option value="no_print">bez wydruku</option>';
         } else if (sys === 'LMS' || sys === 'LMSM') {
             // LMS / LMSM: kaseton jednostronny - ograniczone opcje
             printSel.innerHTML = '<option value="backlit_white" selected>Przód backlit + Tył białe plecy</option>' +
@@ -1926,6 +1965,14 @@ function onKasetonSystemChange(sel) {
                 '<option value="front_blockout">Przód Wydruk, Tył Blockout biały</option>' +
                 '<option value="back_blockout">Tylko Blockout tył</option>' +
                 '<option value="no_print">Bez wydruku (sama rama)</option>';
+        }
+        
+        // Restore value if it exists in the new options list
+        if (window.currentKasetonConfig && window.currentKasetonConfig.print) {
+            const exists = Array.from(printSel.options).some(opt => opt.value === window.currentKasetonConfig.print);
+            if (exists) {
+                printSel.value = window.currentKasetonConfig.print;
+            }
         }
     }
 
@@ -1994,6 +2041,18 @@ function updateKasetonLightOptions() {
             lightEl.value = currentVal;
         } else {
             lightEl.value = 'zarowka';
+        }
+    } else if (sys === 'LCD_LMD') {
+        let html = '';
+        html += '<option value="top_bottom">góra+dół</option>';
+        html += '<option value="bottom_only">tylko dół</option>';
+        html += '<option value="top_only">tylko góra</option>';
+        lightEl.innerHTML = html;
+
+        if (['top_bottom', 'bottom_only', 'top_only'].includes(currentVal)) {
+            lightEl.value = currentVal;
+        } else {
+            lightEl.value = 'top_bottom';
         }
     } else {
         // Standardowe opcje LED
@@ -2339,8 +2398,8 @@ function submitKasetonConfig() {
         }
     }
 
-    // CTF-specific: 3rd dimension and top panel
-    if (isCTF) {
+    // CTF and LCD_LMD-specific: 3rd dimension
+    if (isCTF || sys === 'LCD_LMD') {
         const heightEl = document.getElementById('kasetonHeight3D');
         const height3D = heightEl ? parseInt(heightEl.value) : 120;
         const min3D = (sys === 'CTF') ? 25 : 30;
@@ -2350,8 +2409,11 @@ function submitKasetonConfig() {
             return;
         }
         config.height3D = height3D;
-        const topEl = document.getElementById('kasetonTop');
-        config.topPanel = topEl ? topEl.value : 'none';
+        
+        if (isCTF) {
+            const topEl = document.getElementById('kasetonTop');
+            config.topPanel = topEl ? topEl.value : 'none';
+        }
     }
 
     const kasetonPowerEl = document.getElementById('kasetonPower');
@@ -2647,6 +2709,25 @@ window.updateKasetonRalPreviews = function(ralVal) {
 window.syncKasetonUiFromConfig = function() {
     const config = window.currentKasetonConfig;
     if (!config) return;
+
+    // Sync main layout fields
+    const sysEl = document.getElementById('kasetonSystem');
+    if (sysEl && config.system) {
+        sysEl.value = config.system;
+        onKasetonSystemChange(sysEl);
+    }
+    const widthEl = document.getElementById('kasetonWidth');
+    if (widthEl && config.width !== undefined) widthEl.value = config.width;
+    const depthEl = document.getElementById('kasetonDepth');
+    if (depthEl && config.depth !== undefined) depthEl.value = config.depth;
+    const height3DEl = document.getElementById('kasetonHeight3D');
+    if (height3DEl && config.height3D !== undefined) height3DEl.value = config.height3D;
+    const printEl = document.getElementById('kasetonPrint');
+    if (printEl && config.print) printEl.value = config.print;
+    const usageEl = document.getElementById('kasetonUsage');
+    if (usageEl && config.usage) usageEl.value = config.usage;
+    const packingEl = document.getElementById('kasetonPacking');
+    if (packingEl && config.packing) packingEl.value = config.packing;
 
     const coating = config.coating || 'none';
     const ral = config.ral || '';
