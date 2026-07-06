@@ -747,6 +747,10 @@ function animate3D() {
 
       renderer.render(scene, camera);
 
+      if (typeof showModuleListMode !== 'undefined' && showModuleListMode && typeof window.drawLeaderLines === 'function') {
+        window.drawLeaderLines();
+      }
+
       if (currentSystem === 'foldable' && typeof updateFoldableRadialMenus === 'function') {
         updateFoldableRadialMenus(camera, renderer);
       }
@@ -1281,6 +1285,95 @@ function update3DScene() {
     }
     const btnSpakuj = document.getElementById('btnSpakuj');
     if (btnSpakuj) btnSpakuj.style.display = is3DMode ? 'flex' : 'none';
+
+    // ── Numerowanie modułów w trybie kasetonu niestandardowego ──
+    const sys = window.currentKasetonConfig ? window.currentKasetonConfig.system : 'LMD';
+    const oldSvg = document.getElementById('leaderLinesSvg');
+    if (oldSvg) oldSvg.remove();
+    const oldLabels = document.querySelectorAll('.draggable-module-label');
+    oldLabels.forEach(l => l.remove());
+
+    if (typeof showModuleListMode !== 'undefined' && showModuleListMode) {
+      const config = window.currentKasetonConfig || {};
+      const W = parseFloat(config.width) || 120;
+      const H = parseFloat(config.depth) || 200;
+      const D = parseFloat(config.height3D) || 120;
+      const elevY = config.usage === 'suspended' ? 100 : (config.usage === 'wall' ? 70 : 0);
+      const wallMidY = elevY + H / 2;
+      const hw = W / 2;
+      const hd = D / 2;
+      const printOption = config.print || 'single';
+
+      const modules = [];
+      const wallsDef = [];
+
+      if (sys === 'LCD_LMD') {
+        wallsDef.push({ letter: 'A', name: 'Ściana A – przód', w: W, h: H, pos3D: new THREE.Vector3(0, wallMidY, -hd), textureFront: config.textureFrontName, textureBack: config.textureFrontInnerName, isLCD: true });
+        wallsDef.push({ letter: 'B', name: 'Ściana B – bok lewy', w: D, h: H, pos3D: new THREE.Vector3(-hw, wallMidY, 0), textureFront: config.textureLeftName, textureBack: config.textureLeftInnerName, isLCD: true });
+        wallsDef.push({ letter: 'C', name: 'Ściana C – tył', w: W, h: H, pos3D: new THREE.Vector3(0, wallMidY, hd), textureFront: config.textureBackName, textureBack: config.textureBackInnerName, isLCD: true });
+        wallsDef.push({ letter: 'D', name: 'Ściana D – bok prawy', w: D, h: H, pos3D: new THREE.Vector3(hw, wallMidY, 0), textureFront: config.textureRightName, textureBack: config.textureRightInnerName, isLCD: true });
+      } else if (sys === 'CTF' || sys === 'CTF_LED') {
+        const showFront = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides', 'front_back', 'single_front'].includes(printOption);
+        const showBack = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides', 'front_back'].includes(printOption);
+        const showLeft = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides'].includes(printOption);
+        const showRight = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides'].includes(printOption);
+        
+        if (showFront) wallsDef.push({ letter: 'A', name: 'Ściana A – przód', w: W, h: H, pos3D: new THREE.Vector3(0, wallMidY, -hd), textureFront: config.textureFrontName, textureBack: null, isLCD: false });
+        if (showLeft)  wallsDef.push({ letter: 'B', name: 'Ściana B – bok lewy', w: D, h: H, pos3D: new THREE.Vector3(-hw, wallMidY, 0), textureFront: config.textureLeftName, textureBack: null, isLCD: false });
+        if (showBack)  wallsDef.push({ letter: 'C', name: 'Ściana C – tył', w: W, h: H, pos3D: new THREE.Vector3(0, wallMidY, hd), textureFront: config.textureBackName, textureBack: null, isLCD: false });
+        if (showRight) wallsDef.push({ letter: 'D', name: 'Ściana D – bok prawy', w: D, h: H, pos3D: new THREE.Vector3(hw, wallMidY, 0), textureFront: config.textureRightName, textureBack: null, isLCD: false });
+      } else {
+        const hasFront = (sys === 'LMS' || sys === 'LMSM')
+          ? ['backlit_white', 'backlit_blockout'].includes(printOption)
+          : ['single', 'double', 'front_blockout', 'front_blockout_2', 'double_blockout'].includes(printOption);
+        const hasBack = (sys === 'LMS' || sys === 'LMSM')
+          ? ['backlit_white', 'backlit_blockout', 'back_white'].includes(printOption)
+          : ['single', 'double', 'front_blockout', 'front_blockout_2', 'back_blockout', 'double_blockout'].includes(printOption);
+        
+        const pD = (sys === 'LMS') ? 12.0 : (sys === 'LMSM' ? 6.5 : (sys === 'DTF' ? 4.5 : (sys === 'STF' ? 2.6 : (sys === 'STFL' ? 1.6 : 14.0))));
+        const halfPd = pD / 2;
+        
+        if (hasFront) wallsDef.push({ letter: 'A', name: 'Ściana A – przód', w: W, h: H, pos3D: new THREE.Vector3(0, wallMidY, -halfPd), textureFront: config.textureFrontName, textureBack: null, isLCD: false });
+        if (hasBack)  wallsDef.push({ letter: 'C', name: 'Ściana C – tył', w: W, h: H, pos3D: new THREE.Vector3(0, wallMidY, halfPd), textureFront: config.textureBackName, textureBack: null, isLCD: false });
+      }
+
+      wallsDef.forEach((wDef, idx) => {
+        modules.push({
+          item: {
+            planIndex: idx,
+            length: wDef.w,
+            height: wDef.h,
+            labelEN: wDef.name,
+            letter: wDef.letter,
+            pos3D: wDef.pos3D,
+            textureFrontName: wDef.textureFront || null,
+            textureBackName: wDef.textureBack || null,
+            isLCD: wDef.isLCD
+          },
+          part: 'wall',
+          cx: wDef.pos3D.x,
+          cz: wDef.pos3D.z,
+          index: idx
+        });
+      });
+
+      const wallLetters = new Map();
+      modules.forEach(mod => {
+        wallLetters.set(mod.item, mod.item.letter);
+      });
+
+      window.wallLetters = wallLetters;
+      window.assignedModulesList = modules;
+
+      const layer = document.getElementById('drawingLayer');
+      if (typeof draw2DModuleListLabels === 'function' && layer) {
+        draw2DModuleListLabels(layer, 0, 0);
+      }
+      if (typeof buildModuleListTable === 'function') {
+        buildModuleListTable();
+      }
+    }
+
     return;
   }
 
@@ -5228,8 +5321,16 @@ function draw2DModuleListLabels(layer, stageCenterStartX, stageCenterStartY) {
             widthCm = item.length;
             heightCm = item.height;
             moduleId = 'wall_' + item.planIndex;
-            center.x = item.cx + stageCenterStartX;
-            center.y = item.cz + stageCenterStartY;
+            if (item.pos3D && typeof camera !== 'undefined' && typeof renderer !== 'undefined') {
+                const tempV = item.pos3D.clone();
+                tempV.project(camera);
+                const canvas = renderer.domElement;
+                center.x = (tempV.x * 0.5 + 0.5) * canvas.clientWidth;
+                center.y = (tempV.y * -0.5 + 0.5) * canvas.clientHeight;
+            } else {
+                center.x = item.cx + stageCenterStartX;
+                center.y = item.cz + stageCenterStartY;
+            }
         } else if (part === 'roof') {
             letter = window.wallLetters.get(item.planIndex + '_roof');
             widthCm = 100;
@@ -5258,8 +5359,13 @@ function draw2DModuleListLabels(layer, stageCenterStartX, stageCenterStartY) {
 
         const sides = [];
         if (part === 'wall') {
-            sides.push({ label: 'Przód', index: 1, fileName: item.textureFrontName, w: widthCm, h: heightCm });
-            sides.push({ label: 'Tył', index: 2, fileName: item.textureBackName, w: widthCm, h: heightCm });
+            if (item.isLCD) {
+                sides.push({ label: 'Zew.', index: 1, fileName: item.textureFrontName, w: widthCm, h: heightCm });
+                sides.push({ label: 'Wew.', index: 2, fileName: item.textureBackName, w: widthCm - 28, h: heightCm });
+            } else {
+                sides.push({ label: 'Przód', index: 1, fileName: item.textureFrontName, w: widthCm, h: heightCm });
+                sides.push({ label: 'Tył', index: 2, fileName: item.textureBackName, w: widthCm, h: heightCm });
+            }
         } else if (part === 'roof') {
             const accData = item.accData || {};
             sides.push({ label: 'Góra', index: 1, fileName: accData.texRoofFrontName || (accData.texRoofFront ? 'Grafika' : null), w: widthCm, h: heightCm });
@@ -5274,6 +5380,7 @@ function draw2DModuleListLabels(layer, stageCenterStartX, stageCenterStartY) {
         labelEl.className = 'draggable-module-label';
         labelEl.dataset.centerX = center.x;
         labelEl.dataset.centerY = center.y;
+        labelEl.dataset.moduleId = moduleId;
         labelEl.style.cssText = isBW ? `
             position: absolute;
             background: rgba(240, 240, 240, 0.95);
@@ -5311,8 +5418,38 @@ function draw2DModuleListLabels(layer, stageCenterStartX, stageCenterStartY) {
         let sidesHTML = '';
         sides.forEach(s => {
             const gName = s.fileName ? s.fileName : 'Brak';
+
+            // Determine backlit vs blockout for this side
+            let sideBacklit = false;
+            if (item.isLCD) {
+                const cfg = window.currentKasetonConfig || {};
+                const printOpt = cfg.print || 'double_divided';
+                const isDoublePrint = ['double_divided', 'double_wrapping'].includes(printOpt);
+                sideBacklit = s.index === 1 ? true : isDoublePrint;
+            } else if (typeof currentSystem !== 'undefined' && currentSystem === 'kasetony_niestandardowe') {
+                const cfg = window.currentKasetonConfig || {};
+                const sys = cfg.system || 'LMD';
+                const printOpt = cfg.print || 'single';
+                const isLedSys = ['LMD', 'LMS', 'LMSM', 'CTF_LED'].includes(sys);
+                if (isLedSys) {
+                    if (printOpt === 'double') {
+                        sideBacklit = true;
+                    } else if (printOpt === 'single' || printOpt === 'backlit_white' || printOpt === 'backlit_blockout') {
+                        sideBacklit = s.index === 1;
+                    } else if (printOpt === 'front_blockout') {
+                        sideBacklit = false;
+                    } else {
+                        sideBacklit = s.index === 1;
+                    }
+                } else {
+                    sideBacklit = false;
+                }
+            }
+
             let gross = '';
-            if (isSego) {
+            if (typeof window.getGrossDimensionText === 'function') {
+                gross = window.getGrossDimensionText(s.w, s.h, isSego, sideBacklit);
+            } else if (isSego) {
                 gross = `${(s.w * 10) + 7}x${(s.h * 10) + 7} mm`;
             } else {
                 gross = `${s.w * 10}x${s.h * 10} mm`;
@@ -5348,8 +5485,10 @@ function draw2DModuleListLabels(layer, stageCenterStartX, stageCenterStartY) {
         layer.appendChild(labelEl);
 
         requestAnimationFrame(() => {
-            labelEl.style.left = (center.x + offset.dx - labelEl.offsetWidth / 2) + 'px';
-            labelEl.style.top = (center.y + offset.dy - labelEl.offsetHeight / 2) + 'px';
+            const curCx = parseFloat(labelEl.dataset.centerX) || center.x;
+            const curCy = parseFloat(labelEl.dataset.centerY) || center.y;
+            labelEl.style.left = (curCx + offset.dx - labelEl.offsetWidth / 2) + 'px';
+            labelEl.style.top = (curCy + offset.dy - labelEl.offsetHeight / 2) + 'px';
             drawLeaderLines();
         });
 
@@ -5365,8 +5504,10 @@ function draw2DModuleListLabels(layer, stageCenterStartX, stageCenterStartY) {
                 offset.dx = initDx + (event.clientX - startX) / vs;
                 offset.dy = initDy + (event.clientY - startY) / vs;
 
-                labelEl.style.left = (center.x + offset.dx - labelEl.offsetWidth / 2) + 'px';
-                labelEl.style.top = (center.y + offset.dy - labelEl.offsetHeight / 2) + 'px';
+                const curCx = parseFloat(labelEl.dataset.centerX) || center.x;
+                const curCy = parseFloat(labelEl.dataset.centerY) || center.y;
+                labelEl.style.left = (curCx + offset.dx - labelEl.offsetWidth / 2) + 'px';
+                labelEl.style.top = (curCy + offset.dy - labelEl.offsetHeight / 2) + 'px';
                 drawLeaderLines();
             }
 
@@ -5384,12 +5525,39 @@ function draw2DModuleListLabels(layer, stageCenterStartX, stageCenterStartY) {
         svg.innerHTML = '';
         const labels = document.querySelectorAll('.draggable-module-label');
         labels.forEach(label => {
-            const px = parseFloat(label.dataset.centerX);
-            const py = parseFloat(label.dataset.centerY);
-            const leftVal = parseFloat(label.style.left) || 0;
-            const topVal = parseFloat(label.style.top) || 0;
+            const moduleId = label.dataset.moduleId;
+            let px = parseFloat(label.dataset.centerX);
+            let py = parseFloat(label.dataset.centerY);
+
+            if (window.assignedModulesList && typeof camera !== 'undefined' && typeof renderer !== 'undefined') {
+                const mod = window.assignedModulesList.find(m => {
+                    const id = m.part === 'wall' ? ('wall_' + m.item.planIndex) : ((m.part === 'roof' ? 'roof_' : 'leg_') + m.item.planIndex);
+                    return id === moduleId;
+                });
+                if (mod && mod.item && mod.item.pos3D) {
+                    const tempV = mod.item.pos3D.clone();
+                    tempV.project(camera);
+                    const canvas = renderer.domElement;
+                    px = (tempV.x * 0.5 + 0.5) * canvas.clientWidth;
+                    py = (tempV.y * -0.5 + 0.5) * canvas.clientHeight;
+                    label.dataset.centerX = px;
+                    label.dataset.centerY = py;
+                }
+            }
+
             const wVal = label.offsetWidth || 0;
             const hVal = label.offsetHeight || 0;
+
+            let offset = { dx: 0, dy: 0 };
+            if (window.module2DOffsets) {
+                const off = window.module2DOffsets.get(moduleId);
+                if (off) offset = off;
+            }
+
+            let leftVal = px + offset.dx - wVal / 2;
+            let topVal = py + offset.dy - hVal / 2;
+            label.style.left = leftVal + 'px';
+            label.style.top = topVal + 'px';
 
             const underlineEl = label.querySelector('.label-underline');
             let uy = topVal + 22;
@@ -5402,7 +5570,6 @@ function draw2DModuleListLabels(layer, stageCenterStartX, stageCenterStartY) {
                 anchorX = leftVal + wVal;
             }
 
-            // 1. Leader Line: Solid line with glow or gray without glow
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
             path.setAttribute('d', `M ${px} ${py} L ${anchorX} ${uy}`);
             path.setAttribute('stroke', isBW ? '#555555' : '#39ff14');
@@ -5413,7 +5580,6 @@ function draw2DModuleListLabels(layer, stageCenterStartX, stageCenterStartY) {
             }
             svg.appendChild(path);
 
-            // 3. Anchor dot: Small circle with glow at the module center
             const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             circle.setAttribute('cx', px);
             circle.setAttribute('cy', py);

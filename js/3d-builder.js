@@ -1547,15 +1547,21 @@ function autoFrameForScreenshot(angleDeg = -30) {
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
 
+  const rad = angleDeg * Math.PI / 180;
+  const aspect = camera.aspect || 1;
   const fov = camera.fov * (Math.PI / 180);
 
-  // Wpisanie stoiska w kulę, by zawsze mieściło się od lewej do prawej
-  const sphereRadius = size.length() / 2;
-  let cameraDist = Math.abs(sphereRadius / Math.sin(fov / 2)) * 1.05; // 5% marginesu ochronnego
+  // Calculate projected dimensions to fit camera view nicely
+  const horizontalDim = size.x * Math.abs(Math.cos(rad)) + size.z * Math.abs(Math.sin(rad));
+  const verticalDim = size.y;
 
-  if (cameraDist < 250) cameraDist = 250; // Zabezpieczenie przed uderzeniem w ścianę
+  const distHeight = (verticalDim / 2) / Math.tan(fov / 2);
+  const distWidth = (horizontalDim / 2) / (Math.tan(fov / 2) * aspect);
 
-  const rad = angleDeg * Math.PI / 180;
+  let cameraDist = Math.max(distHeight, distWidth) * 1.85 + 60; // 85% margin + 60cm offset to prevent close-up clipping due to camera tilt
+
+  if (cameraDist < 230) cameraDist = 230; // Prevent camera from getting inside small objects
+
   camera.position.set(
     center.x + Math.sin(rad) * cameraDist,
     center.y + (size.y * 0.4),
@@ -3286,6 +3292,42 @@ function drawKasetonScene() {
         backFill.position.set(0, elevY + H / 2, 9.0);
         kGroup.add(backFill);
       }
+    }
+  }
+
+  // 8.6. LINIE SZYCIA DLA WYDRUKÓW PONADWYMIAROWYCH (>300cm w obu wymiarach)
+  if (printOption !== 'no_print' && W > 300 && H > 300) {
+    const lineY = elevY + H - 300;
+    const lineColor = isBlueprintMode ? 0xff0000 : 0x000000;
+    const lineMat = new THREE.MeshBasicMaterial({ color: lineColor });
+    const lineThickness = 0.4;
+    const lineDepth = 0.05;
+    const lineW = W - 0.4;
+
+    // Przód
+    const hasFrontMesh = (sys === 'LMS' || sys === 'LMSM')
+      ? ['backlit_white', 'backlit_blockout'].includes(printOption)
+      : ['single', 'double', 'front_blockout', 'front_blockout_2', 'double_blockout'].includes(printOption);
+      
+    if (hasFrontMesh) {
+      const fLineGeom = new THREE.BoxGeometry(lineW, lineThickness, lineDepth);
+      const fLine = new THREE.Mesh(fLineGeom, lineMat);
+      fLine.position.set(0, lineY, -pD / 2 + 0.21);
+      fLine.userData = { isKasetonPrint: true, isSeamLine: true };
+      kGroup.add(fLine);
+    }
+
+    // Tył
+    const hasBackMesh = (sys === 'LMS' || sys === 'LMSM')
+      ? ['backlit_white', 'backlit_blockout', 'back_white'].includes(printOption)
+      : ['single', 'double', 'front_blockout', 'front_blockout_2', 'back_blockout', 'double_blockout'].includes(printOption);
+
+    if (hasBackMesh) {
+      const bLineGeom = new THREE.BoxGeometry(lineW, lineThickness, lineDepth);
+      const bLine = new THREE.Mesh(bLineGeom, lineMat);
+      bLine.position.set(0, lineY, pD / 2 - 0.21);
+      bLine.userData = { isKasetonPrint: true, isSeamLine: true };
+      kGroup.add(bLine);
     }
   }
 
@@ -5434,8 +5476,144 @@ function drawCTFScene(config) {
         const bottomFabMesh = new THREE.Mesh(bottomFabGeom, bottomFabMat);
         bottomFabMesh.position.set(0, elevY - zOffset, 0);
         bottomFabMesh.rotation.x = Math.PI / 2;
-        bottomFabMesh.userData = { isKasetonPrint: true, side: 'bottom' };
         kGroup.add(bottomFabMesh);
+      }
+    }
+  }
+
+  // 8.6. LINIE SZYCIA DLA WYDRUKÓW PONADWYMIAROWYCH (>300cm w obu wymiarach)
+  if (printOption !== 'no_print') {
+    const lineColor = isBlueprintMode ? 0xff0000 : 0x000000;
+    const lineMat = new THREE.MeshBasicMaterial({ color: lineColor });
+    const lineThickness = 0.4;
+    const lineDepth = 0.05;
+    const lineY = elevY + H - 300;
+
+    if (sys === 'LCD_LMD') {
+      const isWrapping = ['double_wrapping', 'front_wrapping_back_blockout'].includes(printOption);
+      
+      if (isWrapping) {
+        if (H > 300 && (W > 300 || D > 300)) {
+          if (W > 300) {
+            const fGeom = new THREE.BoxGeometry(W, lineThickness, lineDepth);
+            const fLine = new THREE.Mesh(fGeom, lineMat);
+            fLine.position.set(0, lineY, -D / 2 - 0.03);
+            fLine.userData = { isKasetonPrint: true, isSeamLine: true };
+            kGroup.add(fLine);
+
+            const bLine = new THREE.Mesh(fGeom, lineMat);
+            bLine.position.set(0, lineY, D / 2 + 0.03);
+            bLine.userData = { isKasetonPrint: true, isSeamLine: true };
+            kGroup.add(bLine);
+          }
+          if (D > 300) {
+            const lGeom = new THREE.BoxGeometry(lineDepth, lineThickness, D);
+            const lLine = new THREE.Mesh(lGeom, lineMat);
+            lLine.position.set(-W / 2 - 0.03, lineY, 0);
+            lLine.userData = { isKasetonPrint: true, isSeamLine: true };
+            kGroup.add(lLine);
+
+            const rLine = new THREE.Mesh(lGeom, lineMat);
+            rLine.position.set(W / 2 + 0.03, lineY, 0);
+            rLine.userData = { isKasetonPrint: true, isSeamLine: true };
+            kGroup.add(rLine);
+          }
+        }
+      } else {
+        if (W > 300 && H > 300) {
+          const fGeom = new THREE.BoxGeometry(W - 0.04, lineThickness, lineDepth);
+          const fLine = new THREE.Mesh(fGeom, lineMat);
+          fLine.position.set(0, lineY, -D / 2 - 0.03);
+          fLine.userData = { isKasetonPrint: true, isSeamLine: true };
+          kGroup.add(fLine);
+
+          const bLine = new THREE.Mesh(fGeom, lineMat);
+          bLine.position.set(0, lineY, D / 2 + 0.03);
+          bLine.userData = { isKasetonPrint: true, isSeamLine: true };
+          kGroup.add(bLine);
+        }
+        if (D > 300 && H > 300) {
+          const lGeom = new THREE.BoxGeometry(lineDepth, lineThickness, D - 0.04);
+          const lLine = new THREE.Mesh(lGeom, lineMat);
+          lLine.position.set(-W / 2 - 0.03, lineY, 0);
+          lLine.userData = { isKasetonPrint: true, isSeamLine: true };
+          kGroup.add(lLine);
+
+          const rLine = new THREE.Mesh(lGeom, lineMat);
+          rLine.position.set(W / 2 + 0.03, lineY, 0);
+          rLine.userData = { isKasetonPrint: true, isSeamLine: true };
+          kGroup.add(rLine);
+        }
+      }
+
+      // Inner prints
+      const innerH = H - 1.6;
+      if (innerH > 300) {
+        const innerW = W - 28;
+        const innerD = D - 28;
+        if (innerW > 300) {
+          const fiGeom = new THREE.BoxGeometry(innerW - 0.04, lineThickness, lineDepth);
+          const fiLine = new THREE.Mesh(fiGeom, lineMat);
+          fiLine.position.set(0, lineY, -D / 2 + 14 - 0.03);
+          fiLine.userData = { isKasetonPrint: true, isSeamLine: true };
+          kGroup.add(fiLine);
+
+          const biLine = new THREE.Mesh(fiGeom, lineMat);
+          biLine.position.set(0, lineY, D / 2 - 14 + 0.03);
+          biLine.userData = { isKasetonPrint: true, isSeamLine: true };
+          kGroup.add(biLine);
+        }
+        if (innerD > 300) {
+          const liGeom = new THREE.BoxGeometry(lineDepth, lineThickness, innerD - 0.04);
+          const liLine = new THREE.Mesh(liGeom, lineMat);
+          liLine.position.set(-W / 2 + 14 - 0.03, lineY, 0);
+          liLine.userData = { isKasetonPrint: true, isSeamLine: true };
+          kGroup.add(liLine);
+
+          const riLine = new THREE.Mesh(liGeom, lineMat);
+          riLine.position.set(W / 2 - 14 + 0.03, lineY, 0);
+          riLine.userData = { isKasetonPrint: true, isSeamLine: true };
+          kGroup.add(riLine);
+        }
+      }
+    } else {
+      // Standard CTF / CTF_LED box
+      let showFront = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides', 'front_back', 'single_front'].includes(printOption);
+      let showBack = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides', 'front_back'].includes(printOption);
+      let showLeft = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides'].includes(printOption);
+      let showRight = ['6_sides', '4_sides', '5_sides_top_open', '5_sides_bottom_open', 'all_sides'].includes(printOption);
+
+      if (W > 300 && H > 300) {
+        if (showFront) {
+          const fGeom = new THREE.BoxGeometry(W, lineThickness, lineDepth);
+          const fLine = new THREE.Mesh(fGeom, lineMat);
+          fLine.position.set(0, lineY, -D / 2 - cOffset - 0.01);
+          fLine.userData = { isKasetonPrint: true, isSeamLine: true };
+          kGroup.add(fLine);
+        }
+        if (showBack) {
+          const bGeom = new THREE.BoxGeometry(W, lineThickness, lineDepth);
+          const bLine = new THREE.Mesh(bGeom, lineMat);
+          bLine.position.set(0, lineY, D / 2 + cOffset + 0.01);
+          bLine.userData = { isKasetonPrint: true, isSeamLine: true };
+          kGroup.add(bLine);
+        }
+      }
+      if (D > 300 && H > 300) {
+        if (showLeft) {
+          const lGeom = new THREE.BoxGeometry(lineDepth, lineThickness, D);
+          const lLine = new THREE.Mesh(lGeom, lineMat);
+          lLine.position.set(-W / 2 - cOffset - 0.01, lineY, 0);
+          lLine.userData = { isKasetonPrint: true, isSeamLine: true };
+          kGroup.add(lLine);
+        }
+        if (showRight) {
+          const rGeom = new THREE.BoxGeometry(lineDepth, lineThickness, D);
+          const rLine = new THREE.Mesh(rGeom, lineMat);
+          rLine.position.set(W / 2 + cOffset + 0.01, lineY, 0);
+          rLine.userData = { isKasetonPrint: true, isSeamLine: true };
+          kGroup.add(rLine);
+        }
       }
     }
   }
@@ -6178,6 +6356,7 @@ function drawCTFScene(config) {
     const pD2 = new THREE.Vector3(W / 2, elevY, hd);
     kGroup.add(addDimension3D(pD1, pD2, D + ' cm', new THREE.Vector3(20, 0, 20), 1.3));
   }
+
   // --- CUSTOM CABLE EXIT DRILL AND WIRE (CTF Box) ---
   const isCTFLED = (sys === 'CTF_LED');
   if (isCTFLED && ['drill_bottom', 'drill_top', 'drill_left', 'drill_right'].includes(config.cableExit)) {

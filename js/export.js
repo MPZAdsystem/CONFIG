@@ -95,8 +95,8 @@ function getIntranetXlsBase64() {
         'Dodaj BOM'
     ]);
     window.intranetBOMDraft.forEach(item => {
-        const idVal = (item.isParent || !item.isKaseton) ? (item.id ? parseFloat(item.id) : null) : null;
-        const parentIdVal = (!item.isParent && item.isKaseton) ? (item.parentId ? parseFloat(item.parentId) : null) : null;
+        const idVal = item.id ? parseFloat(item.id) : null;
+        const parentIdVal = (!item.isParent && item.parentId) ? parseFloat(item.parentId) : null;
         rows.push([
             idVal,
             parentIdVal,
@@ -514,15 +514,15 @@ window.initIntranetBomDraft = function () {
             if (sys === 'STF' || sys === 'STFL' || sys === 'DTF' || sys === 'LCD_LMD') {
                 if (sys === 'LCD_LMD') {
                     if (item.name === 'profil LMD odchudzony') {
-                        const unitPrice = item.qty > 0 ? (item.price || 0) / item.qty : 0;
+                        const unitPrice = item.price || 0;
                         const qtyW = (4 * W) / 100;
-                        const priceW = qtyW * unitPrice;
+                        const priceW = unitPrice;
                         let descW = `${W}cm`;
                         if (horizLedsText) descW += ` / oświetlenie LED: ${horizLedsText}`;
                         descW += ` / scięty obustronnie na 45 stopni`;
 
                         const qtyD = (4 * D) / 100;
-                        const priceD = qtyD * unitPrice;
+                        const priceD = unitPrice;
                         let descD = `${D}cm`;
                         if (vertLedsText) descD += ` / oświetlenie LED: ${vertLedsText}`;
                         descD += ` / scięty obustronnie na 45 stopni`;
@@ -667,7 +667,8 @@ window.initIntranetBomDraft = function () {
             }
 
             draft.push({
-                id: null, parentId: idVal || null, name: item.name, qty: item.qty, price: null, vat: '0%', displayName: '', description: genericDesc, isParent: false, isManual: item.isManual || false, isKaseton: true
+                id: null, parentId: idVal || null, name: item.name, qty: item.qty, price: null, vat: '0%', displayName: '', description: genericDesc, isParent: false, isManual: item.isManual || false, isKaseton: true,
+                width: item.width || null, height: item.height || null
             });
         });
     } else {
@@ -682,9 +683,152 @@ window.initIntranetBomDraft = function () {
             const isConnOrFoamOrImbus = item.name.includes('łącznik') || item.name.includes('zamek') || item.name.includes('connector') || item.name.includes('pianka') || item.name.includes('imbus');
             const descVal = isConnOrFoamOrImbus ? '' : (item.description || '');
             draft.push({
-                id: idVal || null, parentId: null, name: item.name, qty: item.qty, price: item.price || 0, vat: '23%', displayName: '', description: descVal, isParent: false, isManual: item.isManual || false, isKaseton: false
+                id: idVal || null, parentId: null, name: item.name, qty: item.qty, price: item.price || 0, vat: '23%', displayName: '', description: descVal, isParent: false, isManual: item.isManual || false, isKaseton: false,
+                width: item.width || null, height: item.height || null
             });
         });
+    }
+
+    // Scan for oversized prints requiring stitching
+    const servicesToInject = [];
+    
+    function extractOrdinalGraphicCode(filename) {
+        if (!filename) return null;
+        const baseName = filename.split('/').pop().split('\\').pop().split('.').slice(0, -1).join('.');
+        
+        let match = baseName.match(/([A-Za-z]+[-_]?\d+)/);
+        if (match) return match[1];
+        
+        match = baseName.match(/(\d+[-_]?[A-Za-z]+)/);
+        if (match) return match[1];
+        
+        match = baseName.match(/\b(\d+)\b/);
+        if (match) return match[1];
+        
+        return null;
+    }
+
+    draft.forEach(item => {
+        if (item.name && /^wydruk/i.test(item.name.trim())) {
+            let w = 0, h = 0;
+            
+            // 1. Try to read from object properties
+            if (item.width && item.height) {
+                w = parseFloat(item.width);
+                h = parseFloat(item.height);
+            }
+            
+            // 2. Try to parse from description
+            if (w === 0 && h === 0) {
+                const descClean = (item.description || '').replace(/[\u00d7\u2715]/g, 'x').replace(/,/g, '.');
+                const matchDesc = descClean.match(/(\d+(?:\.\d+)?)\s*[xX]\s*(\d+(?:\.\d+)?)/);
+                if (matchDesc) {
+                    w = parseFloat(matchDesc[1]);
+                    h = parseFloat(matchDesc[2]);
+                }
+            }
+            
+            // 3. Try to parse from name
+            if (w === 0 && h === 0) {
+                const nameClean = item.name.replace(/[\u00d7\u2715]/g, 'x').replace(/,/g, '.');
+                const matchName = nameClean.match(/(\d+(?:\.\d+)?)\s*[xX]\s*(\d+(?:\.\d+)?)/);
+                if (matchName) {
+                    w = parseFloat(matchName[1]);
+                    h = parseFloat(matchName[2]);
+                }
+            }
+            
+            // 4. Fallback to kaseton config dimensions (applicable to LMD, LMS, LMSM, STF, DTF, STFL, SEGO)
+            const config = window.currentKasetonConfig || {};
+            if (w === 0 && h === 0) {
+                w = parseFloat(config.width) || 0;
+                h = parseFloat(config.depth) || 0; // depth represents height H in standard kaseton configs
+            }
+            
+            if (w > 300 && h > 300) {
+                let filename = null;
+                const nameLower = item.name.toLowerCase();
+                const descLower = (item.description || '').toLowerCase();
+                
+                if (descLower.includes('ściana a') && descLower.includes('wewnętrzn')) {
+                    filename = config.textureFrontInnerName;
+                } else if (descLower.includes('ściana b') && descLower.includes('wewnętrzn')) {
+                    filename = config.textureLeftInnerName;
+                } else if (descLower.includes('ściana c') && descLower.includes('wewnętrzn')) {
+                    filename = config.textureBackInnerName;
+                } else if (descLower.includes('ściana d') && descLower.includes('wewnętrzn')) {
+                    filename = config.textureRightInnerName;
+                } else if (descLower.includes('ściana a')) {
+                    filename = config.textureFrontName;
+                } else if (descLower.includes('ściana b')) {
+                    filename = config.textureLeftName;
+                } else if (descLower.includes('ściana c')) {
+                    filename = config.textureBackName;
+                } else if (descLower.includes('ściana d')) {
+                    filename = config.textureRightName;
+                } else if (descLower.includes('przód')) {
+                    filename = config.textureFrontName;
+                } else if (descLower.includes('tył') || nameLower.includes('blockout') || nameLower.includes('tył')) {
+                    filename = config.textureBackName;
+                } else if (descLower.includes('lewy') || descLower.includes('lewa')) {
+                    filename = config.textureLeftName;
+                } else if (descLower.includes('prawy') || descLower.includes('prawa')) {
+                    filename = config.textureRightName;
+                } else {
+                    filename = config.textureFrontName;
+                }
+                
+                let descSuffix = "";
+                const graphicMarker = extractOrdinalGraphicCode(filename);
+                if (graphicMarker) {
+                    descSuffix = ` - dla grafiki: ${graphicMarker}`;
+                } else {
+                    const baseName = filename ? filename.split('/').pop().split('\\').pop().split('.').slice(0, -1).join('.') : null;
+                    if (baseName) {
+                        descSuffix = ` - dla grafiki: ${baseName}`;
+                    } else {
+                        const wallMatch = item.description ? item.description.match(/(Ściana \w+|przód|tył|bok\s+\w+|góra|dół)/i) : null;
+                        if (wallMatch) {
+                            descSuffix = ` - dla ściany: ${wallMatch[1]}`;
+                        }
+                    }
+                }
+                
+                const serviceQty = 15 * (parseFloat(item.qty) || 1);
+                
+                servicesToInject.push({
+                    id: 10809,
+                    parentId: null,
+                    name: "Usługa wewnętrzna szycie [min]",
+                    qty: serviceQty,
+                    price: 0,
+                    vat: "23%",
+                    displayName: "",
+                    description: `Szycie wydruku ponadwymiarowego${descSuffix}`,
+                    isParent: true,
+                    isManual: false,
+                    isKaseton: false
+                });
+                
+                servicesToInject.push({
+                    id: 10808,
+                    parentId: null,
+                    name: "Usługa wewnętrzna krojenie [min]",
+                    qty: serviceQty,
+                    price: 0,
+                    vat: "23%",
+                    displayName: "",
+                    description: `Krojenie wydruku ponadwymiarowego${descSuffix}`,
+                    isParent: true,
+                    isManual: false,
+                    isKaseton: false
+                });
+            }
+        }
+    });
+    
+    if (servicesToInject.length > 0) {
+        draft.push(...servicesToInject);
     }
 
     window.intranetBOMDraft = draft;
@@ -917,8 +1061,8 @@ window.saveProjectConsolidated = function () {
     ]);
 
     window.intranetBOMDraft.forEach(item => {
-        const idVal = (item.isParent || !item.isKaseton) ? (item.id ? parseFloat(item.id) : null) : null;
-        const parentIdVal = (!item.isParent && item.isKaseton) ? (item.parentId ? parseFloat(item.parentId) : null) : null;
+        const idVal = item.id ? parseFloat(item.id) : null;
+        const parentIdVal = (!item.isParent && item.parentId) ? parseFloat(item.parentId) : null;
         rows.push([
             idVal,
             parentIdVal,

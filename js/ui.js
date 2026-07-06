@@ -799,6 +799,59 @@ function updateModuleListButtonUI() {
 }
 window.updateModuleListButtonUI = updateModuleListButtonUI;
 
+window.getGrossDimensionText = function(wCm, hCm, isSego, isBacklit) {
+    if (isSego) {
+        const wMm = Math.round(wCm * 10) + 7;
+        const hMm = Math.round(hCm * 10) + 7;
+        return `${wMm}x${hMm} mm`;
+    }
+
+    let wMm, hMm;
+    if (isBacklit) {
+        const getBacklitAdd = (val) => {
+            if (val <= 50) return 18;
+            if (val <= 80) return 16;
+            if (val <= 100) return 15;
+            if (val <= 150) return 14;
+            if (val <= 200) return 13;
+            if (val <= 250) return 12;
+            if (val <= 300) return 12;
+            return 10;
+        };
+        wMm = Math.round(wCm * 10) + getBacklitAdd(wCm);
+        hMm = Math.round(hCm * 10) + getBacklitAdd(hCm);
+    } else {
+        const getBlockoutWidthAdd = (val) => {
+            if (val <= 50) return 14;
+            if (val <= 111.6) return 15;
+            if (val <= 160) return 14;
+            if (val <= 200) return 11;
+            if (val <= 248) return 5;
+            if (val <= 300) return 10;
+            if (val <= 400) return 10;
+            if (val <= 500) return 10;
+            if (val <= 600) return 10;
+            if (val <= 700) return 10;
+            return 10;
+        };
+        const getBlockoutHeightAdd = (val) => {
+            if (val <= 99.2) return 15;
+            if (val <= 148.8) return 14;
+            if (val <= 198.4) return 11;
+            if (val <= 248) return 5;
+            if (val <= 300) return 10;
+            if (val <= 400) return 10;
+            if (val <= 500) return 10;
+            if (val <= 600) return 10;
+            if (val <= 700) return 10;
+            return 10;
+        };
+        wMm = Math.round(wCm * 10) + getBlockoutWidthAdd(wCm);
+        hMm = Math.round(hCm * 10) + getBlockoutHeightAdd(hCm);
+    }
+    return `${wMm}x${hMm} mm`;
+};
+
 function buildModuleListTable() {
     const overlay = document.getElementById('moduleListSidebarOverlay');
     if (!overlay) return;
@@ -850,7 +903,11 @@ function buildModuleListTable() {
 
         if (part === 'wall') {
             letter = window.wallLetters ? window.wallLetters.get(item) : '';
-            name = item.isStacked ? `[Nadstawka ${letter}] ${item.labelEN || 'Wall'}` : `[Moduł ${letter}] ${item.labelEN || 'Wall'}`;
+            if (item.isLCD) {
+                name = `[Ściana ${letter}] ${item.labelEN || 'Wall'}`;
+            } else {
+                name = item.isStacked ? `[Nadstawka ${letter}] ${item.labelEN || 'Wall'}` : `[Moduł ${letter}] ${item.labelEN || 'Wall'}`;
+            }
             widthCm = item.length;
             heightCm = item.height;
         } else if (part === 'roof') {
@@ -876,20 +933,37 @@ function buildModuleListTable() {
 
         const sides = [];
         if (part === 'wall') {
-            sides.push({
-                label: 'Przód',
-                index: 1,
-                fileName: item.textureFrontName,
-                widthCm: widthCm,
-                heightCm: heightCm
-            });
-            sides.push({
-                label: 'Tył',
-                index: 2,
-                fileName: item.textureBackName,
-                widthCm: widthCm,
-                heightCm: heightCm
-            });
+            if (item.isLCD) {
+                sides.push({
+                    label: 'Zewnętrzny',
+                    index: 1,
+                    fileName: item.textureFrontName,
+                    widthCm: widthCm,
+                    heightCm: heightCm
+                });
+                sides.push({
+                    label: 'Wewnętrzny',
+                    index: 2,
+                    fileName: item.textureBackName,
+                    widthCm: widthCm - 28,
+                    heightCm: heightCm
+                });
+            } else {
+                sides.push({
+                    label: 'Przód',
+                    index: 1,
+                    fileName: item.textureFrontName,
+                    widthCm: widthCm,
+                    heightCm: heightCm
+                });
+                sides.push({
+                    label: 'Tył',
+                    index: 2,
+                    fileName: item.textureBackName,
+                    widthCm: widthCm,
+                    heightCm: heightCm
+                });
+            }
         } else if (part === 'roof') {
             const accData = item.accData || {};
             sides.push({
@@ -929,16 +1003,41 @@ function buildModuleListTable() {
             const hasGraphic = !!side.fileName;
             const netText = `${side.widthCm}x${side.heightCm} cm`;
 
-            let grossText = '-';
-            if (isSego) {
-                const wMm = (side.widthCm * 10) + 7;
-                const hMm = (side.heightCm * 10) + 7;
-                grossText = `${wMm}x${hMm} mm`;
-            } else {
-                const wMm = side.widthCm * 10;
-                const hMm = side.heightCm * 10;
-                grossText = `${wMm}x${hMm} mm`;
+            // Determine if this side is backlit (podświetlony) or blockout
+            let isBacklit = false;
+            if (item.isLCD) {
+                // LCD_LMD: check print option from config
+                const cfg = window.currentKasetonConfig || {};
+                const printOpt = cfg.print || 'double_divided';
+                const isDoublePrint = ['double_divided', 'double_wrapping'].includes(printOpt);
+                if (side.index === 1) {
+                    // Outer print — always backlit for LCD_LMD
+                    isBacklit = true;
+                } else {
+                    // Inner print — backlit only if double, otherwise blockout
+                    isBacklit = isDoublePrint;
+                }
+            } else if (typeof currentSystem !== 'undefined' && currentSystem === 'kasetony_niestandardowe') {
+                const cfg = window.currentKasetonConfig || {};
+                const sys = cfg.system || 'LMD';
+                const printOpt = cfg.print || 'single';
+                const isLedSys = ['LMD', 'LMS', 'LMSM', 'CTF_LED'].includes(sys);
+                if (isLedSys) {
+                    if (printOpt === 'double') {
+                        isBacklit = true;
+                    } else if (printOpt === 'single' || printOpt === 'backlit_white' || printOpt === 'backlit_blockout') {
+                        isBacklit = side.index === 1;
+                    } else if (printOpt === 'front_blockout') {
+                        isBacklit = false;
+                    } else {
+                        isBacklit = side.index === 1;
+                    }
+                } else {
+                    isBacklit = false;
+                }
             }
+
+            const grossText = window.getGrossDimensionText(side.widthCm, side.heightCm, isSego, isBacklit);
 
             html += `
                 <tr style="border-bottom: 1px solid rgba(255,255,255,0.02); color:#ccc;">
@@ -1319,6 +1418,7 @@ window.refreshBlueprintLegend = function () {
     }
     panel.style.display = 'flex';
 };
+
 
 function toggleFab() {
     const subs = document.getElementById('fabSubs');
@@ -2075,95 +2175,6 @@ function kasetonAfterglowTrigger(el) {
     void el.offsetWidth;
     el.classList.add('afterglow');
     setTimeout(() => el.classList.remove('afterglow'), 700);
-}
-
-window.ignoreWarningOnce = false;
-
-function checkKasetonWarnings(config) {
-    const warnings = [];
-    
-    // Rule 1: CTF_LED + zarowka + height > 150
-    if (config.system === 'CTF_LED') {
-        if (config.light === 'zarowka' && config.depth > 150) {
-            warnings.push({
-                title: 'Za wysoki kaseton na oświetlenie żarówkowe',
-                message: `Wybrano opcję oświetlenia "Żarówka" dla kasetonu o wysokości ${config.depth} cm. Maksymalna zalecana wysokość dla oświetlenia żarówkowego to 150 cm. Powyżej tej wysokości światło żarówki nie doświetli dostatecznie całego kasetonu.`,
-                suggestionText: 'Zmień układ oświetlenia na opcję doświetlaną plafonami (góra + dół) dla równomiernego oświetlenia.',
-                apply: () => {
-                    const lightEl = document.getElementById('kasetonLight');
-                    if (lightEl) {
-                        lightEl.value = 'plafon_gora_dol';
-                        submitKasetonConfig();
-                    }
-                }
-            });
-        }
-    }
-
-    // Rule 2: CTF_LED + zarowka + (W < 50 || D < 50)
-    if (config.system === 'CTF_LED' && config.light === 'zarowka') {
-        const W = config.width;
-        const D = config.height3D;
-        if (W < 50 || D < 50) {
-            warnings.push({
-                title: 'Żarówka zbyt blisko wydruku',
-                message: `Wybrano oświetlenie żarówkowe dla kasetonu o szerokości ${W} cm i głębokości 3D ${D} cm. Żarówka znajduje się zbyt blisko wydruku na szerokości lub głębokości konstrukcji, co może skutkować przegrzaniem tkaniny lub powstawaniem plam świetlnych.`,
-                suggestionText: 'Zmiana na CTF z blatem z płyty meblowej MDF z paskiem ledowym zamontowanym podblatowo.',
-                apply: () => {
-                    const topEl = document.getElementById('kasetonTop');
-                    if (topEl) {
-                        topEl.value = 'mdf';
-                        updateKasetonLightOptions();
-                        const lightEl = document.getElementById('kasetonLight');
-                        if (lightEl) {
-                            lightEl.value = 'paski_led';
-                        }
-                        submitKasetonConfig();
-                    }
-                }
-            });
-        }
-    }
-    
-    return warnings;
-}
-
-function showWarningModal(warning) {
-    const existing = document.getElementById('kaseton-warning-modal');
-    if (existing) existing.remove();
-    
-    const overlay = document.createElement('div');
-    overlay.id = 'kaseton-warning-modal';
-    overlay.className = 'height-modal-overlay';
-    overlay.style.zIndex = '20000';
-    overlay.style.display = 'flex';
-    
-    overlay.innerHTML = `
-        <div class="height-modal-container" style="max-width: 480px; min-height: auto;" onclick="event.stopPropagation();">
-            <div class="height-modal-header" style="border-bottom: 1px solid #ff4466;">
-                <h2 style="color: #ff4466; text-shadow: 0 0 10px rgba(255, 68, 102, 0.4);">⚠️ Ostrzeżenie konfiguracji</h2>
-                <span class="height-modal-close" onclick="document.getElementById('kaseton-warning-modal').remove()">✕</span>
-            </div>
-            <div style="padding: 20px; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; gap: 15px;">
-                <h3 style="margin: 0; color: #ffcc00; font-size: 14px;">${warning.title}</h3>
-                <p style="margin: 0; font-size: 12px; line-height: 1.5; color: #ddd;">${warning.message}</p>
-                <div style="background: rgba(255, 204, 0, 0.1); border-left: 3px solid #ffcc00; padding: 10px; border-radius: 4px; font-size: 11px; color: #ffcc00; line-height: 1.4;">
-                    <b>Sugerowane rozwiązanie:</b> ${warning.suggestionText}
-                </div>
-            </div>
-            <div class="height-modal-footer" style="padding: 15px 20px; background: rgba(0,0,0,0.2); display: flex; justify-content: flex-end; gap: 12px;">
-                <button class="btn-bottom neon-pink" style="min-width: 100px;" onclick="window.ignoreWarningOnce = true; document.getElementById('kaseton-warning-modal').remove(); submitKasetonConfig();">Ignoruj</button>
-                <button id="applyWarningSuggestion" class="btn-bottom neon-green" style="min-width: 150px;">Zastosuj sugestię</button>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(overlay);
-    
-    overlay.querySelector('#applyWarningSuggestion').onclick = () => {
-        overlay.remove();
-        warning.apply();
-    };
 }
 
 function submitKasetonConfig() {

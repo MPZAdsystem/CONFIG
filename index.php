@@ -113,7 +113,11 @@
 </head>
 
 <body>
+    <!-- ── TRYB PRZESUWANIA – wskaźnik ── -->
+    <div id="moveModeIndicator">🟢 TRYB PRZESUWANIA (M) &nbsp;·&nbsp; Kliknij aby umieścić &nbsp;·&nbsp; ESC aby anulować &nbsp;·&nbsp; C = Klip</div>
+
     <div id="crash-screen" style="display: none;">
+
         <div class="crash-modal">
             <h2 style="color: #ff4444; margin-top: 0;">⚠️ Zatrzymano renderowanie 3D</h2>
             <p>Przeglądarce zabrakło pamięci wideo (VRAM) lub nastąpił błąd sterownika graficznego. Twój projekt jest
@@ -1731,27 +1735,34 @@
 
             <div class="kaseton-section">
                 <label class="kaseton-label"><span class="kaseton-badge">3</span> Cięcie profili</label>
-                <select id="kasetonCut" class="kaseton-select">
-                    <option value="none">Brak cięcia (w całości)</option>
-                    <option value="auto_dedicated">podział automatyczny - dedyk (podział na 300cm)</option>
-                    <option value="auto_courier_200">podział automatyczny - kurier (max 200cm)</option>
-                    <option value="auto_courier_150" selected>podział automatyczny - kurier (standard)</option>
-                    <option value="half_w">Cięcie na 2 części (szerokość)</option>
-                    <option value="3w">Cięcie na 3 części (szerokość)</option>
-                    <option value="4w">Cięcie na 4 części (szerokość)</option>
-                    <option value="half_h">Cięcie na 2 części (wysokość)</option>
-                    <option value="3h">Cięcie na 3 części (wysokość)</option>
-                    <option value="4h">Cięcie na 4 części (wysokość)</option>
-                    <option value="half_w_half_h">Cięcie na 2 (szer.) i 2 (wys.)</option>
-                    <option value="half_w_3h">Cięcie na 2 (szer.) i 3 (wys.)</option>
-                    <option value="half_w_4h">Cięcie na 2 (szer.) i 4 (wys.)</option>
-                    <option value="3w_half_h">Cięcie na 3 (szer.) i 2 (wys.)</option>
-                    <option value="3w_3h">Cięcie na 3 (szer.) i 3 (wys.)</option>
-                    <option value="3w_4h">Cięcie na 3 (szer.) i 4 (wys.)</option>
-                    <option value="4w_half_h">Cięcie na 4 (szer.) i 2 (wys.)</option>
-                    <option value="4w_3h">Cięcie na 4 (szer.) i 3 (wys.)</option>
-                    <option value="4w_4h">Cięcie na 4 (szer.) i 4 (wys.)</option>
-                </select>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select id="kasetonCut" class="kaseton-select" style="flex: 1;" onchange="if(typeof onKasetonCutChange === 'function') onKasetonCutChange(this)">
+                        <option value="none">Brak cięcia (w całości)</option>
+                        <option value="auto_dedicated">podział automatyczny - dedyk (podział na 300cm)</option>
+                        <option value="auto_courier_200">podział automatyczny - kurier (max 200cm)</option>
+                        <option value="auto_courier_150" selected>podział automatyczny - kurier (150cm)</option>
+                        <option value="half_w">Cięcie na 2 części (szerokość)</option>
+                        <option value="3w">Cięcie na 3 części (szerokość)</option>
+                        <option value="4w">Cięcie na 4 części (szerokość)</option>
+                        <option value="half_h">Cięcie na 2 części (wysokość)</option>
+                        <option value="3h">Cięcie na 3 części (wysokość)</option>
+                        <option value="4h">Cięcie na 4 części (wysokość)</option>
+                        <option value="half_w_half_h">Cięcie na 2 (szer.) i 2 (wys.)</option>
+                        <option value="half_w_3h">Cięcie na 2 (szer.) i 3 (wys.)</option>
+                        <option value="half_w_4h">Cięcie na 2 (szer.) i 4 (wys.)</option>
+                        <option value="3w_half_h">Cięcie na 3 (szer.) i 2 (wys.)</option>
+                        <option value="3w_3h">Cięcie na 3 (szer.) i 3 (wys.)</option>
+                        <option value="3w_4h">Cięcie na 3 (szer.) i 4 (wys.)</option>
+                        <option value="4w_half_h">Cięcie na 4 (szer.) i 2 (wys.)</option>
+                        <option value="4w_3h">Cięcie na 4 (szer.) i 3 (wys.)</option>
+                        <option value="4w_4h">Cięcie na 4 (szer.) i 4 (wys.)</option>
+                        <option value="custom">Custom (Własny podział)</option>
+                    </select>
+                    <button id="btnConfigureCustomCut" class="kaseton-submit" style="display: none; width: auto; margin-top: 0; padding: 6px 12px; font-size: 13px; white-space: nowrap;" onclick="if(typeof openCustomCutModal === 'function') openCustomCutModal(); event.preventDefault();">⚙️ Konfiguruj</button>
+                    <button id="btnConfigureCustomCTFFrontBack" class="kaseton-submit" style="display: none; width: auto; margin-top: 0; padding: 6px 12px; font-size: 13px; white-space: nowrap;" onclick="if(typeof openCustomCutModal === 'function') openCustomCutModal('frontBack'); event.preventDefault();">⚙️ Przód/Tył</button>
+                    <button id="btnConfigureCustomCTFLeftRight" class="kaseton-submit" style="display: none; width: auto; margin-top: 0; padding: 6px 12px; font-size: 13px; white-space: nowrap;" onclick="if(typeof openCustomCutModal === 'function') openCustomCutModal('leftRight'); event.preventDefault();">⚙️ Boki</button>
+                    <button id="btnConfigureCustomCTFTopBottom" class="kaseton-submit" style="display: none; width: auto; margin-top: 0; padding: 6px 12px; font-size: 13px; white-space: nowrap;" onclick="if(typeof openCustomCutModal === 'function') openCustomCutModal('topBottom'); event.preventDefault();">⚙️ Góra/Dół</button>
+                </div>
             </div>
 
             <div class="kaseton-section">
@@ -1856,16 +1867,17 @@
         </div>
     </div>
 
-    <script src="js/ral-database.js?v=36"></script>
-    <script src="js/data.js?v=36"></script>
-    <script src="js/export.js?v=36"></script>
-    <script src="js/ui.js?v=36"></script>
-    <script src="js/info.js?v=36"></script>
-    <script src="js/3d-builder.js?v=36"></script>
-    <script src="js/3d-engine.js?v=36"></script>
-    <script src="js/bom.js?v=36"></script>
-    <script src="js/prompt_generator.js?v=36"></script>
-    <script src="js/main.js?v=36"></script>
+    <script src="js/ral-database.js?v=37"></script>
+    <script src="js/data.js?v=37"></script>
+    <script src="js/export.js?v=37"></script>
+    <script src="js/warning.js?v=37"></script>
+    <script src="js/ui.js?v=37"></script>
+    <script src="js/info.js?v=37"></script>
+    <script src="js/3d-builder.js?v=37"></script>
+    <script src="js/3d-engine.js?v=37"></script>
+    <script src="js/bom.js?v=37"></script>
+    <script src="js/prompt_generator.js?v=37"></script>
+    <script src="js/main.js?v=37"></script>
 </body>
 
 </html>

@@ -212,6 +212,46 @@ function generateKasetonBOM() {
 
   const bomItems = [];
 
+  // Helper do dobierania pozycji wydruku dla kasetonów niestandardowych (LMD/LMS/LMSM/LCD_LMD)
+  function getPrintItem(pw, ph, isBlockout) {
+    const exactSizes = [
+      { w: 70, h: 100 }, { w: 70, h: 120 }, { w: 85, h: 200 }, { w: 60, h: 100 }, { w: 80, h: 140 },
+      { w: 100, h: 100 }, { w: 100, h: 150 }, { w: 100, h: 200 }, { w: 100, h: 250 }, { w: 100, h: 300 },
+      { w: 150, h: 150 }, { w: 150, h: 200 }, { w: 150, h: 250 }, { w: 200, h: 200 }, { w: 200, h: 250 },
+      { w: 300, h: 200 }, { w: 300, h: 250 }, { w: 400, h: 200 }, { w: 400, h: 250 }, { w: 500, h: 200 },
+      { w: 500, h: 250 }, { w: 600, h: 250 }, { w: 120, h: 200 }, { w: 200, h: 300 }, { w: 200, h: 350 },
+      { w: 99.2, h: 248 }, { w: 198.4, h: 248 }, { w: 99.2, h: 24.8 }, { w: 99.2, h: 99.2 }, { w: 297.6, h: 99.2 },
+      { w: 99.2, h: 198.4 }, { w: 198.4, h: 297.6 }
+    ];
+    let matchedSize = exactSizes.find(s => (s.w === pw && s.h === ph) || (s.w === ph && s.h === pw));
+    if (matchedSize) {
+      const sizeName = `${matchedSize.w}x${matchedSize.h}`.replace('.', ',');
+      const name = isBlockout
+        ? `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU ${sizeName}`
+        : `Wydruk adFrame LMD/LMS/LMSM ${sizeName}`;
+      return { name, qty: 1, unit: 'szt' };
+    } else {
+      let shorterDim = Math.min(pw, ph);
+      let longerDim = Math.max(pw, ph);
+
+      let mediumType = 'medium250';
+      if (shorterDim <= 250) {
+        mediumType = 'medium250';
+      } else {
+        mediumType = 'medium320';
+      }
+
+      let lengthCat = 'pow. 3mb';
+      if (longerDim <= 100) lengthCat = 'do 1mb';
+      else if (longerDim <= 300) lengthCat = 'do 3mb';
+
+      const name = isBlockout
+        ? `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU (${lengthCat}/${mediumType})`
+        : `Wydruk adFrame LMD/LMS/LMSM (${lengthCat}/${mediumType})`;
+      return { name, qty: 1, unit: 'szt', width: pw, height: ph };
+    }
+  }
+
   if (sys === 'CTF' || sys === 'CTF_LED') {
     const D = parseFloat(config.height3D) || 120; // Głębokość przestrzenna ramy 3D
     const wMeters = W / 100;
@@ -1001,13 +1041,7 @@ function generateKasetonBOM() {
       if (drawBottom || drawTop) maxLedProfileLen = Math.max(maxLedProfileLen, W);
       if (drawLeft || drawRight) maxLedProfileLen = Math.max(maxLedProfileLen, H);
 
-      let cableQty = 0;
-      if (psuCount === 1) {
-        cableQty = 1;
-      } else if (psuCount > 1) {
-        if (maxLedProfileLen < 400) cableQty = 1;
-        else cableQty = 2;
-      }
+      let cableQty = psuCount; // Zgodnie z ustaleniami: 1 kabel na zasilacz
       if (cableQty > 0) {
         bomItems.push({ name: 'Kabel zasilający do zasilacza wew / adFrame Quick', qty: cableQty, unit: 'szt' });
       }
@@ -1460,35 +1494,49 @@ function generateKasetonBOM() {
     // --- target systems check: LMD, LMS, LMSM, LCD_LMD ---
     const isTargetLedSys = ['LMD', 'LMS', 'LMSM', 'LCD_LMD'].includes(sys);
     if (isTargetLedSys) {
-      // 1. Connection with armed profiles (each vertical support has 2 ends; each horizontal has 2 ends)
-      let cutsW = config.numCutsW || 0;
-      let cutsH = config.numCutsH || 0;
-      if (config.cut === 'custom' && config.customSupports) {
-        cutsW = config.customSupports.vertical ? config.customSupports.vertical.length : 0;
-        cutsH = config.customSupports.horizontal ? config.customSupports.horizontal.length : 0;
-      }
       let totalConn = 0;
-      if (drawTop) totalConn += cutsW;
-      if (drawBottom) totalConn += cutsW;
-      if (drawLeft) totalConn += cutsH;
-      if (drawRight) totalConn += cutsH;
+      if (sys === 'LCD_LMD') {
+        const ledOption = config.light || 'top_bottom';
+        const numW = ledOption.includes('around') ? 8 : 4;
+        const numD = ledOption.includes('around') ? 8 : 4;
+
+        let cutsW = config.numCutsW || 0;
+        // Oblicz cutsD lokalnie – numCutsD jest deklarowane niżej w kodzie (TDZ safety)
+        let cutsD = 0;
+        if (config.cut && config.cut.startsWith('auto')) {
+          const maxLen = config.cut === 'auto_dedicated' ? 300 : (config.cut === 'auto_courier_150' ? 150 : 200);
+          if (D > maxLen) cutsD = Math.ceil(D / maxLen) - 1;
+        } else if (D > 200) {
+          cutsD = 1;
+        }
+
+        totalConn = (cutsW * numW) + (cutsD * numD);
+      } else {
+        let cutsW = config.numCutsW || 0;
+        let cutsH = config.numCutsH || 0;
+        if (config.cut === 'custom' && config.customSupports) {
+          cutsW = config.customSupports.vertical ? config.customSupports.vertical.length : 0;
+          cutsH = config.customSupports.horizontal ? config.customSupports.horizontal.length : 0;
+        }
+        if (drawTop) totalConn += cutsW;
+        if (drawBottom) totalConn += cutsW;
+        if (drawLeft) totalConn += cutsH;
+        if (drawRight) totalConn += cutsH;
+      }
 
       if (totalConn > 0) {
         bomItems.push({ name: 'złączka LED - Jack 3,5mm 10cm męski', qty: totalConn, unit: 'szt' });
         bomItems.push({ name: 'złączka LED - Jack 3,5mm 10cm żeński', qty: totalConn, unit: 'szt' });
       }
 
-      // 2. Opposite armed profiles only (exactly 2 out of 4)
-      const isOppositeArmed = (drawTop && drawBottom && !drawLeft && !drawRight) || (drawLeft && drawRight && !drawTop && !drawBottom);
-      if (isOppositeArmed) {
-        const unarmedLen = (drawTop && drawBottom) ? H : W;
-        const targetLen = unarmedLen - 38;
+      // 2. Extensions: LCD_LMD depth connections vs LMD/LMS opposite sides connections
+      if (sys === 'LCD_LMD') {
+        const targetLen = D;
         const remainingLen = targetLen - 50;
+        const connQty = 4; // one for each vertical edge/corner
 
-        // Add 50cm female connector
-        bomItems.push({ name: 'złączka LED - Jack 3,5mm 50cm żeński', qty: 1, unit: 'szt' });
+        bomItems.push({ name: 'złączka LED - Jack 3,5mm 50cm żeński', qty: connQty, unit: 'szt' });
 
-        // Add extensions if remaining length is positive
         if (remainingLen > 0) {
           function getExtensionsForLength(len) {
             if (len <= 0) return [];
@@ -1521,16 +1569,66 @@ function generateKasetonBOM() {
           extCombo.forEach(size => { extCounts[size]++; });
 
           if (extCounts[100] > 0) {
-            bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 100cm', qty: extCounts[100], unit: 'szt' });
+            bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 100cm', qty: extCounts[100] * connQty, unit: 'szt' });
           }
           if (extCounts[150] > 0) {
-            bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 150cm', qty: extCounts[150], unit: 'szt' });
+            bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 150cm', qty: extCounts[150] * connQty, unit: 'szt' });
           }
           if (extCounts[200] > 0) {
-            bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 200cm', qty: extCounts[200], unit: 'szt' });
+            bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 200cm', qty: extCounts[200] * connQty, unit: 'szt' });
           }
         }
+      } else {
+        const isOppositeArmed = (drawTop && drawBottom && !drawLeft && !drawRight) || (drawLeft && drawRight && !drawTop && !drawBottom);
+        if (isOppositeArmed) {
+          const unarmedLen = (drawTop && drawBottom) ? H : W;
+          const targetLen = unarmedLen - 38;
+          const remainingLen = targetLen - 50;
 
+          bomItems.push({ name: 'złączka LED - Jack 3,5mm 50cm żeński', qty: 1, unit: 'szt' });
+
+          if (remainingLen > 0) {
+            function getExtensionsForLength(len) {
+              if (len <= 0) return [];
+              const sizes = [100, 150, 200];
+              let bestCombo = null;
+              let bestSum = Infinity;
+
+              function search(currentCombo, currentSum) {
+                if (currentSum >= len) {
+                  if (currentSum < bestSum || (currentSum === bestSum && currentCombo.length < bestCombo.length)) {
+                    bestSum = currentSum;
+                    bestCombo = [...currentCombo];
+                  }
+                  return;
+                }
+                if (currentSum >= len + 200) return;
+
+                for (let size of sizes) {
+                  currentCombo.push(size);
+                  search(currentCombo, currentSum + size);
+                  currentCombo.pop();
+                }
+              }
+              search([], 0);
+              return bestCombo || [];
+            }
+
+            const extCombo = getExtensionsForLength(remainingLen);
+            const extCounts = { 100: 0, 150: 0, 200: 0 };
+            extCombo.forEach(size => { extCounts[size]++; });
+
+            if (extCounts[100] > 0) {
+              bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 100cm', qty: extCounts[100], unit: 'szt' });
+            }
+            if (extCounts[150] > 0) {
+              bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 150cm', qty: extCounts[150], unit: 'szt' });
+            }
+            if (extCounts[200] > 0) {
+              bomItems.push({ name: 'złączka LED - przedłużka Jack 3,5mm 200cm', qty: extCounts[200], unit: 'szt' });
+            }
+          }
+        }
       }
     }
   }
@@ -1559,16 +1657,7 @@ function generateKasetonBOM() {
       if (drawHorizontal) maxLedProfileLen = Math.max(maxLedProfileLen, W);
       if (drawVertical) maxLedProfileLen = Math.max(maxLedProfileLen, H);
 
-      let cableQty = 0;
-      if (psuCount === 1) {
-        cableQty = 1;
-      } else if (psuCount > 1) {
-        if (maxLedProfileLen < 400) {
-          cableQty = 1;
-        } else {
-          cableQty = 2;
-        }
-      }
+      let cableQty = psuCount; // Zgodnie z ustaleniami: 1 kabel na zasilacz
 
       if (cableQty > 0) {
         bomItems.push({ name: 'Kabel zasilający do zasilacza wew / adFrame Quick', qty: cableQty, unit: 'szt' });
@@ -1579,6 +1668,19 @@ function generateKasetonBOM() {
   let numCutsW = 0;
   let numCutsH = 0;
   let totalCuts = 0;
+
+  // LCD_LMD: also track depth cuts (D axis)
+  let numCutsD = 0;
+  if (sys === 'LCD_LMD') {
+    if (config.cut && config.cut.startsWith('auto')) {
+      const maxLen = config.cut === 'auto_dedicated' ? 300 : (config.cut === 'auto_courier_150' ? 150 : 200);
+      if (D > maxLen) numCutsD = Math.ceil(D / maxLen) - 1;
+    } else if (D > 200) {
+      numCutsD = 1;
+    }
+  }
+  config.numCutsD = numCutsD;
+
   if (config.cut === 'custom') {
     addCustomSupportsToBOM(bomItems, W, H, config);
     if (config.customCuts) {
@@ -1595,9 +1697,19 @@ function generateKasetonBOM() {
       bomItems.push({ name: 'profil support light', qty: parseFloat(suppLen.toFixed(2)), unit: 'mb' });
     }
 
-    const zamki = (numCutsW * 2) + (numCutsH * 2);
+    // Zamki (ID 10949): 1 zamek na każdy styk profilu support z profilem głównym
+    // LCD_LMD: każde cięcie W generuje 4 słupki pionowe × 2 stychy = 8 zamków
+    //          każde cięcie D generuje 4 słupki pionowe × 2 stychy = 8 zamków
+    // LMD/LMS/LMSM: każde cięcie W lub H generuje support na 2 profilach × 2 stychy = 4 zamki
+    //               (numCutsW * 2) + (numCutsH * 2) to uproszczone (1 zamek na każdy koniec profilu support)
+    let zamki = 0;
+    if (sys === 'LCD_LMD') {
+      zamki = (numCutsW * 8) + (numCutsD * 8);
+    } else {
+      zamki = (numCutsW * 2) + (numCutsH * 2);
+    }
     if (zamki > 0) {
-      bomItems.push({ name: 'adFrame support zamek', qty: zamki, unit: 'szt' });
+      bomItems.push({ name: 'adFrame support zamek', qty: zamki, unit: 'szt', intranetId: 10949 });
     }
 
     const crossConns = numCutsW * numCutsH;
@@ -1611,7 +1723,7 @@ function generateKasetonBOM() {
     bomItems.push({ name: 'adFrame LMD łącznik 180° długi', qty: totalCuts * 2, unit: 'szt' });
   }
 
-  if (config.usage === 'freestanding') {
+  if (config.usage === 'freestanding' && sys !== 'LCD_LMD') {
     let numFeet = 2;
     if (numCutsW > 0 && config.cut !== 'custom') {
       numFeet += numCutsW;
@@ -1627,30 +1739,71 @@ function generateKasetonBOM() {
   }
 
   // 6. WYDRUKI
-  const printOption = config.print || (sys === 'LMS' ? 'backlit_white' : 'single');
+  const printOption = config.print || (sys === 'LMS' ? 'backlit_white' : (sys === 'LCD_LMD' ? 'double_divided' : 'single'));
+
+  // Helper: dobór nazwy produktu wydruku dla LCD_LMD wg szerokości i wysokości wydruku
+  function getLcdPrintName(pw, ph, isBlockout) {
+    const wKey = pw <= 100 ? 'do 1mb' : (pw <= 300 ? 'do 3mb' : 'pow. 3mb');
+    const hKey = ph <= 250 ? 'medium250' : 'medium320';
+    return isBlockout
+      ? `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU (${wKey}/${hKey})`
+      : `Wydruk adFrame LMD/LMS/LMSM (${wKey}/${hKey})`;
+  }
+
   if (printOption !== 'no_print') {
-    if (printOption === 'single') {
-      // LMD default: front print + white blockout back
-      bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 1, unit: 'szt' });
-      bomItems.push({ name: `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU ${W}x${H}`, qty: 1, unit: 'szt' });
+    if (sys === 'LCD_LMD') {
+      // ── LCD_LMD: specjalna logika ──────────────────────────────────────────
+      // Ściany: A=przód (W×H), B=bok lewy (D×H), C=tył (W×H), D=bok prawy (D×H)
+      // Wydruki wewnętrzne (inner) są ZAWSZE dzielone i węższe o 28cm (ścięcie 45°)
+      const D_lmd = parseFloat(config.height3D) || 120;
+      const isWrapping = ['double_wrapping', 'front_wrapping_back_blockout'].includes(printOption);
+      const isDouble   = ['double_divided', 'double_wrapping'].includes(printOption);
+
+      // --- Wydruki zewnętrzne (outer) ---
+      if (isWrapping) {
+        // Jeden przechodzący wydruk: całkowity obwód = 2W + 2D
+        const wrapW = 2 * W + 2 * D_lmd;
+        const item = getPrintItem(wrapW, H, false);
+        item.description = `Wydruk zewnętrzny przechodzący A+B+C+D: ${wrapW}×${H} cm`;
+        bomItems.push(item);
+      } else {
+        // 4 osobne wydruki dzielone
+        const itemA = getPrintItem(W, H, false); itemA.description = `Ściana A – przód zewnętrzny: ${W}×${H} cm`; bomItems.push(itemA);
+        const itemB = getPrintItem(D_lmd, H, false); itemB.description = `Ściana B – bok lewy zewnętrzny: ${D_lmd}×${H} cm`; bomItems.push(itemB);
+        const itemC = getPrintItem(W, H, false); itemC.description = `Ściana C – tył zewnętrzny: ${W}×${H} cm`; bomItems.push(itemC);
+        const itemD = getPrintItem(D_lmd, H, false); itemD.description = `Ściana D – bok prawy zewnętrzny: ${D_lmd}×${H} cm`; bomItems.push(itemD);
+      }
+
+      // --- Wydruki wewnętrzne (inner): ZAWSZE dzielone, -28cm w szer. (ścięcie 45°) ---
+      const innerW = W - 28;    // szerokość wewnętrzna ścian A i C
+      const innerD = D_lmd - 28; // szerokość wewnętrzna ścian B i D
+      const innerBlockout = !isDouble; // blockout tył jeśli nie double
+
+      const itemIA = getPrintItem(innerW, H, innerBlockout); itemIA.description = `Ściana A – przód wewnętrzny: ${innerW}×${H} cm`; bomItems.push(itemIA);
+      const itemIB = getPrintItem(innerD, H, innerBlockout); itemIB.description = `Ściana B – bok lewy wewnętrzny: ${innerD}×${H} cm`; bomItems.push(itemIB);
+      const itemIC = getPrintItem(innerW, H, innerBlockout); itemIC.description = `Ściana C – tył wewnętrzny: ${innerW}×${H} cm`; bomItems.push(itemIC);
+      const itemID = getPrintItem(innerD, H, innerBlockout); itemID.description = `Ściana D – bok prawy wewnętrzny: ${innerD}×${H} cm`; bomItems.push(itemID);
+
+    } else if (printOption === 'single') {
+      bomItems.push(getPrintItem(W, H, false));
+      bomItems.push(getPrintItem(W, H, true));
     } else if (printOption === 'double') {
-      bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 2, unit: 'szt' });
+      const item = getPrintItem(W, H, false);
+      item.qty = 2;
+      bomItems.push(item);
     } else if (printOption === 'front_blockout' || printOption === 'front_blockout_2') {
-      bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 1, unit: 'szt' });
-      bomItems.push({ name: `Wydruk adFrame Blockout ${W}x${H}`, qty: 1, unit: 'szt' });
+      bomItems.push(getPrintItem(W, H, false));
+      bomItems.push(getPrintItem(W, H, true));
     } else if (printOption === 'back_blockout') {
-      bomItems.push({ name: `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU ${W}x${H}`, qty: 1, unit: 'szt' });
+      bomItems.push(getPrintItem(W, H, true));
     } else if (printOption === 'backlit_white') {
-      // LMS: front backlit + white back
-      bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 1, unit: 'szt' });
-      bomItems.push({ name: `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU ${W}x${H}`, qty: 1, unit: 'szt' });
+      bomItems.push(getPrintItem(W, H, false));
+      bomItems.push(getPrintItem(W, H, true));
     } else if (printOption === 'backlit_blockout') {
-      // LMS: front backlit + color blockout back
-      bomItems.push({ name: `Wydruk adFrame LMD/LMS/LMSM ${W}x${H}`, qty: 1, unit: 'szt' });
-      bomItems.push({ name: `Wydruk adFrame Blockout ${W}x${H}`, qty: 1, unit: 'szt' });
+      bomItems.push(getPrintItem(W, H, false));
+      bomItems.push(getPrintItem(W, H, true));
     } else if (printOption === 'back_white') {
-      // LMS: only white back
-      bomItems.push({ name: `Wydruk adFrame Blockout - BIAŁY PLECY NIE DO DRUKU ${W}x${H}`, qty: 1, unit: 'szt' });
+      bomItems.push(getPrintItem(W, H, true));
     }
   }
 
@@ -2041,9 +2194,9 @@ const KASETON_PRICES = {
   "adFrame DTF/STF/LMSM łącznik 180°": { plnPrice: 22.456, plnMargin: 8.02, intranetId: 10941, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "adFrame imbus 2,5mm": { plnPrice: 0.196, plnMargin: 0.07, intranetId: 11315, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "adFrame imbus 4mm": { plnPrice: 0.252, plnMargin: 0.09, intranetId: 11316, category: "ramy tekstylne akcesoria", origin: "Chiny" },
-  "adFrame LCD profil przedni z gumką": { plnPrice: 112.868, plnMargin: 40.31, intranetId: 12073, category: "ramy tekstylne akcesoria", origin: "Chiny" },
-  "adFrame LCD profil tylny z gumką/bez gumki": { plnPrice: 195.748, plnMargin: 69.91, intranetId: 12096, category: "ramy tekstylne akcesoria", origin: "Chiny" },
-  "adFrame LCD profil z gumką środkowy": { plnPrice: 89.852, plnMargin: 32.09, intranetId: 15412, category: "ramy tekstylne akcesoria", origin: "Chiny" },
+  "adFrame LCD profil przedni z gumką": { plnPrice: 43.57, plnMargin: 40.24, intranetId: 12073, category: "ramy tekstylne akcesoria", origin: "Chiny" },
+  "adFrame LCD profil tylny z gumką/bez gumki": { plnPrice: 73.11, plnMargin: 69.78, intranetId: 12096, category: "ramy tekstylne akcesoria", origin: "Chiny" },
+  "adFrame LCD profil z gumką środkowy": { plnPrice: 35.36, plnMargin: 32.03, intranetId: 15412, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "adFrame LED mocowanie": { plnPrice: 0.196, plnMargin: 0.07, intranetId: 11314, category: "ramy tekstylne akcesoria", origin: "Polska" },
   "adFrame LMD (narożny) łącznik na płasko": { plnPrice: 4.48, plnMargin: 1.6, intranetId: 15352, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "adFrame LMD door listwy 100cm NA BOK - zestaw": { plnPrice: 2201.052, plnMargin: 786.09, intranetId: 12051, category: "ramy tekstylne akcesoria", origin: "Polska" },
@@ -2085,7 +2238,7 @@ const KASETON_PRICES = {
   "adFrame stopa LMD/LMS": { plnPrice: 153.3, plnMargin: 54.75, intranetId: 10950, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "adFrame stopa LMD/LMS LIGHT": { plnPrice: 25.788, plnMargin: 9.21, intranetId: 19091, category: "ramy tekstylne akcesoria", origin: "Polska" },
   "adFrame support 180° łącznik": { plnPrice: 13.468, plnMargin: 4.81, intranetId: 11131, category: "ramy tekstylne akcesoria", origin: "Chiny" },
-  "adFrame support zamek": { plnPrice: 6.496, plnMargin: 2.32, intranetId: 10949, category: "ramy tekstylne akcesoria", origin: "Chiny" },
+  "adFrame support zamek": { plnPrice: 3.99, plnMargin: 2.32, intranetId: 10949, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "adFrame ŁĄCZNIK LMD/LMD (gwintowany)": { plnPrice: 65.912, plnMargin: 23.54, intranetId: 17420, category: "ramy tekstylne akcesoria", origin: "Polska" },
   "Kabel zasilający do zasilacza (AC 3PIN) 1,8m": { plnPrice: 15.568, plnMargin: 5.56, intranetId: 12129, category: "ramy tekstylne akcesoria", origin: "Polska" },
   "Kabel zasilający do zasilacza (AC 3PIN) UK": { plnPrice: 210.784, plnMargin: 75.28, intranetId: 12663, category: "ramy tekstylne akcesoria", origin: "Polska" },
@@ -2102,7 +2255,7 @@ const KASETON_PRICES = {
   "profil CTF": { plnPrice: 42.672, plnMargin: 15.24, intranetId: 12099, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "profil h": { plnPrice: 13.468, plnMargin: 4.81, intranetId: 17721, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "profil LMD": { plnPrice: 136.052, plnMargin: 48.59, intranetId: 10933, category: "ramy tekstylne akcesoria", origin: "Chiny" },
-  "profil LMD odchudzony": { plnPrice: 110.18, plnMargin: 39.35, intranetId: 18517, category: "ramy tekstylne akcesoria", origin: "Chiny" },
+  "profil LMD odchudzony": { plnPrice: 41.48, plnMargin: 14.814, intranetId: 18517, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "profil support light": { plnPrice: 30.324, plnMargin: 10.83, intranetId: 11951, category: "ramy tekstylne akcesoria", origin: "Chiny" },
   "Przedłużacz z uziemieniem 5 gniazd, 10m biały": { plnPrice: 97.412, plnMargin: 34.79, intranetId: 18822, category: "ramy tekstylne akcesoria", origin: "Polska" },
   "Torba do adFrame Quick 100x250 - na kółkach": { plnPrice: 615.72, plnMargin: 219.9, intranetId: 12435, category: "ramy tekstylne akcesoria", origin: "4202129990" },
@@ -4040,7 +4193,7 @@ const KASETON_PRICES = {
   "adFrame LMSM narożnik 135°": { plnPrice: 0, plnMargin: 0, intranetId: 17412, category: "ramy tekstylne akcesoria", origin: "Chiny", noPrice: true },
   "adFrame LMSM łącznik 180° support rurka": { plnPrice: 13.81, plnMargin: 8.81, intranetId: 16204, category: "ramy tekstylne akcesoria", origin: "Chiny", noPrice: true },
   "adFrame LMSM łącznik narożny mFrame": { plnPrice: 0, plnMargin: 0, intranetId: 17452, category: "ramy tekstylne akcesoria", origin: "Polska", noPrice: true },
-  "adFrame LMSM/LMSM mFrame pianka ochronna": { plnPrice: 0, plnMargin: 0, intranetId: 14812, category: "ramy tekstylne akcesoria", origin: "Polska", noPrice: true },
+  "adFrame LMSM/LMSM mFrame pianka ochronna": { plnPrice: 2.87, plnMargin: 0.11, intranetId: 14812, category: "ramy tekstylne akcesoria", origin: "Polska" },
   "adFrame LPO 100x100": { plnPrice: 403.45, plnMargin: 362.13, intranetId: 16285, category: "ramy tekstylne p&p", origin: "Polska", noPrice: true },
   "adFrame LPO 100x100 (bez wydruku)": { plnPrice: 340.95, plnMargin: 332.62, intranetId: 16197, category: "ramy tekstylne p&p", origin: "Chiny", noPrice: true },
   "adFrame LPO 100x293 (bez wydruku)": { plnPrice: 741.17, plnMargin: 732.84, intranetId: 16199, category: "ramy tekstylne p&p", origin: "Chiny", noPrice: true },
@@ -6676,12 +6829,26 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
   }
 
   // 2. Calculate outer segments (main frame)
+  let numCutsD = 0;
+  if (sys === 'LCD_LMD') {
+    if (config.numCutsD !== undefined) {
+      numCutsD = config.numCutsD;
+    } else {
+      if (config.cut && config.cut.startsWith('auto')) {
+        const maxLen = config.cut === 'auto_dedicated' ? 300 : (config.cut === 'auto_courier_150' ? 150 : 200);
+        if (D > maxLen) numCutsD = Math.ceil(D / maxLen) - 1;
+      } else if (D > 200) {
+        numCutsD = 1;
+      }
+    }
+  }
+
   let outerSegmentsCount = 0;
-  if (sys === 'CTF' || sys === 'CTF_LED') {
-    const D = parseFloat(config.height3D) || 120;
+  if (sys === 'CTF' || sys === 'CTF_LED' || sys === 'LCD_LMD') {
+    const D_val = parseFloat(config.height3D) || 120;
     let numSegW = numCutsW + 1;
     let numSegH = numCutsH + 1;
-    let numSegZ = D > 200 ? 2 : 1;
+    let numSegZ = (sys === 'LCD_LMD') ? (numCutsD + 1) : (D_val > 200 ? 2 : 1);
     outerSegmentsCount = 4 * numSegW + 4 * numSegH + 4 * numSegZ;
   } else {
     outerSegmentsCount = 2 * (numCutsW + 1) + 2 * (numCutsH + 1);
@@ -6696,17 +6863,23 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
         (cs.frontBack?.vertical || []).length + (cs.frontBack?.horizontal || []).length +
         (cs.leftRight?.vertical || []).length + (cs.leftRight?.horizontal || []).length +
         (cs.topBottom?.vertical || []).length + (cs.topBottom?.horizontal || []).length;
+    } else if (sys === 'LCD_LMD') {
+      const cs = config.customSupports;
+      supportSegmentsCount = 
+        ((cs.frontBack?.vertical || []).length * 4) + ((cs.leftRight?.vertical || []).length * 4);
     } else {
       const cs = config.customSupports;
       supportSegmentsCount = (cs.vertical || []).length + (cs.horizontal || []).length;
     }
   } else {
     if (sys === 'CTF' || sys === 'CTF_LED') {
-      const D = parseFloat(config.height3D) || 120;
+      const D_val = parseFloat(config.height3D) || 120;
       supportSegmentsCount = (numCutsW * 2) + (numCutsH * 2);
-      if (D > 200) {
+      if (D_val > 200) {
         supportSegmentsCount += 2;
       }
+    } else if (sys === 'LCD_LMD') {
+      supportSegmentsCount = (numCutsW * 4) + (numCutsD * 4);
     } else {
       const isWallSTF_STFL = (sys === 'STF' || sys === 'STFL') && config.usage === 'wall';
       supportSegmentsCount = isWallSTF_STFL ? 0 : (numCutsW + numCutsH);
@@ -6813,7 +6986,7 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
   }
 
   // --- GLOBAL PROTECTIVE FOAM REPLACEMENT LOGIC ---
-  const totalFoamQty = outerSegmentsCount + supportSegmentsCount;
+  const totalFoamQty = Math.ceil((outerSegmentsCount + supportSegmentsCount) / 2);
 
   let foamName = 'adFrame LMD pianka ochronna';
   let foamId = 11736;
@@ -7045,10 +7218,15 @@ function finishKasetonBOM(bomItems, W, H, sys, config) {
 
       let isWydrukWithArea = false;
       let wydrukArea = 0;
-      const area = calculateWydrukArea(item.name);
-      if (area !== null) {
+      if (item.width && item.height && item.name.startsWith("Wydruk")) {
         isWydrukWithArea = true;
-        wydrukArea = area;
+        wydrukArea = (item.width * item.height) / 10000;
+      } else {
+        const area = calculateWydrukArea(item.name);
+        if (area !== null) {
+          isWydrukWithArea = true;
+          wydrukArea = area;
+        }
       }
 
       let hasNoPrice = false;

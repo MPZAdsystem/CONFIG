@@ -251,32 +251,52 @@ async function executePDFGeneration() {
         }
 
         // ═══════════════════════════════════════════════════════════
-        // ⚪ STRONA 2: DWUKOLUMNOWY UKŁAD KAFELKOWY 2x2
+        // ⚪ STRONA 2: RZUTY PERSPEKTYWICZNE (PIONOWY STACK)
         // ═══════════════════════════════════════════════════════════
-        updateProgress(85, "🗺️ Generowanie rysunków technicznych i kafelków wizualizacji...");
+        updateProgress(82, "🗺️ Generowanie wizualizacji poglądowych...");
         doc.addPage();
-        applyLightThemeAndFooter(doc.internal.getNumberOfPages(), lang === 'PL' ? "WIZUALIZACJE I SPECYFIKACJE" : "VISUALIZATIONS & SPECS");
+        applyLightThemeAndFooter(doc.internal.getNumberOfPages(), lang === 'PL' ? "WIZUALIZACJE POGLĄDOWE" : "PERSPECTIVE VIEWS");
 
-        const tileW = 86; const tileH = 60;
-        const leftX = 15; const rightX = 109;
+        const boxW = 180; const boxH = 100;
+        const leftX = 15;
 
         doc.setDrawColor(210, 215, 225); doc.setLineWidth(0.3);
         doc.setFontSize(10); doc.setTextColor(80, 80, 80);
 
-        if (imgDataLeft && imgDataRight) {
-            doc.addImage(imgDataLeft, 'JPEG', leftX, 35, tileW, tileH);
-            doc.rect(leftX, 35, tileW, tileH, 'S');
-            doc.text(lang === 'PL' ? "Wizualizacja poglądowa 1" : "Perspective View 1", leftX, 35 + tileH + 5);
+        const fit3DImageInBox = (imgData, startX, startY) => {
+            const imgAspect = 1 / ratio; // width / height
+            const boxAspect = boxW / boxH;
+            let finalW = boxW; let finalH = boxH;
+            let offsetX = 0; let offsetY = 0;
+            if (imgAspect > boxAspect) {
+                finalH = boxW / imgAspect;
+                offsetY = (boxH - finalH) / 2;
+            } else {
+                finalW = boxH * imgAspect;
+                offsetX = (boxW - finalW) / 2;
+            }
+            doc.addImage(imgData, 'JPEG', startX + offsetX, startY + offsetY, finalW, finalH);
+            doc.setDrawColor(210, 215, 225); doc.rect(startX, startY, boxW, boxH, 'S');
+        };
 
-            doc.addImage(imgDataRight, 'JPEG', rightX, 35, tileW, tileH);
-            doc.rect(rightX, 35, tileW, tileH, 'S');
-            doc.text(lang === 'PL' ? "Wizualizacja poglądowa 2" : "Perspective View 2", rightX, 35 + tileH + 5);
+        if (imgDataLeft && imgDataRight) {
+            // Rzut 1 (górna połowa)
+            fit3DImageInBox(imgDataLeft, leftX, 35);
+            doc.text(lang === 'PL' ? "Wizualizacja poglądowa 1" : "Perspective View 1", leftX, 35 + boxH + 4);
+
+            // Rzut 2 (dolna połowa)
+            fit3DImageInBox(imgDataRight, leftX, 150);
+            doc.text(lang === 'PL' ? "Wizualizacja poglądowa 2" : "Perspective View 2", leftX, 150 + boxH + 4);
         }
 
-        const bottomY = 112;
+        // ═══════════════════════════════════════════════════════════
+        // ⚪ STRONA 3: RZUT 2D ORAZ SPECYFIKACJA TECHNICZNA 3D
+        // ═══════════════════════════════════════════════════════════
+        updateProgress(86, "🗺️ Generowanie rzutu 2D i rysunku technicznego...");
+        doc.addPage();
+        applyLightThemeAndFooter(doc.internal.getNumberOfPages(), lang === 'PL' ? "RZUT 2D I SPECYFIKACJA TECHNICZNA" : "2D LAYOUT & TECH SPECS");
 
-        // ZMIANA: Dodano klasę '.man2DElement' (ikonka człowieka) do selektora ukrywania warstw interfejsu rzutu 2D
-        const hiddenElements = document.querySelectorAll('.light-toggle-btn, .studio-light-2d, .turn-toggle-btn, .clip-corner-btn, .acc-controls, .sego-joint, #man2DElement');
+        const hiddenElements = document.querySelectorAll('.light-toggle-btn, .studio-light-2d, .turn-toggle-btn, .clip-corner-btn, .acc-controls, .sego-joint, #man2DElement, #bottomToolbar, #bottomToolbarToggleBtn, .fab-container-left, #constructionOverlay, #instructionsModal, #manualScreenshotUI');
         hiddenElements.forEach(el => el.style.display = 'none');
 
         const blueprintStyle = document.createElement('style');
@@ -297,19 +317,87 @@ async function executePDFGeneration() {
 
         try {
             const stageDiv = document.getElementById('stage');
+            
+            // Bounding box detection for 2D layout elements inside #stage
+            let minX = Infinity;
+            let maxX = -Infinity;
+            let minY = Infinity;
+            let maxY = -Infinity;
+            
+            const layoutElements = stageDiv.querySelectorAll('.sego-wall, .total-dim-2d, .dim-line-2d, .wall-label-2d, .corner-arc, .sego-wall-label, .wall-dim-label');
+            layoutElements.forEach(el => {
+                if (el.offsetWidth === 0 && el.offsetHeight === 0) return;
+                const rect = el.getBoundingClientRect();
+                const stageRect = stageDiv.getBoundingClientRect();
+                
+                const left = rect.left - stageRect.left;
+                const right = rect.right - stageRect.left;
+                const top = rect.top - stageRect.top;
+                const bottom = rect.bottom - stageRect.top;
+                
+                if (left < minX) minX = left;
+                if (right > maxX) maxX = right;
+                if (top < minY) minY = top;
+                if (bottom > maxY) maxY = bottom;
+            });
+            
+            if (minX === Infinity || maxX === -Infinity || minY === Infinity || maxY === -Infinity) {
+                minX = 0;
+                maxX = stageDiv.clientWidth;
+                minY = 0;
+                maxY = stageDiv.clientHeight;
+            }
+            
+            // Zwiększamy padding do 95px, aby uniknąć przycinania wymiarów i linii
+            const padding = 95;
+            minX = Math.max(0, minX - padding);
+            minY = Math.max(0, minY - padding);
+            maxX = Math.min(stageDiv.clientWidth, maxX + padding);
+            maxY = Math.min(stageDiv.clientHeight, maxY + padding);
+            
+            const cropW = maxX - minX;
+            const cropH = maxY - minY;
+            
             const canvas2D = await html2canvas(stageDiv, { scale: 2, backgroundColor: "#0a1a35" });
-            doc.addImage(canvas2D.toDataURL('image/png'), 'PNG', leftX, bottomY, tileW, tileH);
-            doc.setDrawColor(210, 215, 225); doc.rect(leftX, bottomY, tileW, tileH, 'S');
-            doc.text(t.layout, leftX, bottomY + tileH + 5);
-        } catch (e) { doc.text("Brak danych rzutu 2D.", leftX, bottomY + 15); }
+            
+            // Crop the canvas
+            const croppedCanvas = document.createElement('canvas');
+            croppedCanvas.width = cropW * 2;
+            croppedCanvas.height = cropH * 2;
+            const ctx = croppedCanvas.getContext('2d');
+            ctx.drawImage(
+                canvas2D,
+                minX * 2, minY * 2, cropW * 2, cropH * 2,
+                0, 0, cropW * 2, cropH * 2
+            );
+            
+            // Fit inside tile keeping aspect ratio
+            const imgAspect = cropW / cropH;
+            const boxAspect = boxW / boxH;
+            let finalW = boxW; let finalH = boxH;
+            let offsetX = 0; let offsetY = 0;
+            
+            if (imgAspect > boxAspect) {
+                finalH = boxW / imgAspect;
+                offsetY = (boxH - finalH) / 2;
+            } else {
+                finalW = boxH * imgAspect;
+                offsetX = (boxW - finalW) / 2;
+            }
+            
+            doc.addImage(croppedCanvas.toDataURL('image/png'), 'PNG', leftX + offsetX, 35 + offsetY, finalW, finalH);
+            doc.setDrawColor(210, 215, 225); doc.rect(leftX, 35, boxW, boxH, 'S');
+            doc.setFontSize(10); doc.setTextColor(80, 80, 80);
+            doc.text(t.layout, leftX, 35 + boxH + 4);
+        } catch (e) { doc.text("Brak danych rzutu 2D.", leftX, 50); }
 
         blueprintStyle.remove();
         hiddenElements.forEach(el => el.style.display = '');
 
         if (imgDataTech) {
-            doc.addImage(imgDataTech, 'JPEG', rightX, bottomY, tileW, tileH);
-            doc.setDrawColor(210, 215, 225); doc.rect(rightX, bottomY, tileW, tileH, 'S');
-            doc.text(lang === 'PL' ? "Rzut techniczny z wymiarami" : "Technical Dimensions 3D", rightX, bottomY + tileH + 5);
+            fit3DImageInBox(imgDataTech, leftX, 150);
+            doc.setFontSize(10); doc.setTextColor(80, 80, 80);
+            doc.text(lang === 'PL' ? "Rzut techniczny z wymiarami" : "Technical Dimensions 3D", leftX, 150 + boxH + 4);
         }
 
     } else {
@@ -381,7 +469,7 @@ async function executePDFGeneration() {
         }
 
         updateProgress(85, "🗺️ Skanowanie czystej architektury 2D...");
-        const hiddenElements = document.querySelectorAll('.light-toggle-btn, .studio-light-2d, .turn-toggle-btn, .clip-corner-btn, .acc-controls, .sego-joint');
+        const hiddenElements = document.querySelectorAll('.light-toggle-btn, .studio-light-2d, .turn-toggle-btn, .clip-corner-btn, .acc-controls, .sego-joint, #man2DElement, #bottomToolbar, #bottomToolbarToggleBtn, .fab-container-left, #constructionOverlay, #instructionsModal, #manualScreenshotUI');
         hiddenElements.forEach(el => el.style.display = 'none');
 
         await new Promise(r => setTimeout(r, 200));
@@ -390,10 +478,66 @@ async function executePDFGeneration() {
         doc.addPage(); applyDarkThemeAndFooter(doc.internal.getNumberOfPages(), t.layout);
         try {
             const stageDiv = document.getElementById('stage');
+            
+            // Bounding box detection for 2D layout elements inside #stage
+            let minX = Infinity;
+            let maxX = -Infinity;
+            let minY = Infinity;
+            let maxY = -Infinity;
+            
+            const layoutElements = stageDiv.querySelectorAll('.sego-wall, .total-dim-2d, .dim-line-2d, .wall-label-2d, .corner-arc, .sego-wall-label, .wall-dim-label');
+            layoutElements.forEach(el => {
+                if (el.offsetWidth === 0 && el.offsetHeight === 0) return;
+                const rect = el.getBoundingClientRect();
+                const stageRect = stageDiv.getBoundingClientRect();
+                
+                const left = rect.left - stageRect.left;
+                const right = rect.right - stageRect.left;
+                const top = rect.top - stageRect.top;
+                const bottom = rect.bottom - stageRect.top;
+                
+                if (left < minX) minX = left;
+                if (right > maxX) maxX = right;
+                if (top < minY) minY = top;
+                if (bottom > maxY) maxY = bottom;
+            });
+            
+            if (minX === Infinity || maxX === -Infinity || minY === Infinity || maxY === -Infinity) {
+                minX = 0;
+                maxX = stageDiv.clientWidth;
+                minY = 0;
+                maxY = stageDiv.clientHeight;
+            }
+            
+            const padding = 95;
+            minX = Math.max(0, minX - padding);
+            minY = Math.max(0, minY - padding);
+            maxX = Math.min(stageDiv.clientWidth, maxX + padding);
+            maxY = Math.min(stageDiv.clientHeight, maxY + padding);
+            
+            const cropW = maxX - minX;
+            const cropH = maxY - minY;
+            
             const canvas2D = await html2canvas(stageDiv, { scale: 2, backgroundColor: "#121212" });
-            const ratio2D = canvas2D.height / canvas2D.width;
-            const maxW = 180; let finalH = maxW * ratio2D; if (finalH > 220) finalH = 220;
-            doc.addImage(canvas2D.toDataURL('image/png'), 'PNG', 15, 35, maxW, finalH);
+            
+            // Crop the canvas
+            const croppedCanvas = document.createElement('canvas');
+            croppedCanvas.width = cropW * 2;
+            croppedCanvas.height = cropH * 2;
+            const ctx = croppedCanvas.getContext('2d');
+            ctx.drawImage(
+                canvas2D,
+                minX * 2, minY * 2, cropW * 2, cropH * 2,
+                0, 0, cropW * 2, cropH * 2
+            );
+            
+            const ratio2D = cropH / cropW;
+            const maxW = 180; 
+            let finalH = maxW * ratio2D; 
+            if (finalH > 220) finalH = 220;
+            
+            const offsetX = (180 - maxW) / 2;
+            doc.addImage(croppedCanvas.toDataURL('image/png'), 'PNG', 15 + offsetX, 35, maxW, finalH);
             doc.setDrawColor(255, 0, 128); doc.rect(15, 35, maxW, finalH, 'S');
         } catch (e) { doc.text("Brak danych rzutu 2D.", 15, 45); }
         hiddenElements.forEach(el => el.style.display = '');
